@@ -27,9 +27,11 @@ export function MailModeBanner() {
 			className="bg-amber-100 text-amber-950 px-4 py-2 text-sm text-center"
 			role="status"
 		>
-			{data.mode === "live"
-				? "Live inbox · Messages are sent from @realadvisor.com"
-				: "Synthetic inbox · Sending is simulated"}
+			{data.classifierPreview
+				? "Local classifier preview · Synthetic emails and fixture results · No Jev calls or sending"
+				: data.mode === "live"
+					? "Live inbox · Messages are sent from @realadvisor.com"
+					: "Synthetic inbox · Sending is simulated"}
 		</div>
 	);
 }

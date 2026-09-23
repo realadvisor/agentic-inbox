@@ -3,6 +3,9 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { ClassifierReview } from "~/components/ClassifierReview";
+import { useMailMode } from "~/components/MailMode";
+import { classifierRequest, type Classification } from "~/services/classifiers";
 import { TagActions, TagChips, TagPicker } from "~/components/ConversationTags";
 import { useTags } from "~/queries/tags";
 import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
@@ -19,7 +22,7 @@ import {
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { Folders } from "shared/folders";
@@ -154,8 +157,22 @@ function FolderEmptyState({
 export default function EmailListRoute() {
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
+
 		folder: string;
 	}>();
+	const mode = useMailMode();
+	const previewResults = useQuery({
+		queryKey: ["classification-results", mailboxId],
+		queryFn: () =>
+			classifierRequest<Classification[]>(
+				"/results/" + encodeURIComponent(mailboxId!),
+			),
+		enabled:
+			!!(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
+			!!mailboxId,
+		refetchInterval: 5000,
+	});
+
 	const {
 		selectedEmailId,
 		isComposing,
@@ -520,6 +537,14 @@ export default function EmailListRoute() {
 												</span>
 											)}
 										</div>
+										{(mode.data?.classifierPreview ||
+											mode.data?.classifiersEnabled) && (
+											<ClassifierReview
+												results={(previewResults.data ?? []).filter(
+													(r) => r.thread_id === email.thread_id,
+												)}
+											/>
+										)}
 										{!!email.tags?.length && (
 											<div className="mt-1.5 flex">
 												<TagChips tags={email.tags} />

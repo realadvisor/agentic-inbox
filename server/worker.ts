@@ -1,3 +1,4 @@
+import { runQueue } from "./classification/queue";
 import { documentation } from "./docs";
 import { Hono, type ExecutionContext } from "hono";
 import { basicAuth } from "hono/basic-auth";
@@ -9,6 +10,8 @@ import type { MailSender } from "./outbound";
 
 export interface WorkerEnv {
 	PUBLIC_ORIGIN: string;
+	CLASSIFIERS_ENABLED?: string;
+	TYPESAFE_API_KEY?: string;
 	PROTOTYPE_PASSWORD?: string;
 	MAIL_MODE?: "live" | "synthetic";
 	ACCESS_ISSUER?: string;
@@ -69,6 +72,10 @@ worker.all("/api/*", async (c) => {
 	try {
 		return await createApi(db, {
 			origin: c.env.PUBLIC_ORIGIN,
+			classifiersEnabled:
+				c.env.CLASSIFIERS_ENABLED === "true" && !!c.env.TYPESAFE_API_KEY,
+			kickClassifiers: () =>
+				c.executionCtx.waitUntil(processClassifiers(c.env, 1)),
 			mode: c.env.MAIL_MODE ?? "synthetic",
 			sender: c.env.EMAIL,
 			actor: c.get("actor"),
@@ -90,7 +97,27 @@ worker.all("/api/*", async (c) => {
 });
 worker.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
+async function processClassifiers(env: WorkerEnv, rounds = 10) {
+	if (env.CLASSIFIERS_ENABLED !== "true" || !env.TYPESAFE_API_KEY) return;
+	const db = postgres(env.HYPERDRIVE.connectionString, {
+		max: 5,
+		fetch_types: false,
+	});
+	try {
+		await runQueue(db, env.TYPESAFE_API_KEY, rounds);
+	} catch {
+		console.error(
+			"Classifier queue invocation failed; pending jobs will retry",
+		);
+	} finally {
+		await db.end({ timeout: 5 });
+	}
+}
+
 export default {
+	async scheduled(_event: unknown, env: WorkerEnv) {
+		await processClassifiers(env);
+	},
 	async email(message: InboundMessage, env: WorkerEnv) {
 		if (
 			env.MAIL_MODE !== "live" ||

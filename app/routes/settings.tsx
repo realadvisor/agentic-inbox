@@ -3,6 +3,9 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { Classifiers } from "~/components/Classifiers";
+import { useMailMode } from "~/components/MailMode";
+import { useSearchParams } from "react-router";
 import { TagSettings } from "~/components/TagSettings";
 import { Button, Input, Loader, useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useState } from "react";
@@ -12,6 +15,11 @@ import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 export default function SettingsRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const toastManager = useKumoToastManager();
+	const mode = useMailMode();
+	const hasClassifiers =
+		mode.data?.classifierPreview || mode.data?.classifiersEnabled;
+	const [params, setParams] = useSearchParams();
+	const tab = params.get("tab") ?? "classifiers";
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 
@@ -56,30 +64,54 @@ export default function SettingsRoute() {
 		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
 			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
 
-			<div className="space-y-6">
+			{hasClassifiers && (
+				<div className="flex gap-2 mb-6" aria-label="Settings sections">
+					{["classifiers", "tags", "account"].map((t) => (
+						<Button
+							key={t}
+							variant={tab === t ? "primary" : "ghost"}
+							onClick={() => setParams({ tab: t })}
+						>
+							{t[0].toUpperCase() + t.slice(1)}
+						</Button>
+					))}
+				</div>
+			)}
+			{hasClassifiers && tab === "classifiers" ? (
+				<Classifiers />
+			) : hasClassifiers && tab === "tags" ? (
 				<TagSettings />
-				{/* Account */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
-						Account
+			) : (
+				<div className="space-y-6">
+					<TagSettings />
+					{/* Account */}
+					<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+						<div className="text-sm font-medium text-kumo-default mb-4">
+							Account
+						</div>
+						<div className="space-y-3">
+							<Input
+								label="Display Name"
+								value={displayName}
+								onChange={(e) => setDisplayName(e.target.value)}
+							/>
+							<Input
+								label="Email"
+								type="email"
+								value={mailbox.email}
+								disabled
+							/>
+						</div>
 					</div>
-					<div className="space-y-3">
-						<Input
-							label="Display Name"
-							value={displayName}
-							onChange={(e) => setDisplayName(e.target.value)}
-						/>
-						<Input label="Email" type="email" value={mailbox.email} disabled />
-					</div>
-				</div>
 
-				{/* Save */}
-				<div className="flex justify-end">
-					<Button variant="primary" onClick={handleSave} loading={isSaving}>
-						Save Changes
-					</Button>
+					{/* Save */}
+					<div className="flex justify-end">
+						<Button variant="primary" onClick={handleSave} loading={isSaving}>
+							Save Changes
+						</Button>
+					</div>
 				</div>
-			</div>
+			)}
 		</div>
 	);
 }

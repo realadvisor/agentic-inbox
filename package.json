@@ -19,7 +19,8 @@
 		"db:stop": "node --env-file=.env scripts/local-db.mjs stop",
 		"setup:local": "node scripts/setup.mjs",
 		"deploy:check": "pnpm build && wrangler deploy --dry-run",
-		"deploy": "node scripts/deploy-preflight.mjs && pnpm check && pnpm build && wrangler deploy"
+		"deploy": "node scripts/deploy-preflight.mjs && pnpm check && pnpm build && wrangler deploy",
+		"preview:classifiers": "CLASSIFIER_PREVIEW=1 PORT=4313 tsx --env-file=.env server/index.ts"
 	},
 	"dependencies": {
 		"@cloudflare/kumo": "^1.13.0",

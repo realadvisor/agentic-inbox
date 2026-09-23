@@ -43,6 +43,9 @@
 		},
 		{
 			"name": "Tags"
+		},
+		{
+			"name": "Classifiers"
 		}
 	],
 	"paths": {
@@ -186,6 +189,15 @@
 											"type": "boolean"
 										},
 										"canDeleteMailboxes": {
+											"type": "boolean"
+										},
+										"classifierPreview": {
+											"type": "boolean"
+										},
+										"classifiersEnabled": {
+											"type": "boolean"
+										},
+										"canManageClassifiers": {
 											"type": "boolean"
 										}
 									}
@@ -3568,6 +3580,393 @@
 					}
 				}
 			}
+		},
+		"/api/v1/classification/classifiers": {
+			"get": {
+				"operationId": "listClassifiers",
+				"summary": "List classifiers and latest run progress",
+				"tags": ["Classifiers"],
+				"description": "",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Classifier"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				}
+			},
+			"post": {
+				"operationId": "createClassifier",
+				"summary": "Create a classifier",
+				"tags": ["Classifiers"],
+				"description": "Administrator only. Does not backfill history. One classifier per tag; maximum 50 classifiers.",
+				"parameters": [],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Classifier"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ClassifierInput"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/classification/classifiers/{id}": {
+			"put": {
+				"operationId": "updateClassifier",
+				"summary": "Update or enable a classifier",
+				"tags": ["Classifiers"],
+				"description": "Administrator only. Supply current revision. Editing its question/tag/scope or disabling cancels work and clears automatic tags; ordinary manual tags survive. Enabling does not backfill.",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Classifier"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ClassifierInput"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/classification/classifiers/{id}/runs": {
+			"post": {
+				"operationId": "runClassifier",
+				"summary": "Run on existing conversations",
+				"tags": ["Classifiers"],
+				"description": "Administrator only. Fixed target batch up to 5,000 active conversations. Existing active run is returned on repeated requests. Unprocessed includes failed jobs. Skips manual tag decisions and, unless reset, human classifier corrections. Runs continue server-side after closing the page.",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ClassifierRun"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["mailbox_ids", "selection"],
+								"properties": {
+									"mailbox_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 50,
+										"items": {
+											"type": "string",
+											"format": "email"
+										}
+									},
+									"selection": {
+										"type": "string",
+										"enum": ["unprocessed", "all"]
+									},
+									"reset": {
+										"type": "boolean",
+										"default": false,
+										"description": "Reset human classifier corrections; only with all. Manual tag choices always survive."
+									},
+									"enable": {
+										"type": "boolean",
+										"default": false
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/classification/classifiers/{id}/cancel": {
+			"post": {
+				"operationId": "cancelClassifierRun",
+				"summary": "Cancel the current batch",
+				"tags": ["Classifiers"],
+				"description": "Administrator only. Stops pending bulk work. Independent new-mail jobs continue.",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/classification/results/{mailbox}": {
+			"get": {
+				"operationId": "listClassificationReviews",
+				"summary": "List uncertain and failed classifications",
+				"tags": ["Classifiers"],
+				"description": "Latest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned.",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "mailbox",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"in": "query",
+						"name": "thread",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Classification"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/results/{mailbox}/{thread}/{classifier}": {
+			"put": {
+				"operationId": "correctClassification",
+				"summary": "Record a human yes/no correction",
+				"tags": ["Classifiers"],
+				"description": "Any authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative.",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "mailbox",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"in": "path",
+						"name": "thread",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"in": "path",
+						"name": "classifier",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["answer", "revision", "token"],
+								"additionalProperties": false,
+								"properties": {
+									"answer": {
+										"type": "boolean"
+									},
+									"revision": {
+										"type": "integer"
+									},
+									"token": {
+										"type": "string",
+										"format": "uuid"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -4007,6 +4406,177 @@
 						}
 					}
 				]
+			},
+			"ClassifierInput": {
+				"type": "object",
+				"required": ["question", "tag_id", "mailbox_ids", "enabled"],
+				"additionalProperties": false,
+				"properties": {
+					"question": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 4000
+					},
+					"tag_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"mailbox_ids": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"format": "email"
+						},
+						"maxItems": 50,
+						"description": "Empty means all registered mailboxes."
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"revision": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Required on update; optimistic version from GET classifiers."
+					}
+				}
+			},
+			"ClassifierRun": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["running", "completed", "cancelled"]
+					},
+					"total": {
+						"type": "integer"
+					},
+					"processed": {
+						"type": "integer"
+					},
+					"review": {
+						"type": "integer"
+					},
+					"failed": {
+						"type": "integer"
+					},
+					"skipped": {
+						"type": "integer"
+					}
+				}
+			},
+			"Classifier": {
+				"type": "object",
+				"properties": {
+					"question": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 4000
+					},
+					"tag_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"mailbox_ids": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"format": "email"
+						},
+						"maxItems": 50,
+						"description": "Empty means all registered mailboxes."
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"revision": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Required on update; optimistic version from GET classifiers."
+					},
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string"
+					},
+					"errors": {
+						"type": "integer"
+					},
+					"run": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/ClassifierRun"
+							}
+						],
+						"nullable": true
+					}
+				}
+			},
+			"Classification": {
+				"type": "object",
+				"properties": {
+					"mailbox_id": {
+						"type": "string"
+					},
+					"thread_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"classifier_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"revision": {
+						"type": "integer"
+					},
+					"generation": {
+						"type": "integer"
+					},
+					"token": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["review", "error"]
+					},
+					"answer": {
+						"type": "boolean",
+						"nullable": true
+					},
+					"probability": {
+						"type": "number",
+						"nullable": true
+					},
+					"source": {
+						"type": "string"
+					},
+					"error": {
+						"type": "string",
+						"nullable": true
+					},
+					"question": {
+						"type": "string"
+					},
+					"tag_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string"
+					}
+				}
 			}
 		},
 		"parameters": {
