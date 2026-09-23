@@ -5,10 +5,10 @@
 	"license": "Apache-2.0",
 	"packageManager": "pnpm@10.11.1",
 	"scripts": {
-		"dev": "node scripts/dev.mjs",
+		"dev": "node scripts/prepare-docs.mjs && node scripts/dev.mjs",
 		"dev:ui": "react-router dev --host 127.0.0.1 --port 4310",
-		"dev:api": "tsx watch --env-file=.env server/index.ts",
-		"build": "react-router build",
+		"dev:api": "node scripts/prepare-docs.mjs && tsx watch --env-file=.env server/index.ts",
+		"build": "node scripts/prepare-docs.mjs && react-router build",
 		"start": "tsx --env-file=.env server/index.ts",
 		"db:migrate": "tsx --env-file=.env scripts/migrate.ts",
 		"db:seed": "tsx --env-file=.env scripts/seed.ts",
@@ -26,6 +26,8 @@
 		"@hono/node-server": "^1.19.0",
 		"@phosphor-icons/react": "^2.1.10",
 		"@react-router/node": "^7.5.3",
+		"@scalar/api-reference": "^1.71.0",
+		"@scalar/hono-api-reference": "^0.12.4",
 		"@tanstack/react-query": "^5.99.0",
 		"@tiptap/extension-color": "3.20.2",
 		"@tiptap/extension-highlight": "3.20.2",
@@ -49,6 +51,7 @@
 		"zustand": "^5.0.12"
 	},
 	"devDependencies": {
+		"@apidevtools/swagger-parser": "^13.1.0",
 		"@playwright/test": "^1.55.0",
 		"@react-router/dev": "^7.5.3",
 		"@tailwindcss/vite": "^4.1.4",

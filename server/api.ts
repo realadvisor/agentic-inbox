@@ -1,3 +1,4 @@
+import { documentation } from "./docs";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
@@ -98,6 +99,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		console.error("Inbox request failed:", error.message);
 		return c.json({ error: "Request failed" }, 500);
 	});
+	app.route("/", documentation());
 	app.get("/api/health", async (c) => {
 		await db`SELECT version FROM inbox_migrations WHERE version = 1`;
 		return c.json({

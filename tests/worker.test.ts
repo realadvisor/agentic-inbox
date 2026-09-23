@@ -42,6 +42,9 @@ test("Worker denies unconfigured deployments and anonymous UI/API/asset requests
 		"/",
 		"/assets/app.js",
 		"/api/health",
+		"/api/docs",
+		"/api/openapi.json",
+		"/vendor/scalar.js",
 		"/api/v1/mailboxes",
 	]) {
 		const response = await worker.fetch(new Request(origin + path), env, ctx);
@@ -94,10 +97,18 @@ test("Live mode never falls back to the prototype password or unsigned identity 
 		{ "cf-access-jwt-assertion": "not-a-jwt" },
 	];
 	for (const headers of cases) {
-		assert.equal(
-			(await worker.fetch(new Request(origin, { headers }), live, ctx)).status,
-			401,
-		);
+		for (const path of [
+			"/",
+			"/api/docs",
+			"/api/openapi.json",
+			"/vendor/scalar.js",
+		]) {
+			assert.equal(
+				(await worker.fetch(new Request(origin + path, { headers }), live, ctx))
+					.status,
+				401,
+			);
+		}
 	}
 	assert.equal(
 		(

@@ -1,0 +1,3357 @@
+{
+	"openapi": "3.0.3",
+	"info": {
+		"title": "RealAdvisor Inbox API",
+		"version": "1.0.0",
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation and API require a Cloudflare Access browser login. Requests from this page use your existing same-origin session. All allowed users can access both mailboxes. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nService-token authentication and scoped workflow permissions are NOT implemented yet. Do not copy browser cookies into n8n. A future integration will use a dedicated Access service token and backend service-identity verification; creating a token alone will not work today.\n\n## Mail identities\nprivacy@ingest.realadvisor.com sends as privacy@realadvisor.com; info@ingest.realadvisor.com sends as info@realadvisor.com.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+	},
+	"servers": [
+		{
+			"url": "/",
+			"description": "Current inbox instance"
+		}
+	],
+	"security": [
+		{
+			"AccessSession": []
+		}
+	],
+	"tags": [
+		{
+			"name": "System"
+		},
+		{
+			"name": "Mailboxes"
+		},
+		{
+			"name": "Messages"
+		},
+		{
+			"name": "Threads"
+		},
+		{
+			"name": "Folders"
+		},
+		{
+			"name": "Drafts"
+		},
+		{
+			"name": "Sending"
+		},
+		{
+			"name": "Attachments"
+		}
+	],
+	"paths": {
+		"/api/health": {
+			"get": {
+				"operationId": "getCheckHealth",
+				"summary": "Check health",
+				"tags": ["System"],
+				"description": "",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"status": {
+											"type": "string"
+										},
+										"storage": {
+											"type": "string"
+										},
+										"mode": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/config": {
+			"get": {
+				"operationId": "getGetConfiguration",
+				"summary": "Get configuration",
+				"tags": ["System"],
+				"description": "",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"domains": {
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										"emailAddresses": {
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										"mode": {
+											"type": "string",
+											"enum": ["live", "synthetic"]
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes": {
+			"get": {
+				"operationId": "getListMailboxes",
+				"summary": "List mailboxes",
+				"tags": ["Mailboxes"],
+				"description": "",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Mailbox"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postCreateSyntheticMailbox",
+				"summary": "Create synthetic mailbox",
+				"tags": ["Mailboxes"],
+				"description": "Local synthetic mode only. Live deployments return 403.",
+				"parameters": [],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Mailbox"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"email": {
+										"type": "string",
+										"format": "email",
+										"maxLength": 254
+									},
+									"name": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 120
+									}
+								},
+								"required": ["email", "name"]
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}": {
+			"get": {
+				"operationId": "getGetMailbox",
+				"summary": "Get mailbox",
+				"tags": ["Mailboxes"],
+				"description": "",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Mailbox"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putUpdateMailboxSettings",
+				"summary": "Update mailbox settings",
+				"tags": ["Mailboxes"],
+				"description": "Stores the display setting; does not change the fixed sender email address.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Mailbox"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"settings": {
+										"type": "object",
+										"properties": {
+											"fromName": {
+												"type": "string",
+												"maxLength": 120
+											}
+										},
+										"required": ["fromName"]
+									}
+								},
+								"required": ["settings"]
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteDeleteSyntheticMailbox",
+				"summary": "Delete synthetic mailbox",
+				"tags": ["Mailboxes"],
+				"description": "Local synthetic mode only. Live deployments return 403.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success; no response body"
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails": {
+			"get": {
+				"operationId": "getListEmails",
+				"summary": "List emails",
+				"tags": ["Messages"],
+				"description": "Page-based pagination. Query searches subject, sender, recipient and body as a literal substring. Filters combine with AND. date_start is inclusive; date_end exclusive. threaded=true requires folder and returns the latest matching email per thread. Mail arrival can shift page boundaries; deduplicate workflow processing by email UUID.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100000,
+							"default": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					},
+					{
+						"name": "folder",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "query",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "from",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "to",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "subject",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "thread_id",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "is_read",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "is_starred",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "date_start",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "date_end",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "has_attachment",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "threaded",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "sortColumn",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["date", "subject", "sender"],
+							"default": "date"
+						}
+					},
+					{
+						"name": "sortDirection",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["ASC", "DESC"],
+							"default": "DESC"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/EmailList"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postSendEmail",
+				"summary": "Send email",
+				"tags": ["Sending"],
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"description": "Required in live mode; retain across retries."
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SendResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"502": {
+						"description": "Delivery not confirmed; do not blindly resend",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Sending is not configured",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SendInput"
+							},
+							"example": {
+								"to": "recipient@example.com",
+								"subject": "Re: Your request",
+								"text": "We have received your request."
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/search": {
+			"get": {
+				"operationId": "getSearchEmails",
+				"summary": "Search emails",
+				"tags": ["Messages"],
+				"description": "Page-based pagination. Query searches subject, sender, recipient and body as a literal substring. Filters combine with AND. date_start is inclusive; date_end exclusive. threaded=true requires folder and returns the latest matching email per thread. Mail arrival can shift page boundaries; deduplicate workflow processing by email UUID.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100000,
+							"default": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					},
+					{
+						"name": "folder",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "query",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "from",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "to",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "subject",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "thread_id",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "is_read",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "is_starred",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "date_start",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "date_end",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "has_attachment",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "threaded",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						}
+					},
+					{
+						"name": "sortColumn",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["date", "subject", "sender"],
+							"default": "date"
+						}
+					},
+					{
+						"name": "sortDirection",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["ASC", "DESC"],
+							"default": "DESC"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/EmailList"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails/{id}": {
+			"get": {
+				"operationId": "getGetEmail",
+				"summary": "Get email",
+				"tags": ["Messages"],
+				"description": "Includes attachment metadata. Reading does not mark it read.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Email"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putUpdateEmailFlags",
+				"summary": "Update email flags",
+				"tags": ["Messages"],
+				"description": "",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Email"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"read": {
+										"type": "boolean"
+									},
+									"starred": {
+										"type": "boolean"
+									}
+								},
+								"minProperties": 1,
+								"additionalProperties": false
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteDeleteEmail",
+				"summary": "Delete email",
+				"tags": ["Messages"],
+				"description": "Outbound audit records prevent permanent deletion (409); move those messages to trash. Deletion does not purge retained R2 objects.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success; no response body"
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails/{id}/move": {
+			"post": {
+				"operationId": "postMoveEmail",
+				"summary": "Move email",
+				"tags": ["Messages"],
+				"description": "",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success; no response body"
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"folderId": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 100
+									}
+								},
+								"required": ["folderId"]
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}": {
+			"get": {
+				"operationId": "getGetThread",
+				"summary": "Get thread",
+				"tags": ["Threads"],
+				"description": "Chronological messages with attachments; an unknown thread returns an empty array.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/threadId"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Email"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/read": {
+			"post": {
+				"operationId": "postMarkThreadRead",
+				"summary": "Mark thread read",
+				"tags": ["Threads"],
+				"description": "Send Content-Type: application/json with an empty object. Unknown threads also return 204.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/threadId"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success; no response body"
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/folders": {
+			"get": {
+				"operationId": "getListFolders",
+				"summary": "List folders",
+				"tags": ["Folders"],
+				"description": "",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Folder"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postCreateFolder",
+				"summary": "Create folder",
+				"tags": ["Folders"],
+				"description": "",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Folder"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 100
+									}
+								},
+								"required": ["name"]
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/folders/{id}": {
+			"put": {
+				"operationId": "putRenameFolder",
+				"summary": "Rename folder",
+				"tags": ["Folders"],
+				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409).",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "Folder ID: system name or custom UUID."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Folder"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 100
+									}
+								},
+								"required": ["name"]
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteDeleteFolder",
+				"summary": "Delete folder",
+				"tags": ["Folders"],
+				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409).",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "Folder ID: system name or custom UUID."
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success; no response body"
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/drafts": {
+			"post": {
+				"operationId": "postSaveDraft",
+				"summary": "Save draft",
+				"tags": ["Drafts"],
+				"description": "With draft_id, updates an existing draft and returns 200. in_reply_to is an internal email UUID (not an RFC Message-ID).",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DraftResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"200": {
+						"description": "Existing draft updated",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DraftResult"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/DraftInput"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails/{id}/reply": {
+			"post": {
+				"operationId": "postReplyToEmail",
+				"summary": "Reply to email",
+				"tags": ["Sending"],
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"description": "Required in live mode; retain across retries."
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SendResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"502": {
+						"description": "Delivery not confirmed; do not blindly resend",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Sending is not configured",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SendInput"
+							},
+							"example": {
+								"to": "recipient@example.com",
+								"subject": "Re: Your request",
+								"text": "We have received your request."
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails/{id}/forward": {
+			"post": {
+				"operationId": "postForwardEmail",
+				"summary": "Forward email",
+				"tags": ["Sending"],
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					},
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"description": "Required in live mode; retain across retries."
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SendResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"502": {
+						"description": "Delivery not confirmed; do not blindly resend",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Sending is not configured",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SendInput"
+							},
+							"example": {
+								"to": "recipient@example.com",
+								"subject": "Re: Your request",
+								"text": "We have received your request."
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails/{id}/attachments/{attachmentId}": {
+			"get": {
+				"operationId": "getDownloadAttachment",
+				"summary": "Download attachment",
+				"tags": ["Attachments"],
+				"description": "Downloads as application/octet-stream with Content-Disposition: attachment.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/id"
+					},
+					{
+						"$ref": "#/components/parameters/attachmentId"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Attachment bytes",
+						"content": {
+							"application/octet-stream": {
+								"schema": {
+									"type": "string",
+									"format": "binary"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"schemas": {
+			"Error": {
+				"type": "object",
+				"properties": {
+					"error": {
+						"type": "string"
+					},
+					"details": {
+						"type": "string"
+					}
+				},
+				"required": ["error"]
+			},
+			"Mailbox": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"name": {
+						"type": "string"
+					},
+					"settings": {
+						"type": "object",
+						"properties": {
+							"fromName": {
+								"type": "string"
+							}
+						}
+					}
+				},
+				"required": ["id", "email", "name", "settings"]
+			},
+			"Attachment": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"filename": {
+						"type": "string"
+					},
+					"mimetype": {
+						"type": "string"
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0
+					}
+				},
+				"required": ["id", "filename", "mimetype", "size"]
+			},
+			"Folder": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"mailbox_id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"is_deletable": {
+						"type": "boolean"
+					},
+					"unreadCount": {
+						"type": "integer"
+					}
+				},
+				"required": ["id", "mailbox_id", "name", "is_deletable"]
+			},
+			"Email": {
+				"type": "object",
+				"properties": {
+					"mailbox_id": {
+						"type": "string"
+					},
+					"folder_id": {
+						"type": "string"
+					},
+					"subject": {
+						"type": "string"
+					},
+					"sender": {
+						"type": "string"
+					},
+					"recipient": {
+						"type": "string"
+					},
+					"cc": {
+						"type": "string"
+					},
+					"bcc": {
+						"type": "string"
+					},
+					"body": {
+						"type": "string"
+					},
+					"message_id": {
+						"type": "string"
+					},
+					"snippet": {
+						"type": "string"
+					},
+					"participants": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"thread_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"date": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"read": {
+						"type": "boolean"
+					},
+					"starred": {
+						"type": "boolean"
+					},
+					"in_reply_to": {
+						"type": "string",
+						"nullable": true
+					},
+					"email_references": {
+						"type": "string",
+						"nullable": true
+					},
+					"reply_to": {
+						"type": "string",
+						"nullable": true
+					},
+					"raw_headers": {
+						"type": "string",
+						"nullable": true
+					},
+					"raw_storage_key": {
+						"type": "string",
+						"nullable": true
+					},
+					"delivery_status": {
+						"type": "string",
+						"enum": [
+							"received",
+							"draft",
+							"simulated",
+							"sending",
+							"sent",
+							"failed",
+							"unknown"
+						]
+					},
+					"attachments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Attachment"
+						}
+					},
+					"thread_count": {
+						"type": "integer"
+					},
+					"thread_unread_count": {
+						"type": "integer"
+					},
+					"has_draft": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"id",
+					"mailbox_id",
+					"folder_id",
+					"subject",
+					"sender",
+					"recipient",
+					"body",
+					"date",
+					"read",
+					"starred",
+					"thread_id",
+					"delivery_status"
+				]
+			},
+			"SendInput": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"oneOf": [
+							{
+								"type": "string",
+								"format": "email"
+							},
+							{
+								"type": "array",
+								"items": {
+									"type": "string",
+									"format": "email"
+								},
+								"minItems": 1,
+								"maxItems": 50
+							}
+						]
+					},
+					"cc": {
+						"oneOf": [
+							{
+								"type": "string",
+								"format": "email"
+							},
+							{
+								"type": "array",
+								"items": {
+									"type": "string",
+									"format": "email"
+								},
+								"minItems": 1,
+								"maxItems": 50
+							}
+						]
+					},
+					"bcc": {
+						"oneOf": [
+							{
+								"type": "string",
+								"format": "email"
+							},
+							{
+								"type": "array",
+								"items": {
+									"type": "string",
+									"format": "email"
+								},
+								"minItems": 1,
+								"maxItems": 50
+							}
+						]
+					},
+					"subject": {
+						"type": "string",
+						"maxLength": 1000,
+						"default": ""
+					},
+					"html": {
+						"type": "string",
+						"maxLength": 100000
+					},
+					"text": {
+						"type": "string",
+						"maxLength": 100000
+					}
+				},
+				"required": ["to"],
+				"anyOf": [
+					{
+						"required": ["html"]
+					},
+					{
+						"required": ["text"]
+					}
+				],
+				"description": "A nonempty html or text body is required. Maximum 50 recipients across To, Cc and Bcc. From and Reply-To are fixed by the mailbox. No attachment uploads."
+			},
+			"SendResult": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["sent", "simulated"]
+					}
+				},
+				"required": ["id", "status"]
+			},
+			"DraftInput": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "string",
+						"maxLength": 4000,
+						"default": ""
+					},
+					"cc": {
+						"type": "string",
+						"maxLength": 4000,
+						"default": ""
+					},
+					"bcc": {
+						"type": "string",
+						"maxLength": 4000,
+						"default": ""
+					},
+					"subject": {
+						"type": "string",
+						"maxLength": 1000,
+						"default": ""
+					},
+					"body": {
+						"type": "string",
+						"maxLength": 100000
+					},
+					"draft_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"thread_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"in_reply_to": {
+						"type": "string",
+						"format": "uuid"
+					}
+				},
+				"required": ["body"]
+			},
+			"DraftResult": {
+				"type": "object",
+				"properties": {
+					"draft_id": {
+						"type": "string",
+						"format": "uuid"
+					}
+				},
+				"required": ["draft_id"]
+			},
+			"EmailList": {
+				"type": "object",
+				"properties": {
+					"emails": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Email"
+						}
+					},
+					"totalCount": {
+						"type": "integer"
+					}
+				},
+				"required": ["emails", "totalCount"]
+			}
+		},
+		"parameters": {
+			"mailboxId": {
+				"name": "mailboxId",
+				"in": "path",
+				"required": true,
+				"schema": {
+					"type": "string"
+				},
+				"example": "privacy@ingest.realadvisor.com",
+				"description": "Mailbox address. Live mailboxes: privacy@ingest.realadvisor.com and info@ingest.realadvisor.com. URL-encode path values."
+			},
+			"id": {
+				"name": "id",
+				"in": "path",
+				"required": true,
+				"schema": {
+					"type": "string",
+					"format": "uuid"
+				}
+			},
+			"threadId": {
+				"name": "threadId",
+				"in": "path",
+				"required": true,
+				"schema": {
+					"type": "string",
+					"format": "uuid"
+				}
+			},
+			"attachmentId": {
+				"name": "attachmentId",
+				"in": "path",
+				"required": true,
+				"schema": {
+					"type": "string",
+					"format": "uuid"
+				}
+			}
+		},
+		"securitySchemes": {
+			"AccessSession": {
+				"type": "apiKey",
+				"in": "cookie",
+				"name": "CF_Authorization",
+				"description": "Managed by Cloudflare Access login. Sign in normally; do not paste or export session cookies. Service tokens are not yet supported by the backend."
+			}
+		}
+	}
+}

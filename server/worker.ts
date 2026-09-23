@@ -1,3 +1,4 @@
+import { documentation } from "./docs";
 import { Hono, type ExecutionContext } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import postgres from "postgres";
@@ -56,6 +57,7 @@ worker.use("*", async (c, next) => {
 		realm: "RealAdvisor Inbox Prototype",
 	})(c, next);
 });
+worker.route("/", documentation());
 worker.all("/api/*", async (c) => {
 	// Connections are request-scoped; Hyperdrive owns the upstream connection pool.
 	const db = postgres(c.env.HYPERDRIVE.connectionString, {
