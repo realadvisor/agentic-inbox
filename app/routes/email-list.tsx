@@ -490,7 +490,6 @@ export default function EmailListRoute() {
 												{formatListDate(email.date)}
 											</span>
 										</div>
-										<TagChips tags={email.tags} />
 										<div className="truncate text-sm mt-0.5">
 											<span
 												className={
@@ -508,6 +507,11 @@ export default function EmailListRoute() {
 												</span>
 											)}
 										</div>
+										{!!email.tags?.length && (
+											<div className="mt-1.5 flex">
+												<TagChips tags={email.tags} />
+											</div>
+										)}
 									</div>
 
 									{/* Hover actions */}
