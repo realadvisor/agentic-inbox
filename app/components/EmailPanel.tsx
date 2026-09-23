@@ -57,7 +57,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { data: email } = useEmail(mailboxId, emailId) as { data?: Email };
 	const { data: threadRepliesRaw } = useThreadReplies(
 		mailboxId,
-		email?.thread_id
+		email?.thread_id,
 	) as {
 		data?: Email[];
 	};
@@ -75,7 +75,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const [isSending, setIsSending] = useState(false);
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(
-		new Set()
+		new Set(),
 	);
 	const [previewImage, setPreviewImage] = useState<{
 		url: string;
@@ -91,7 +91,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const allMessages = useMemo(() => {
 		if (!email) return [];
 		return [email, ...threadReplies].sort(
-			(a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+			(a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
 		);
 	}, [email, threadReplies]);
 
@@ -124,7 +124,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const lastReceivedMessage = useMemo(() => {
 		const ce = currentMailbox?.email;
 		const received = allMessages.filter(
-			(msg) => !draftMessageIds.has(msg.id) && msg.sender !== ce
+			(msg) => !draftMessageIds.has(msg.id) && msg.sender !== ce,
 		);
 		if (received.length > 0) return received[0];
 		const nonDrafts = allMessages.filter((msg) => !draftMessageIds.has(msg.id));
@@ -240,7 +240,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				});
 			else await sendEmailMut.mutateAsync({ mailboxId, email: emailData });
 			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });
-			toastManager.add({ title: "Simulated email saved — nothing was sent" });
+			toastManager.add({ title: "Message submitted" });
 			if (isDraftFolder) closePanel();
 		} catch (err) {
 			const message =

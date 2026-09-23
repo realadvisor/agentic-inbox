@@ -5,6 +5,9 @@ import { z } from "zod";
 import type { Database } from "./db";
 import { InboxStore, serialize, type MessageRow } from "./store";
 
+import { sendReal, type MailSender } from "./outbound";
+import { mailboxes, mailboxConfig } from "./mailboxes";
+
 const text = z.string().max(100_000);
 const id = z.string().uuid();
 const recipients = z.union([
@@ -45,6 +48,9 @@ export interface ApiOptions {
 	readAttachment: (key: string) => Promise<Uint8Array | null>;
 	// Remote authentication is enforced by the Worker before it constructs this API.
 	origin?: string;
+	mode?: "live" | "synthetic";
+	sender?: MailSender;
+	actor?: string;
 }
 
 export function createApi(db: Database, options: ApiOptions) {
@@ -87,26 +93,39 @@ export function createApi(db: Database, options: ApiOptions) {
 		if ("code" in error && error.code === "23503")
 			return c.json(
 				{ error: "Referenced item does not exist or is still in use" },
-				409
+				409,
 			);
 		console.error("Inbox request failed:", error.message);
 		return c.json({ error: "Request failed" }, 500);
 	});
 	app.get("/api/health", async (c) => {
 		await db`SELECT version FROM inbox_migrations WHERE version = 1`;
-		return c.json({ status: "ok", storage: "postgres", mode: "synthetic" });
+		return c.json({
+			status: "ok",
+			storage: "postgres",
+			mode: options.mode ?? "synthetic",
+		});
 	});
 	app.get("/api/v1/config", (c) =>
 		c.json({
-			domains: ["example.test"],
-			emailAddresses: [],
-			mode: "synthetic",
-		})
+			domains:
+				options.mode === "live" ? ["ingest.realadvisor.com"] : ["example.test"],
+			emailAddresses: options.mode === "live" ? Object.keys(mailboxes) : [],
+			mode: options.mode ?? "synthetic",
+		}),
 	);
 	app.get("/api/v1/mailboxes", async (c) =>
-		c.json(await store.listMailboxes())
+		c.json(
+			(await store.listMailboxes()).filter(
+				(m) => options.mode !== "live" || mailboxConfig(m.id),
+			),
+		),
 	);
 	app.post("/api/v1/mailboxes", async (c) => {
+		if (options.mode === "live")
+			throw new HTTPException(403, {
+				message: "Mailboxes are managed in deployment configuration",
+			});
 		const input = z
 			.object({
 				email: z.string().email().max(254),
@@ -115,15 +134,22 @@ export function createApi(db: Database, options: ApiOptions) {
 			.parse(await c.req.json());
 		return c.json(
 			await store.createMailbox(input.email.toLowerCase(), input.name),
-			201
+			201,
 		);
 	});
+	app.use("/api/v1/mailboxes/:mailboxId", async (c, next) => {
+		if (options.mode === "live" && !mailboxConfig(c.req.param("mailboxId")))
+			throw new HTTPException(404);
+		await next();
+	});
 	app.use("/api/v1/mailboxes/:mailboxId/*", async (c, next) => {
+		if (options.mode === "live" && !mailboxConfig(c.req.param("mailboxId")))
+			throw new HTTPException(404);
 		await store.mailbox(c.req.param("mailboxId"));
 		await next();
 	});
 	app.get("/api/v1/mailboxes/:mailboxId", async (c) =>
-		c.json(await store.mailbox(c.req.param("mailboxId")))
+		c.json(await store.mailbox(c.req.param("mailboxId"))),
 	);
 	app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 		await store.mailbox(c.req.param("mailboxId"));
@@ -131,11 +157,15 @@ export function createApi(db: Database, options: ApiOptions) {
 			.object({ settings: z.object({ fromName: z.string().max(120) }) })
 			.parse(await c.req.json());
 		const [row] = await db`UPDATE mailboxes SET settings = ${db.json(
-			settings
+			settings,
 		)} WHERE id = ${c.req.param("mailboxId")} RETURNING *`;
 		return c.json(row);
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
+		if (options.mode === "live")
+			throw new HTTPException(403, {
+				message: "Live mailboxes cannot be deleted",
+			});
 		await store.mailbox(c.req.param("mailboxId"));
 		await db`DELETE FROM mailboxes WHERE id = ${c.req.param("mailboxId")}`;
 		return c.body(null, 204);
@@ -148,8 +178,11 @@ export function createApi(db: Database, options: ApiOptions) {
 	}
 	app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) =>
 		c.json(
-			await store.message(c.req.param("mailboxId"), id.parse(c.req.param("id")))
-		)
+			await store.message(
+				c.req.param("mailboxId"),
+				id.parse(c.req.param("id")),
+			),
+		),
 	);
 	app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
 		const input = z
@@ -159,16 +192,23 @@ export function createApi(db: Database, options: ApiOptions) {
 			.parse(await c.req.json());
 		const messageId = id.parse(c.req.param("id"));
 		const [row] = await db<MessageRow[]>`UPDATE emails SET ${db(
-			input
+			input,
 		)} WHERE mailbox_id = ${c.req.param(
-			"mailboxId"
+			"mailboxId",
 		)} AND id = ${messageId} RETURNING *`;
 		if (!row) throw new HTTPException(404);
 		return c.json(serialize(row));
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
+		const [outbound] =
+			await db`SELECT request_id FROM outbound_requests WHERE mailbox_id=${c.req.param("mailboxId")} AND email_id=${id.parse(c.req.param("id"))}`;
+		if (outbound)
+			throw new HTTPException(409, {
+				message:
+					"Sent messages retain their delivery record. Move this message to Trash instead.",
+			});
 		const rows = await db`DELETE FROM emails WHERE mailbox_id = ${c.req.param(
-			"mailboxId"
+			"mailboxId",
 		)} AND id = ${id.parse(c.req.param("id"))} RETURNING id`;
 		if (!rows.length) throw new HTTPException(404);
 		return c.body(null, 204);
@@ -179,7 +219,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			.parse(await c.req.json());
 		const rows =
 			await db`UPDATE emails SET folder_id = ${folderId} WHERE mailbox_id = ${c.req.param(
-				"mailboxId"
+				"mailboxId",
 			)} AND id = ${id.parse(c.req.param("id"))} RETURNING id`;
 		if (!rows.length) throw new HTTPException(404);
 		return c.body(null, 204);
@@ -188,18 +228,18 @@ export function createApi(db: Database, options: ApiOptions) {
 		c.json(
 			await store.thread(
 				c.req.param("mailboxId"),
-				id.parse(c.req.param("threadId"))
-			)
-		)
+				id.parse(c.req.param("threadId")),
+			),
+		),
 	);
 	app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c) => {
 		await db`UPDATE emails SET read = true WHERE mailbox_id = ${c.req.param(
-			"mailboxId"
+			"mailboxId",
 		)} AND thread_id = ${id.parse(c.req.param("threadId"))}`;
 		return c.body(null, 204);
 	});
 	app.get("/api/v1/mailboxes/:mailboxId/folders", async (c) =>
-		c.json(await store.folders(c.req.param("mailboxId")))
+		c.json(await store.folders(c.req.param("mailboxId"))),
 	);
 	app.post("/api/v1/mailboxes/:mailboxId/folders", async (c) => {
 		const { name } = z
@@ -207,7 +247,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			.parse(await c.req.json());
 		const [row] =
 			await db`INSERT INTO folders (mailbox_id, id, name) VALUES (${c.req.param(
-				"mailboxId"
+				"mailboxId",
 			)}, ${crypto.randomUUID()}, ${name}) RETURNING *, 0 AS "unreadCount"`;
 		return c.json(row, 201);
 	});
@@ -217,7 +257,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			.parse(await c.req.json());
 		const [row] =
 			await db`UPDATE folders SET name = ${name} WHERE mailbox_id = ${c.req.param(
-				"mailboxId"
+				"mailboxId",
 			)} AND id = ${c.req.param("id")} AND is_deletable RETURNING *`;
 		if (!row)
 			throw new HTTPException(409, { message: "Cannot rename this folder" });
@@ -225,7 +265,7 @@ export function createApi(db: Database, options: ApiOptions) {
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c) => {
 		const rows = await db`DELETE FROM folders WHERE mailbox_id = ${c.req.param(
-			"mailboxId"
+			"mailboxId",
 		)} AND id = ${c.req.param("id")} AND is_deletable RETURNING id`;
 		if (!rows.length)
 			throw new HTTPException(409, { message: "Cannot delete this folder" });
@@ -265,6 +305,26 @@ export function createApi(db: Database, options: ApiOptions) {
 	for (const action of ["", "/:id/reply", "/:id/forward"]) {
 		app.post(`/api/v1/mailboxes/:mailboxId/emails${action}`, async (c) => {
 			const input = sendSchema.parse(await c.req.json());
+			if (options.mode === "live") {
+				if (!options.sender || !options.actor)
+					throw new HTTPException(503, {
+						message: "Email sending is not configured",
+					});
+				const key = id.parse(c.req.header("idempotency-key"));
+				return c.json(
+					await sendReal(
+						db,
+						options.sender,
+						c.req.param("mailboxId"),
+						key,
+						input,
+						options.actor,
+						action ? c.req.param("id") : undefined,
+						action.endsWith("reply"),
+					),
+					201,
+				);
+			}
 			const mailbox = await store.mailbox(c.req.param("mailboxId"));
 			const parent = action
 				? await store.message(mailbox.id, id.parse(c.req.param("id")))
@@ -280,8 +340,8 @@ export function createApi(db: Database, options: ApiOptions) {
 				folder_id: "sent",
 				read: true,
 				delivery_status: "simulated",
-				thread_id: reply ? parent?.thread_id ?? parent?.id : undefined,
-				in_reply_to: reply ? parent?.message_id ?? undefined : undefined,
+				thread_id: reply ? (parent?.thread_id ?? parent?.id) : undefined,
+				in_reply_to: reply ? (parent?.message_id ?? undefined) : undefined,
 				email_references: reply
 					? [parent?.email_references, parent?.message_id]
 							.filter(Boolean)
@@ -298,7 +358,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				{ storage_key: string; filename: string }[]
 			>`SELECT storage_key, filename FROM attachments
 			WHERE mailbox_id = ${c.req.param("mailboxId")} AND email_id = ${id.parse(
-				c.req.param("id")
+				c.req.param("id"),
 			)} AND id = ${id.parse(c.req.param("attachmentId"))}`;
 			if (!attachment || !/^[a-f0-9-]{36}$/.test(attachment.storage_key))
 				throw new HTTPException(404);
@@ -309,18 +369,18 @@ export function createApi(db: Database, options: ApiOptions) {
 					"Content-Type": "application/octet-stream",
 					"X-Content-Type-Options": "nosniff",
 					"Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(
-						attachment.filename
+						attachment.filename,
 					)}`,
 				},
 			});
-		}
+		},
 	);
 	app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 	return app;
 }
 
 function joinRecipients(value: string | string[] | undefined) {
-	return Array.isArray(value) ? value.join(", ") : value ?? "";
+	return Array.isArray(value) ? value.join(", ") : (value ?? "");
 }
 function escapeHtml(value: string) {
 	return value

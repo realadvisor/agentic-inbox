@@ -13,7 +13,20 @@
 		"not_found_handling": "single-page-application",
 		"run_worker_first": true,
 	},
+	"send_email": [
+		{
+			"name": "EMAIL",
+			"allowed_sender_addresses": [
+				"privacy@realadvisor.com",
+				"info@realadvisor.com",
+			],
+		},
+	],
 	"vars": {
+		"MAIL_MODE": "live",
+		"INBOUND_ENABLED": "true",
+		"ACCESS_ISSUER": "https://realadvisor.cloudflareaccess.com",
+		"ACCESS_AUDIENCE": "46ebcd3d8228fe0452ef2831b15d748f3f45de65ef84dd85a533a9cc8d543bd1",
 		"PUBLIC_ORIGIN": "https://realadvisor-email-inbox-prototype.rodriguezjoan.workers.dev",
 	},
 	"hyperdrive": [

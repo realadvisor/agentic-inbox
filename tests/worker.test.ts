@@ -33,10 +33,10 @@ test("Worker denies unconfigured deployments and anonymous UI/API/asset requests
 			await worker.fetch(
 				new Request(origin),
 				{ ...env, PROTOTYPE_PASSWORD: "" },
-				ctx
+				ctx,
 			)
 		).status,
-		503
+		503,
 	);
 	for (const path of [
 		"/",
@@ -55,17 +55,17 @@ test("Worker accepts the prototype password and rejects wrong credentials/origin
 	const headers = { Authorization: `Basic ${btoa(`prototype:${password}`)}` };
 	assert.equal(
 		(await worker.fetch(new Request(origin, { headers }), env, ctx)).status,
-		200
+		200,
 	);
 	assert.equal(
 		(
 			await worker.fetch(
 				new Request("https://other.example.test", { headers }),
 				env,
-				ctx
+				ctx,
 			)
 		).status,
-		403
+		403,
 	);
 	assert.equal(
 		(
@@ -74,9 +74,39 @@ test("Worker accepts the prototype password and rejects wrong credentials/origin
 					headers: { Authorization: `Basic ${btoa("prototype:incorrect")}` },
 				}),
 				env,
-				ctx
+				ctx,
 			)
 		).status,
-		401
+		401,
+	);
+});
+
+test("Live mode never falls back to the prototype password or unsigned identity headers", async () => {
+	const live = {
+		...env,
+		MAIL_MODE: "live" as const,
+		ACCESS_ISSUER: "https://realadvisor.cloudflareaccess.com",
+		ACCESS_AUDIENCE: "test-audience",
+	};
+	const cases: Record<string, string>[] = [
+		{ Authorization: `Basic ${btoa(`prototype:${password}`)}` },
+		{ "cf-access-authenticated-user-email": "jonas@realadvisor.com" },
+		{ "cf-access-jwt-assertion": "not-a-jwt" },
+	];
+	for (const headers of cases) {
+		assert.equal(
+			(await worker.fetch(new Request(origin, { headers }), live, ctx)).status,
+			401,
+		);
+	}
+	assert.equal(
+		(
+			await worker.fetch(
+				new Request(origin),
+				{ ...live, ACCESS_AUDIENCE: "" },
+				ctx,
+			)
+		).status,
+		503,
 	);
 });

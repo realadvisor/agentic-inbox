@@ -6,7 +6,14 @@ import type { Database } from "./db";
 export interface MessageRow extends Omit<Email, "date"> {
 	date: Date;
 	mailbox_id: string;
-	delivery_status: "received" | "draft" | "simulated";
+	delivery_status:
+		| "received"
+		| "draft"
+		| "simulated"
+		| "sending"
+		| "sent"
+		| "failed"
+		| "unknown";
 }
 export interface NewMessage {
 	id?: string;
@@ -47,7 +54,7 @@ export class InboxStore {
 	}
 	async mailbox(id: string) {
 		return required(
-			(await this.db<Mailbox[]>`SELECT * FROM mailboxes WHERE id = ${id}`)[0]
+			(await this.db<Mailbox[]>`SELECT * FROM mailboxes WHERE id = ${id}`)[0],
 		);
 	}
 	async createMailbox(email: string, name: string) {
@@ -73,7 +80,7 @@ export class InboxStore {
 				await this.db<
 					MessageRow[]
 				>`SELECT * FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
-			)[0]
+			)[0],
 		);
 		const attachments = await this.db<
 			Attachment[]
@@ -127,7 +134,7 @@ export class InboxStore {
 			const value = `%${escapeLike(params.query)}%`;
 			conditions.push(
 				this
-					.db`(e.subject ILIKE ${value} OR e.sender ILIKE ${value} OR e.recipient ILIKE ${value} OR e.body ILIKE ${value})`
+					.db`(e.subject ILIKE ${value} OR e.sender ILIKE ${value} OR e.recipient ILIKE ${value} OR e.body ILIKE ${value})`,
 			);
 		}
 		for (const [parameter, column] of [
@@ -138,8 +145,8 @@ export class InboxStore {
 			if (params[parameter])
 				conditions.push(
 					this.db`${this.db(`e.${column}`)} ILIKE ${`%${escapeLike(
-						params[parameter]
-					)}%`}`
+						params[parameter],
+					)}%`}`,
 				);
 		}
 		for (const [parameter, column] of [
@@ -148,7 +155,7 @@ export class InboxStore {
 		]) {
 			if (params[parameter] !== undefined)
 				conditions.push(
-					this.db`${this.db(`e.${column}`)} = ${params[parameter] === "true"}`
+					this.db`${this.db(`e.${column}`)} = ${params[parameter] === "true"}`,
 				);
 		}
 		if (params.date_start)
@@ -158,7 +165,7 @@ export class InboxStore {
 		if (params.has_attachment === "true")
 			conditions.push(
 				this
-					.db`EXISTS (SELECT 1 FROM attachments a WHERE a.email_id = e.id AND a.mailbox_id = e.mailbox_id)`
+					.db`EXISTS (SELECT 1 FROM attachments a WHERE a.email_id = e.id AND a.mailbox_id = e.mailbox_id)`,
 			);
 		const where = conditions.reduce((a, b) => this.db`${a} AND ${b}`);
 		const threaded = params.threaded === "true" && !!params.folder;
@@ -180,8 +187,8 @@ export class InboxStore {
 			EXISTS (SELECT 1 FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND t.folder_id = 'draft') AS has_draft,
 			(SELECT string_agg(DISTINCT t.sender, ', ') FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS participants
 			FROM (${selection}) selected ORDER BY ${this.db(
-			column
-		)} ${direction}, id LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
+				column,
+			)} ${direction}, id LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
 		return { emails: rows.map(serialize), totalCount: count.count };
 	}
 }

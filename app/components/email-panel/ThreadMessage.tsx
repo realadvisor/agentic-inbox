@@ -1,3 +1,4 @@
+import { SendLabel } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -53,8 +54,8 @@ function Avatar({
 				isDraft
 					? "bg-kumo-fill text-kumo-subtle"
 					: isSelf
-					? "bg-kumo-brand text-kumo-inverse"
-					: "bg-kumo-fill text-kumo-default"
+						? "bg-kumo-brand text-kumo-inverse"
+						: "bg-kumo-fill text-kumo-default"
 			}`}
 		>
 			{isDraft ? "D" : sender.charAt(0).toUpperCase()}
@@ -179,7 +180,7 @@ export default function ThreadMessage({
 							email.body || "",
 							mailboxId || "",
 							email.id,
-							email.attachments
+							email.attachments,
 						)}
 						autoSize
 					/>
@@ -196,7 +197,7 @@ export default function ThreadMessage({
 								loading={isSending}
 								disabled={isSending}
 							>
-								{isSending ? "Saving..." : "Simulate send"}
+								<SendLabel sending={isSending} />
 							</Button>
 						)}
 						{onEditDraft && (

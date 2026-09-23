@@ -61,7 +61,7 @@ function get<T>(
 		params?: Record<string, string>;
 		responseType?: string;
 		signal?: AbortSignal;
-	}
+	},
 ) {
 	const query = opts?.params ? `?${new URLSearchParams(opts.params)}` : "";
 	return request<T>(`${url}${query}`, {
@@ -74,6 +74,7 @@ function get<T>(
 function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal }) {
 	return request<T>(url, {
 		method: "POST",
+		headers: { "Idempotency-Key": crypto.randomUUID() },
 		signal: opts?.signal,
 		body: body != null ? JSON.stringify(body) : undefined,
 	});
@@ -102,7 +103,11 @@ interface EmailListResponse {
 const api = {
 	// Config
 	getConfig: () =>
-		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
+		get<{
+			domains: string[];
+			emailAddresses: string[];
+			mode: "live" | "synthetic";
+		}>("/api/v1/config"),
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),
@@ -119,7 +124,7 @@ const api = {
 	listEmails: (
 		mailboxId: string,
 		params: Record<string, string>,
-		opts?: { signal?: AbortSignal }
+		opts?: { signal?: AbortSignal },
 	) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/emails`, {
 			params,
@@ -142,7 +147,7 @@ const api = {
 	getThread: (
 		mailboxId: string,
 		threadId: string,
-		opts?: { signal?: AbortSignal }
+		opts?: { signal?: AbortSignal },
 	) =>
 		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, {
 			signal: opts?.signal,
@@ -152,7 +157,7 @@ const api = {
 	getAttachment: (mailboxId: string, emailId: string, attachmentId: string) =>
 		get<Blob>(
 			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`,
-			{ responseType: "blob" }
+			{ responseType: "blob" },
 		),
 	saveDraft: (
 		mailboxId: string,
@@ -165,7 +170,7 @@ const api = {
 			in_reply_to?: string;
 			thread_id?: string;
 			draft_id?: string;
-		}
+		},
 	) =>
 		post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
 	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
@@ -173,7 +178,7 @@ const api = {
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(
 			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`,
-			email
+			email,
 		),
 
 	// Folders

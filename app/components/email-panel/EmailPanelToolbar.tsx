@@ -1,3 +1,4 @@
+import { SendLabel } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -81,7 +82,7 @@ export default function EmailPanelToolbar({
 						onClick={onSendDraft}
 						loading={isSending}
 					>
-						{isSending ? "Saving..." : "Simulate send"}
+						<SendLabel sending={isSending} />
 					</Button>
 					<Button
 						variant="secondary"

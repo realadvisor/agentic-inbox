@@ -24,6 +24,7 @@ export interface Mailbox {
 }
 
 export interface Email {
+	reply_to?: string | null;
 	id: string;
 	thread_id?: string | null;
 	folder_id?: string | null;

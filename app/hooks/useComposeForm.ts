@@ -25,17 +25,25 @@ import {
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
+function isSelfAddress(address: string, self?: string) {
+	const publicAddress = self?.replace(
+		/@ingest\.realadvisor\.com$/,
+		"@realadvisor.com",
+	);
+	return address === self || address === publicAddress;
+}
+
 function appendUniqueAddress(
 	addresses: string[],
 	seen: Set<string>,
 	address: string,
-	exclude?: string
+	exclude?: string,
 ) {
 	const trimmed = address.trim();
 	if (!trimmed) return;
 
 	const normalized = trimmed.toLowerCase();
-	if (normalized === exclude || seen.has(normalized)) return;
+	if (isSelfAddress(normalized, exclude) || seen.has(normalized)) return;
 
 	seen.add(normalized);
 	addresses.push(trimmed);
@@ -70,19 +78,19 @@ function buildForwardBody(
 	original: NonNullable<
 		ReturnType<typeof useUIStore.getState>["composeOptions"]["originalEmail"]
 	>,
-	sigBlock: string
+	sigBlock: string,
 ) {
 	const safeSender = escapeHtml(original.sender);
 	const safeSubject = escapeHtml(original.subject);
 	const safeBody = escapeHtml(stripHtml(original.body || "")).replace(
 		/\n/g,
-		"<br>"
+		"<br>",
 	);
 
 	return `<p><br></p>${
 		sigBlock ? `${sigBlock}<br>` : ""
 	}<div style="border: 1px solid #ddd; padding: 1em; background-color: #f9f9f9; margin: 1em 0;"><strong>Forwarded message:</strong><br><strong>From:</strong> ${safeSender}<br><strong>Date:</strong> ${formatComposeDate(
-		original.date
+		original.date,
 	)}<br><strong>Subject:</strong> ${safeSubject}<br><br>${safeBody}</div>`;
 }
 
@@ -90,11 +98,16 @@ function buildReplyAllFields(
 	original: NonNullable<
 		ReturnType<typeof useUIStore.getState>["composeOptions"]["originalEmail"]
 	>,
-	selfAddress?: string
+	selfAddress?: string,
 ) {
 	const toRecipients: string[] = [];
 	const toSeen = new Set<string>();
-	appendUniqueAddress(toRecipients, toSeen, original.sender, selfAddress);
+	appendUniqueAddress(
+		toRecipients,
+		toSeen,
+		original.reply_to || original.sender,
+		selfAddress,
+	);
 
 	for (const recipient of splitEmailList(original.recipient)) {
 		appendUniqueAddress(toRecipients, toSeen, recipient, selfAddress);
@@ -105,7 +118,7 @@ function buildReplyAllFields(
 	for (const recipient of splitEmailList(original.cc)) {
 		const normalized = recipient.toLowerCase();
 		if (
-			normalized === selfAddress ||
+			isSelfAddress(normalized, selfAddress) ||
 			toSeen.has(normalized) ||
 			ccSeen.has(normalized)
 		) {
@@ -125,7 +138,7 @@ function buildReplyAllFields(
 function buildInitialComposeFields(
 	composeOptions: ReturnType<typeof useUIStore.getState>["composeOptions"],
 	mailboxEmail: string | undefined,
-	sigBlock: string
+	sigBlock: string,
 ): ComposeFormFields {
 	const { draftEmail: draft, originalEmail: original, mode } = composeOptions;
 
@@ -150,14 +163,14 @@ function buildInitialComposeFields(
 	if (mode === "reply") {
 		return {
 			...EMPTY_FIELDS,
-			to: original.sender,
+			to: original.reply_to || original.sender,
 			subject: getPrefixedSubject(original.subject, "Re"),
 			body: `<p><br></p>${
 				sigBlock ? `${sigBlock}<br>` : ""
 			}${buildQuotedReplyBlock(
 				original.date,
 				original.sender,
-				original.body || ""
+				original.body || "",
 			)}`,
 		};
 	}
@@ -165,7 +178,7 @@ function buildInitialComposeFields(
 	if (mode === "reply-all") {
 		const recipients = buildReplyAllFields(
 			original,
-			mailboxEmail?.toLowerCase()
+			mailboxEmail?.toLowerCase(),
 		);
 		return {
 			...EMPTY_FIELDS,
@@ -176,7 +189,7 @@ function buildInitialComposeFields(
 			}${buildQuotedReplyBlock(
 				original.date,
 				original.sender,
-				original.body || ""
+				original.body || "",
 			)}`,
 		};
 	}
@@ -234,7 +247,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 
 	const sigBlock = useMemo(
 		() => getSignatureBlock(currentMailbox?.settings),
-		[currentMailbox]
+		[currentMailbox],
 	);
 
 	useEffect(() => {
@@ -245,7 +258,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		const initialFields = buildInitialComposeFields(
 			composeOptions,
 			currentMailbox?.email,
-			sigBlock
+			sigBlock,
 		);
 		setError(null);
 		setTo(initialFields.to);
@@ -327,7 +340,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			composeOptions.originalEmail?.id ||
 			composeOptions.draftEmail?.in_reply_to;
 		setIsSending(true);
-		toastManager.add({ title: "Saving simulated email..." });
+		toastManager.add({ title: "Submitting message…" });
 		try {
 			if ((mode === "reply" || mode === "reply-all") && originalId)
 				await replyMutation.mutateAsync({
@@ -344,7 +357,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			else await sendEmailMutation.mutateAsync({ mailboxId, email: emailData });
 			if (draftId)
 				await deleteEmailMutation.mutateAsync({ mailboxId, id: draftId });
-			toastManager.add({ title: "Simulated email saved — nothing was sent" });
+			toastManager.add({ title: "Message submitted" });
 			onClose();
 		} catch (err: unknown) {
 			const message =

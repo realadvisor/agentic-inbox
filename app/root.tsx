@@ -1,3 +1,4 @@
+import { MailModeBanner } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -97,7 +98,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 					sizes="48x48 32x32 16x16"
 				/>
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-				<title>RealAdvisor Inbox — Prototype</title>
+				<title>RealAdvisor Inbox</title>
 				<Meta />
 				<Links />
 			</head>
@@ -127,13 +128,7 @@ export default function App() {
 			<LinkProvider component={KumoLink}>
 				<TooltipProvider>
 					<Toasty>
-						<div
-							className="bg-amber-100 text-amber-950 px-4 py-2 text-sm text-center"
-							role="status"
-						>
-							Synthetic email prototype · Replies are saved locally, never
-							delivered.
-						</div>
+						<MailModeBanner />
 						<Outlet />
 					</Toasty>
 				</TooltipProvider>

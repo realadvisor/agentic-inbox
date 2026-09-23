@@ -39,6 +39,8 @@
 		"dompurify": "^3.3.3",
 		"hono": "^4.7.11",
 		"isbot": "^5",
+		"jose": "^6.2.12",
+		"postal-mime": "^3.0.0",
 		"postgres": "^3.4.7",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
