@@ -376,7 +376,7 @@ test("only confirmed sent replies requeue, and active folder moves preserve corr
 	await db`UPDATE emails SET folder_id='test-active' WHERE thread_id=${thread}`;
 	assert.equal((await job(thread)).source, "human");
 	const draftId = crypto.randomUUID();
-	await db`INSERT INTO emails(id,mailbox_id,folder_id,sender,recipient,thread_id,message_id,delivery_status) VALUES(${draftId},${mailbox},'drafts',${mailbox},'customer@example.test',${thread},${draftId},'draft')`;
+	await db`INSERT INTO emails(id,mailbox_id,folder_id,sender,recipient,thread_id,message_id,delivery_status) VALUES(${draftId},${mailbox},'draft',${mailbox},'customer@example.test',${thread},${draftId},'draft')`;
 	assert.equal((await job(thread)).source, "human");
 	await db`UPDATE emails SET delivery_status='sending' WHERE id=${draftId}`;
 	assert.equal((await job(thread)).source, "human");
