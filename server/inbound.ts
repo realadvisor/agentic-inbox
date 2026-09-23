@@ -30,7 +30,7 @@ export async function ingest(
 	objects: ObjectStore,
 ) {
 	const mailbox = message.to.toLowerCase();
-	if (!mailboxConfig(mailbox)) {
+	if (!(await mailboxConfig(db, mailbox))) {
 		message.setReject("Unknown mailbox");
 		return;
 	}

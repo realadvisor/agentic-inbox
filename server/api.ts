@@ -7,7 +7,7 @@ import type { Database } from "./db";
 import { InboxStore, serialize, type MessageRow } from "./store";
 
 import { sendReal, type MailSender } from "./outbound";
-import { mailboxes, mailboxConfig } from "./mailboxes";
+import { liveSender, mailboxConfig } from "./mailboxes";
 
 const text = z.string().max(100_000);
 const id = z.string().uuid();
@@ -52,10 +52,18 @@ export interface ApiOptions {
 	mode?: "live" | "synthetic";
 	sender?: MailSender;
 	actor?: string;
+	mailboxAdmins?: string[];
+	mailboxCreationEnabled?: boolean;
 }
 
 export function createApi(db: Database, options: ApiOptions) {
 	const store = new InboxStore(db);
+	const isLive = options.mode === "live";
+	const canCreate =
+		!isLive ||
+		(options.mailboxCreationEnabled === true &&
+			!!options.actor &&
+			(options.mailboxAdmins ?? []).includes(options.actor.toLowerCase()));
 	const app = new Hono();
 	app.use("*", bodyLimit({ maxSize: 256_000 }));
 	app.use("*", async (c, next) => {
@@ -112,21 +120,23 @@ export function createApi(db: Database, options: ApiOptions) {
 		c.json({
 			domains:
 				options.mode === "live" ? ["ingest.realadvisor.com"] : ["example.test"],
-			emailAddresses: options.mode === "live" ? Object.keys(mailboxes) : [],
+			emailAddresses: [],
+			canCreateMailboxes: canCreate,
+			canDeleteMailboxes: !isLive,
 			mode: options.mode ?? "synthetic",
 		}),
 	);
 	app.get("/api/v1/mailboxes", async (c) =>
 		c.json(
 			(await store.listMailboxes()).filter(
-				(m) => options.mode !== "live" || mailboxConfig(m.id),
+				(m) => options.mode !== "live" || liveSender(m.id),
 			),
 		),
 	);
 	app.post("/api/v1/mailboxes", async (c) => {
-		if (options.mode === "live")
+		if (!canCreate)
 			throw new HTTPException(403, {
-				message: "Mailboxes are managed in deployment configuration",
+				message: "Mailbox creation requires an enabled mailbox administrator",
 			});
 		const input = z
 			.object({
@@ -134,18 +144,30 @@ export function createApi(db: Database, options: ApiOptions) {
 				name: z.string().trim().min(1).max(120),
 			})
 			.parse(await c.req.json());
+		const address = input.email.toLowerCase();
+		if (isLive && !liveSender(address))
+			throw new HTTPException(400, {
+				message:
+					"Use a valid address on ingest.realadvisor.com (letters, numbers, dots, hyphens or underscores; maximum 64 characters before @)",
+			});
 		return c.json(
-			await store.createMailbox(input.email.toLowerCase(), input.name),
+			await store.createMailbox(address, input.name, options.actor),
 			201,
 		);
 	});
 	app.use("/api/v1/mailboxes/:mailboxId", async (c, next) => {
-		if (options.mode === "live" && !mailboxConfig(c.req.param("mailboxId")))
+		if (
+			options.mode === "live" &&
+			!(await mailboxConfig(db, c.req.param("mailboxId")))
+		)
 			throw new HTTPException(404);
 		await next();
 	});
 	app.use("/api/v1/mailboxes/:mailboxId/*", async (c, next) => {
-		if (options.mode === "live" && !mailboxConfig(c.req.param("mailboxId")))
+		if (
+			options.mode === "live" &&
+			!(await mailboxConfig(db, c.req.param("mailboxId")))
+		)
 			throw new HTTPException(404);
 		await store.mailbox(c.req.param("mailboxId"));
 		await next();

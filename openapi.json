@@ -3,7 +3,7 @@
 	"info": {
 		"title": "RealAdvisor Inbox API",
 		"version": "1.0.0",
-		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation and API require a Cloudflare Access browser login. Requests from this page use your existing same-origin session. All allowed users can access both mailboxes. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nService-token authentication and scoped workflow permissions are NOT implemented yet. Do not copy browser cookies into n8n. A future integration will use a dedicated Access service token and backend service-identity verification; creating a token alone will not work today.\n\n## Mail identities\nprivacy@ingest.realadvisor.com sends as privacy@realadvisor.com; info@ingest.realadvisor.com sends as info@realadvisor.com.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation and API require a Cloudflare Access browser login. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nService-token authentication and scoped workflow permissions are NOT implemented yet. Do not copy browser cookies into n8n. A future integration will use a dedicated Access service token and backend service-identity verification; creating a token alone will not work today.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
 	},
 	"servers": [
 		{
@@ -178,6 +178,12 @@
 										"mode": {
 											"type": "string",
 											"enum": ["live", "synthetic"]
+										},
+										"canCreateMailboxes": {
+											"type": "boolean"
+										},
+										"canDeleteMailboxes": {
+											"type": "boolean"
 										}
 									}
 								}
@@ -357,10 +363,10 @@
 				}
 			},
 			"post": {
-				"operationId": "postCreateSyntheticMailbox",
-				"summary": "Create synthetic mailbox",
+				"operationId": "postCreateMailbox",
+				"summary": "Create mailbox",
 				"tags": ["Mailboxes"],
-				"description": "Local synthetic mode only. Live deployments return 403.",
+				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1\u201364 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -2983,6 +2989,14 @@
 								"type": "string"
 							}
 						}
+					},
+					"created_by": {
+						"type": "string",
+						"nullable": true
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time"
 					}
 				},
 				"required": ["id", "email", "name", "settings"]

@@ -14,6 +14,8 @@ export interface WorkerEnv {
 	ACCESS_ISSUER?: string;
 	ACCESS_AUDIENCE?: string;
 	INBOUND_ENABLED?: string;
+	MAILBOX_ADMINS?: string;
+	MAILBOX_CREATION_ENABLED?: string;
 	EMAIL?: MailSender;
 	HYPERDRIVE: { connectionString: string };
 	ATTACHMENTS: {
@@ -70,6 +72,13 @@ worker.all("/api/*", async (c) => {
 			mode: c.env.MAIL_MODE ?? "synthetic",
 			sender: c.env.EMAIL,
 			actor: c.get("actor"),
+			mailboxAdmins: (c.env.MAILBOX_ADMINS ?? "")
+				.split(",")
+				.map((s) => s.trim().toLowerCase())
+				.filter(Boolean),
+			mailboxCreationEnabled:
+				c.env.MAILBOX_CREATION_ENABLED === "true" &&
+				c.env.INBOUND_ENABLED === "true",
 			readAttachment: async (key) => {
 				const object = await c.env.ATTACHMENTS.get(key);
 				return object ? new Uint8Array(await object.arrayBuffer()) : null;

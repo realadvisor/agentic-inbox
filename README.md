@@ -83,7 +83,7 @@ To serve the built SPA through the API server, stop `pnpm dev` and run `pnpm sta
 
 ## Cloudflare deployment
 
-The hosted inbox runs on Cloudflare Workers with Neon Postgres through Hyperdrive and private R2 storage. All HTTP routes, including static assets, validate Cloudflare Access JWTs in live mode. Configure permitted people in the editable **Inbox team** Access policy; all permitted people share both mailboxes.
+The hosted inbox runs on Cloudflare Workers with Neon Postgres through Hyperdrive and private R2 storage. All HTTP routes, including static assets, validate Cloudflare Access JWTs in live mode. Configure permitted people in the editable **Inbox team** Access policy; all permitted people share registered mailboxes.
 
 Deployment remains manual from this fork: `pnpm install --frozen-lockfile`, then `pnpm run deploy`. Run database migrations separately first with `pnpm exec tsx --env-file=.env.cloud scripts/migrate.ts`. Credentials belong in ignored `.env.cloud` (permissions 0600), never in git. Local `.env` stays pointed at the local database. `pnpm deploy:check` builds and bundles without publishing.
 
@@ -110,8 +110,8 @@ For a fresh deployment:
 
 1. Create a self-hosted Access application covering the entire app hostname and configure the approved users. Set `ACCESS_ISSUER=https://realadvisor.cloudflareaccess.com` and the application's audience in Wrangler. Verify all public app hostnames are protected; disable unused workers.dev/preview URLs if deploying on a custom hostname.
 2. Run the migrations with `.env.cloud`, then `pnpm exec tsx --env-file=.env.cloud scripts/setup-mailboxes.ts`. This adds separate live mailboxes without deleting synthetic data. Live mode hides the synthetic mailboxes.
-3. Onboard **only `ingest.realadvisor.com`** for Email Routing and route the two exact addresses to this Worker's email handler. Preserve the apex domain's Google Workspace MX records. Unknown mailbox addresses are rejected by the handler.
-4. Onboard `realadvisor.com` for Cloudflare Email Sending and verify the required authentication DNS records. Preserve existing SPF/DMARC and other providers' DKIM records. Add a `send_email` binding named `EMAIL`, restricted to the two configured senders where supported. Sending domain approval is separate from receiving MX configuration.
+3. Onboard **only `ingest.realadvisor.com`** for Email Routing and route unmatched mail to this Worker through the zone catch-all; the Worker accepts only registered ingest addresses. Preserve the apex domain's Google Workspace MX records. Unknown mailbox addresses are rejected by the handler.
+4. Onboard `realadvisor.com` for Cloudflare Email Sending and verify the required authentication DNS records. Preserve existing SPF/DMARC and other providers' DKIM records. Add a `send_email` binding named `EMAIL`, using the verified sending domain. The server derives the sender exclusively from registered ingest mailboxes. Sending domain approval is separate from receiving MX configuration.
 5. Set `MAIL_MODE=live` and `INBOUND_ENABLED=true` only after Access, database migrations, and email bindings are configured. Deploy manually and verify login, a controlled inbound message, its attachment, and a reply with the expected From/Reply-To and authentication headers. Do not seed synthetic messages into live mailboxes.
 6. To receive copies of group mail later, add each ingest address as a member of its corresponding Google Group with each-email delivery. Replies to the public address continue through the Group.
 
@@ -128,3 +128,11 @@ Sent messages retain their outbound audit/idempotency record and can be moved to
 Run `pnpm dev` and open <http://127.0.0.1:4311/api/docs> for synthetic local requests. Hosted interactive requests use your browser session and affect real mail. Send/reply retries must retain the same UUID `Idempotency-Key` and identical request body; do not blindly retry an ambiguous send.
 
 **n8n status:** service identities and mailbox/action permissions are not implemented. A Cloudflare service token alone is insufficient with the current human-identity validator. Do not export browser cookies into workflows. Future automation should use dedicated expiring service credentials stored in n8n's credential manager, with permissions enforced by the API.
+
+## Creating live mailboxes
+
+Administrators see **New Mailbox** on the homepage. `MAILBOX_ADMINS` is a comma-separated list of verified Access email identities (initially Jonas). `MAILBOX_CREATION_ENABLED=true` and `INBOUND_ENABLED=true` enable creation. The API checks the same permissions; hiding the button is not the security boundary. Creation records `created_by` and `created_at`, and commits the mailbox and its folders in one transaction. Duplicate addresses return 409. Live deletion remains disabled.
+
+Mailboxes use `name@ingest.realadvisor.com` and send as `name@realadvisor.com`. The zone catch-all sends otherwise unmatched mail to the inbox Worker; only registered ingest recipients are accepted, before writing MIME to R2. Existing explicit Privacy/Info routes still work. The apex Google MX stays unchanged. The Send Email binding permits the verified domain; the backend authorizes the specific sender by its Postgres mailbox registration. No Cloudflare administrative API credential is stored in the application.
+
+Creating an ingest mailbox does not create a Google Group or Workspace address. Configure the corresponding public address and forwarding separately if replies to `name@realadvisor.com` should return to this inbox. All Access-authorized users can read and send from registered mailboxes; creation is administrator-only.

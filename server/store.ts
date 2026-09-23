@@ -57,11 +57,11 @@ export class InboxStore {
 			(await this.db<Mailbox[]>`SELECT * FROM mailboxes WHERE id = ${id}`)[0],
 		);
 	}
-	async createMailbox(email: string, name: string) {
+	async createMailbox(email: string, name: string, actor?: string) {
 		return this.db.begin(async (tx) => {
 			const [mailbox] = await tx<
 				Mailbox[]
-			>`INSERT INTO mailboxes (id, email, name) VALUES (${email}, ${email}, ${name}) RETURNING *`;
+			>`INSERT INTO mailboxes (id, email, name, created_by) VALUES (${email}, ${email}, ${name}, ${actor ?? null}) RETURNING *`;
 			for (const [id, label] of Object.entries(FOLDER_DISPLAY_NAMES)) {
 				await tx`INSERT INTO folders (mailbox_id, id, name, is_deletable) VALUES (${email}, ${id}, ${label}, false)`;
 			}
