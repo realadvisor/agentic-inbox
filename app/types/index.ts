@@ -61,6 +61,7 @@ export interface Attachment {
 }
 
 export interface Folder {
+	is_deletable?: boolean;
 	id: string;
 	name: string;
 	unreadCount: number;
