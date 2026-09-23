@@ -1,17 +1,27 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.node.json" },
-    { "path": "./tsconfig.cloudflare.json" }
-  ],
-  "compilerOptions": {
-    "checkJs": true,
-    "verbatimModuleSyntax": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "types": [
-        "./worker-configuration.d.ts"
-    ]
-  }
+	"include": [
+		"app/**/*",
+		"shared/**/*",
+		"server/**/*",
+		"scripts/**/*",
+		"tests/**/*",
+		".react-router/types/**/*",
+		"*.ts"
+	],
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["DOM", "DOM.Iterable", "ES2022"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"types": ["node", "vite/client"],
+		"baseUrl": ".",
+		"rootDirs": [".", "./.react-router/types"],
+		"paths": { "~/*": ["./app/*"], "shared/*": ["./shared/*"] }
+	}
 }

@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -37,15 +38,23 @@ interface ThreadMessageProps {
 	onPreviewImage?: (url: string, filename: string) => void;
 }
 
-function Avatar({ isDraft, isSelf, sender }: { isDraft?: boolean; isSelf: boolean; sender: string }) {
+function Avatar({
+	isDraft,
+	isSelf,
+	sender,
+}: {
+	isDraft?: boolean;
+	isSelf: boolean;
+	sender: string;
+}) {
 	return (
 		<div
 			className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
 				isDraft
 					? "bg-kumo-fill text-kumo-subtle"
 					: isSelf
-						? "bg-kumo-brand text-kumo-inverse"
-						: "bg-kumo-fill text-kumo-default"
+					? "bg-kumo-brand text-kumo-inverse"
+					: "bg-kumo-fill text-kumo-default"
 			}`}
 		>
 			{isDraft ? "D" : sender.charAt(0).toUpperCase()}
@@ -69,7 +78,9 @@ export default function ThreadMessage({
 	onPreviewImage,
 }: ThreadMessageProps) {
 	const isSelf = email.sender === mailboxEmail;
-	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""}`;
+	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${
+		isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""
+	}`;
 	const senderLabel = isDraft ? "Draft reply" : isSelf ? "You" : email.sender;
 
 	if (!isExpanded) {
@@ -112,7 +123,11 @@ export default function ThreadMessage({
 							aria-label="Collapse message"
 						>
 							<div className="cursor-pointer hover:ring-2 hover:ring-kumo-brand/30 transition-shadow rounded-full">
-								<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
+								<Avatar
+									isDraft={isDraft}
+									isSelf={isSelf}
+									sender={email.sender}
+								/>
 							</div>
 						</button>
 						<div className="min-w-0">
@@ -122,7 +137,9 @@ export default function ThreadMessage({
 								</span>
 								{isDraft && <Badge variant="outline">Draft</Badge>}
 							</div>
-							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
+							<div className="text-xs text-kumo-subtle">
+								To: {email.recipient}
+							</div>
 						</div>
 					</div>
 					<div className="flex items-center gap-1 shrink-0">
@@ -162,7 +179,7 @@ export default function ThreadMessage({
 							email.body || "",
 							mailboxId || "",
 							email.id,
-							email.attachments,
+							email.attachments
 						)}
 						autoSize
 					/>
@@ -179,7 +196,7 @@ export default function ThreadMessage({
 								loading={isSending}
 								disabled={isSending}
 							>
-								{isSending ? "Sending..." : "Send"}
+								{isSending ? "Saving..." : "Simulate send"}
 							</Button>
 						)}
 						{onEditDraft && (

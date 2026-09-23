@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -85,8 +86,10 @@ export default function Sidebar() {
 
 	const customFolders = useMemo(
 		() =>
-			folders.filter((f) => !(SYSTEM_FOLDER_IDS as readonly string[]).includes(f.id)),
-		[folders],
+			folders.filter(
+				(f) => !(SYSTEM_FOLDER_IDS as readonly string[]).includes(f.id)
+			),
+		[folders]
 	);
 
 	const getUnreadCount = (folderId: string) => {

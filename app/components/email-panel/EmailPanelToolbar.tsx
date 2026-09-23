@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -80,7 +81,7 @@ export default function EmailPanelToolbar({
 						onClick={onSendDraft}
 						loading={isSending}
 					>
-						{isSending ? "Sending..." : "Send"}
+						{isSending ? "Saving..." : "Simulate send"}
 					</Button>
 					<Button
 						variant="secondary"
@@ -128,7 +129,11 @@ export default function EmailPanelToolbar({
 
 			<div className="h-5 w-px bg-kumo-fill mx-0.5" />
 
-			<Tooltip content={email.starred ? "Unstar" : "Star"} side="bottom" asChild>
+			<Tooltip
+				content={email.starred ? "Unstar" : "Star"}
+				side="bottom"
+				asChild
+			>
 				<Button
 					variant="ghost"
 					shape="square"
@@ -145,12 +150,22 @@ export default function EmailPanelToolbar({
 				/>
 			</Tooltip>
 
-			<Tooltip content={email.read ? "Mark as unread" : "Mark as read"} side="bottom" asChild>
+			<Tooltip
+				content={email.read ? "Mark as unread" : "Mark as read"}
+				side="bottom"
+				asChild
+			>
 				<Button
 					variant="ghost"
 					shape="square"
 					size="sm"
-					icon={email.read ? <EnvelopeSimpleIcon size={18} /> : <EnvelopeOpenIcon size={18} />}
+					icon={
+						email.read ? (
+							<EnvelopeSimpleIcon size={18} />
+						) : (
+							<EnvelopeOpenIcon size={18} />
+						)
+					}
 					onClick={onToggleRead}
 					aria-label={email.read ? "Mark as unread" : "Mark as read"}
 				/>
@@ -195,14 +210,21 @@ export default function EmailPanelToolbar({
 	);
 }
 
-function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id: string) => void }) {
+function MoveToFolderMenu({
+	folders,
+	onMove,
+}: {
+	folders: Folder[];
+	onMove: (id: string) => void;
+}) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (!open) return;
 		const handler = (e: MouseEvent) => {
-			if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+			if (ref.current && !ref.current.contains(e.target as Node))
+				setOpen(false);
 		};
 		document.addEventListener("mousedown", handler);
 		return () => document.removeEventListener("mousedown", handler);
@@ -222,14 +244,19 @@ function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id:
 			</Tooltip>
 			{open && (
 				<div className="absolute top-full left-0 z-50 mt-1 min-w-[160px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
-					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Move to</div>
+					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">
+						Move to
+					</div>
 					<div className="h-px bg-kumo-line my-1" />
 					{folders.map((f) => (
 						<button
 							key={f.id}
 							type="button"
 							className="w-full text-left px-3 py-1.5 text-sm text-kumo-default hover:bg-kumo-overlay transition-colors"
-							onClick={() => { onMove(f.id); setOpen(false); }}
+							onClick={() => {
+								onMove(f.id);
+								setOpen(false);
+							}}
 						>
 							{f.name}
 						</button>

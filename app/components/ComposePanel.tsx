@@ -1,9 +1,14 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Banner, Button, Input } from "@cloudflare/kumo";
-import { FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
+import {
+	FloppyDiskIcon,
+	PaperPlaneTiltIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
@@ -141,17 +146,20 @@ export default function ComposePanel() {
 					</div>
 
 					<div className="border border-kumo-line rounded-md overflow-hidden bg-kumo-base">
-						<RichTextEditor
-							value={body}
-							onChange={setBody}
-						/>
+						<RichTextEditor value={body} onChange={setBody} />
 					</div>
 				</div>
 
 				{/* Footer actions */}
 				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
 					<div className="flex items-center justify-between">
-						<Button type="button" variant="ghost" size="sm" onClick={closeCompose} disabled={isSending}>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={closeCompose}
+							disabled={isSending}
+						>
 							Discard
 						</Button>
 						<div className="flex items-center gap-2">
@@ -174,7 +182,7 @@ export default function ComposePanel() {
 								disabled={isSavingDraft || isSending}
 								icon={<PaperPlaneTiltIcon size={14} />}
 							>
-								{isSending ? "Sending..." : "Send"}
+								{isSending ? "Saving..." : "Simulate send"}
 							</Button>
 						</div>
 					</div>

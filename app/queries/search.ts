@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -18,12 +19,13 @@ interface SearchResponse {
 export function useSearchEmails(
 	mailboxId: string | undefined,
 	query: string,
-	page: number,
+	page: number
 ) {
 	return useQuery<{ results: Email[]; totalCount: number }>({
-		queryKey: mailboxId && query
-			? queryKeys.search.results(mailboxId, query, page)
-			: ["search", "_disabled"],
+		queryKey:
+			mailboxId && query
+				? queryKeys.search.results(mailboxId, query, page)
+				: ["search", "_disabled"],
 		queryFn: async () => {
 			const parsed = parseSearchQuery(query);
 			const params: Record<string, string> = {
@@ -37,13 +39,12 @@ export function useSearchEmails(
 			if (parsed.folder) params.folder = parsed.folder;
 			if (parsed.date_start) params.date_start = parsed.date_start;
 			if (parsed.date_end) params.date_end = parsed.date_end;
-			if (parsed.is_read !== undefined)
-				params.is_read = String(parsed.is_read);
+			if (parsed.is_read !== undefined) params.is_read = String(parsed.is_read);
 			if (parsed.is_starred !== undefined)
 				params.is_starred = String(parsed.is_starred);
 			if (parsed.has_attachment) params.has_attachment = "true";
 
-			const data = await api.searchEmails(mailboxId!, params) as
+			const data = (await api.searchEmails(mailboxId!, params)) as
 				| SearchResponse
 				| Email[];
 			if (data && typeof data === "object" && "emails" in data) {

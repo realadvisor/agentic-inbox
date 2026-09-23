@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -59,5 +60,8 @@ export const MOVE_FOLDER_TOOL_DESCRIPTION =
  * with a capitalised first letter.
  */
 export function getFolderDisplayName(folderId: string): string {
-	return FOLDER_DISPLAY_NAMES[folderId.toLowerCase()] || folderId.charAt(0).toUpperCase() + folderId.slice(1);
+	return (
+		FOLDER_DISPLAY_NAMES[folderId.toLowerCase()] ||
+		folderId.charAt(0).toUpperCase() + folderId.slice(1)
+	);
 }

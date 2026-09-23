@@ -1,98 +1,112 @@
-<div align="center">
-  <h1>Agentic Inbox</h1>
-  <p><em>A self-hosted email client with an AI agent, running entirely on Cloudflare Workers</em></p>
-</div>
+# RealAdvisor inbox prototype
 
-Agentic Inbox lets you send, receive, and manage emails through a modern web interface -- all powered by your own Cloudflare account. Incoming emails arrive via [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/), each mailbox is isolated in its own [Durable Object](https://developers.cloudflare.com/durable-objects/) with a SQLite database, and attachments are stored in [R2](https://developers.cloudflare.com/r2/).
+A synthetic-email fork of [Cloudflare Agentic Inbox](https://github.com/cloudflare/agentic-inbox), based on commit `48039bb6785af34e592c2966f87cde2b255c4c80`.
+The upstream React inbox UI and shared helpers retain their Apache-2.0 copyright notices and [license](./LICENSE). The backend, migrations, fixtures, and local runners are new.
 
-An **AI-powered Email Agent** can read your inbox, search conversations, and draft replies -- built with the [Cloudflare Agents SDK](https://developers.cloudflare.com/agents/) and [Workers AI](https://developers.cloudflare.com/workers-ai/).
+This is an intentionally standalone pnpm workspace with its own lockfile: the upstream React 19 application does not inherit the monorepo's React 18 overrides. This repository is the RealAdvisor fork of Cloudflare Agentic Inbox. Clone it beside the RealAdvisor monorepo and run all commands from this repository. It has its own commits, pull requests, dependencies, and manual deployment.
 
-![Agentic Inbox screenshot](./demo_app.png)
+## Scope
 
+- Postgres stores mailboxes, messages, folder state, drafts, thread identifiers and attachment metadata.
+- Privacy and Info are separate logical mailboxes in one database. Seed data is entirely synthetic, even though the mailbox labels use the intended RealAdvisor addresses.
+- The original UI supports browsing, search operators, reading, starring, folders, composing, drafts and replies.
+- **Simulate send** stores an outbound message in Postgres with `delivery_status = 'simulated'`. It never calls an email provider. The app contains no SMTP or Google credentials.
+- Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Raw MIME ingestion is deferred.
+- Google Groups, Probo, classification, historical imports, and the upstream AI/MCP features are not connected. The hosted prototype uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
 
-Read the blog post to learn more about Cloudflare Email Service and how to use it with the Agents SDK, MCP, and from the Wrangler CLI: [Email for Agents](https://blog.cloudflare.com/email-for-agents/).
+## Run locally
 
-## How to setup
+Requires Node 22, pnpm 10, and either Docker or native PostgreSQL 17 (`pg_config` on PATH, or `PG_BIN` set to its binary directory).
 
-**Important**: Clicking the 'Deploy to Cloudflare' button is only one part of the setup. You must follow the **After deploying** steps as well. For a full step-by-step guide with screenshots, refer to this comment: 
-https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
+```sh
+cd agentic-inbox
+pnpm install --frozen-lockfile
+pnpm setup:local
 
-### To set up
+# Choose one database runner:
+docker compose up -d --wait
+# Or, without Docker:
+pnpm db:local
 
-1. Deploy to Cloudflare. The deploy flow will automatically provision R2, Durable Objects, and Workers AI. You'll be prompted for **DOMAINS**, which is the domain (yourdomain.com) you want to receive emails for (email@yourdomain.com).
-
-     [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agentic-inbox)
-
-2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
-3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
-5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
-
-### Troubleshooting Access
-
-1. If you see `Invalid or expired Access token`, that usually means `POLICY_AUD` or `TEAM_DOMAIN` secrets are incorrect.
-   * Resolution: [turn Access off and back on for the Worker to get the Access modal again](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then reset your Worker secrets to the latest `POLICY_AUD` and `TEAM_DOMAIN` values shown there.
-2. If you see `Cloudflare Access must be configured in production`, this application is intentionally enforcing Cloudflare Access so your inbox is not exposed to anyone on the internet.
-   * Resolution: enable Access using [one-click Cloudflare Access for Workers](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then set the `POLICY_AUD` and `TEAM_DOMAIN` Worker secrets from the modal values.
-
-## Features
-
-- **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
-- **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
-- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending
-- **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
-- **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
-
-## Stack
-
-- **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
-- **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing
-- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/moonshotai/kimi-k2.5`), `react-markdown` + `remark-gfm`
-- **Auth:** Cloudflare Access JWT validation (required outside local development)
-
-## Getting Started
-
-```bash
-npm install
-npm run dev
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
 ```
 
-### Configuration
+Open <http://127.0.0.1:4310>. The API listens on port 4311, and Postgres on port 55439. Both app servers and the database bind only to loopback.
 
-1. Set your domain in `wrangler.jsonc`
-2. Create an R2 bucket named `agentic-inbox`: `wrangler r2 bucket create agentic-inbox`
+`setup:local` generates credentials in gitignored `.env` and preserves an existing file. The native runner creates its own cluster under `.local/postgres`, separate from any CRM database. The Docker runner uses its own named volume. Do not run both database runners simultaneously.
 
-### Deploy
+Migrations are transactional and versioned. Seeding is repeatable: it inserts missing fixture messages without resetting existing messages, read flags or replies. The seed includes deletion/access requests, an ordinary enquiry, an existing reply thread, a spam example and a downloadable text attachment.
 
-```bash
-npm run deploy
+Stop the app with Ctrl-C. Stop the native database with `pnpm db:stop`, or the Docker database with `docker compose stop`. Neither removes stored data.
+
+## Connect directly to Postgres
+
+Use the `DATABASE_URL` from `.env` in your SQL client or another local service:
+
+| Field    | Value                                   |
+| -------- | --------------------------------------- |
+| Host     | `127.0.0.1`                             |
+| Port     | `55439`                                 |
+| Database | `agentic_inbox_prototype`               |
+| User     | `inbox`                                 |
+| Password | Generated `POSTGRES_PASSWORD` in `.env` |
+| TLS      | Off for this loopback-only prototype    |
+
+```sql
+SELECT mailbox_id, subject, sender, date, folder_id, delivery_status
+FROM emails
+ORDER BY date DESC;
+
+SELECT id, thread_id, in_reply_to, body
+FROM emails
+WHERE mailbox_id = 'privacy@realadvisor.com'
+ORDER BY date;
 ```
 
-## Prerequisites
+The UI reads this same database; there is no SQLite or Durable Object mailbox store. The backend uses parameterized Postgres.js queries. All message queries are mailbox-scoped; composite foreign keys prevent cross-mailbox folder and attachment associations. This is structural isolation, not user-level authorization: the local prototype user can access both inboxes.
 
-- Cloudflare account with a domain
-- [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for receiving
-- [Email Service](https://developers.cloudflare.com/email-service/) enabled for sending
-- [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled (for the agent)
-- [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) configured for deployed/shared environments (required in production)
+## Verification
 
-Any user who passes the shared Cloudflare Access policy can access all mailboxes in this app by design. This includes the MCP server at `/mcp` -- external AI tools (Claude Code, Cursor, etc.) connected via MCP can operate on any mailbox by passing a `mailboxId` parameter. There is no per-mailbox authorization; the Cloudflare Access policy is the single trust boundary.
-
-## Architecture
-
-```
-┌──────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Browser    │────>│  Hono Worker     │────>│  MailboxDO      │
-│  React SPA   │     │  (API + SSR)     │     │  (SQLite + R2)  │
-│  Agent Panel │     │                  │     └─────────────────┘
-└──────┬───────┘     │  /agents/* ──────┼────>┌─────────────────┐
-       │             │                  │     │  EmailAgent DO  │
-       │ WebSocket   │                  │     │  (AIChatAgent)  │
-       └─────────────┤                  │     │  9 email tools  │
-                     │                  │────>│  Workers AI     │
-                     └──────────────────┘     └─────────────────┘
+```sh
+pnpm check
+pnpm test
+pnpm build
+# Requires Google Chrome; starts the dev app if it isn't already running:
+pnpm test:browser
 ```
 
-## License
+Integration tests create and drop a uniquely named schema in the prototype database. They cover concurrent duplicate ingestion, mailbox isolation, attachment access, persisted replies, draft updates, search, folder protection and input/origin validation. The browser test creates and removes its own synthetic mailbox and exercises search → read → save draft twice → reopen → simulate reply. It leaves `.local/inbox-preview.png` for visual inspection.
 
-Apache 2.0 -- see [LICENSE](LICENSE).
+To serve the built SPA through the API server, stop `pnpm dev` and run `pnpm start`; open <http://127.0.0.1:4311>.
+
+## Before Google Groups testing
+
+Add real ingestion as a separate adapter into the mailbox store. Replace the prototype shared password with individual authentication and mailbox authorization before handling real mail; add raw-message retention and processing retries, and configure a real outbound provider explicitly. There is deliberately no switch that enables real sending in this prototype.
+
+Prototype limitations: deleting a message removes attachment metadata but leaves local fixture files; there is no automated retention job. There is no cross-mailbox SQL row-level security or production connection-role setup. Sending a draft uses separate save/delete requests. These are prototype constraints, not production guarantees.
+
+## Cloudflare deployment
+
+`server/worker.ts` runs the same inbox API on Cloudflare Workers. Static UI assets are served through the Worker, and **every route, including static assets, requires HTTP Basic authentication**. The username is `prototype`; the password is a generated secret of at least 24 characters, stored in the `PROTOTYPE_PASSWORD` Worker secret. This shared password is intended only for the synthetic prototype. The Worker fails closed if protection is unconfigured.
+
+The deployment targets the RealAdvisor account with a dedicated `realadvisor-email-inbox-prototype` Worker and R2 bucket. It does not modify existing Workers, domain MX records or Google Groups.
+
+The existing hosted prototype is available at <https://realadvisor-email-inbox-prototype.rodriguezjoan.workers.dev>. For a code-only update, run `pnpm install --frozen-lockfile` and `pnpm run deploy` from this directory using an authenticated Wrangler session. The existing bindings and Worker secret are retained. Database changes must be migrated separately before deploying code that depends on them.
+
+For a fresh deployment:
+
+1. Create a separate Neon Postgres project. Store its direct TLS connection URL in gitignored `.env.cloud` as `DATABASE_URL` with file permissions `0600`. Keep `.env` pointing at the local database. The existing prototype project is named `email-inbox` (ID `jolly-rain-30890362`) in the RealAdvisor organization, Frankfurt (`aws-eu-central-1`), with 0.25 CU compute and a 300-second idle suspension timeout.
+2. Run `pnpm exec tsx --env-file=.env.cloud scripts/migrate.ts` and `pnpm exec tsx --env-file=.env.cloud scripts/seed.ts` against that new database only.
+3. Create a Hyperdrive binding for the new database, with query caching disabled so inbox mutations are immediately visible. Set its ID in `wrangler.jsonc`; the committed ID points to the existing prototype. Postgres remains directly accessible independently of Hyperdrive.
+4. Create the R2 bucket named in `wrangler.jsonc` and upload the synthetic attachment from `.local/attachments/30000000-0000-4000-8000-000000000001` under that same key. The bucket must remain private.
+5. Set `PROTOTYPE_PASSWORD` with `pnpm exec wrangler secret put PROTOTYPE_PASSWORD`. Confirm `PUBLIC_ORIGIN` matches the deployed hostname.
+6. Run `pnpm run deploy`. The preflight refuses to publish with a placeholder database binding.
+7. Verify that anonymous UI and API requests return 401; with authentication, check health, both seeded inboxes, a saved simulated reply, and the attachment download.
+
+`pnpm deploy:check` builds and bundles the Worker without publishing. Worker authentication tests are included in `pnpm test`. Credentials and Wrangler state are gitignored.
+
+## Upstream updates
+
+The `upstream` remote is `https://github.com/cloudflare/agentic-inbox.git`; `origin` is `https://github.com/realadvisor/agentic-inbox.git`. Our port starts from the upstream commit named above. Fetch upstream and review changes on a dedicated update branch before merging them into the Postgres port. Backend and AI/MCP changes can require manual adaptation; syncing upstream is not an automatic database upgrade.

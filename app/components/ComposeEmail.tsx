@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -14,7 +15,7 @@ export default function ComposeEmail() {
 		mailboxId: string;
 		folder: string;
 	}>();
-	
+
 	const { isComposeModalOpen, closeComposeModal } = useUIStore();
 
 	const {
@@ -47,7 +48,10 @@ export default function ComposeEmail() {
 				<Dialog.Title className="text-lg font-semibold mb-5">
 					{formTitle}
 				</Dialog.Title>
-				<form onSubmit={(e) => handleSend(e, closeComposeModal)} className="space-y-4">
+				<form
+					onSubmit={(e) => handleSend(e, closeComposeModal)}
+					className="space-y-4"
+				>
 					{error && <Banner variant="error" text={error} />}
 					<div className="flex items-center gap-2">
 						<div className="flex-1">
@@ -136,7 +140,7 @@ export default function ComposeEmail() {
 								disabled={isSavingDraft || isSending}
 								icon={<PaperPlaneTiltIcon size={14} />}
 							>
-								{isSending ? "Sending..." : "Send"}
+								{isSending ? "Saving..." : "Simulate send"}
 							</Button>
 						</div>
 					</div>
