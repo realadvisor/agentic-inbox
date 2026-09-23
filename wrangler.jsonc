@@ -14,7 +14,44 @@
 		"not_found_handling": "single-page-application",
 		"run_worker_first": true,
 	},
-	"triggers": { "crons": ["*/2 * * * *"] },
+	"triggers": { "crons": ["*/15 * * * *"] },
+	"queues": {
+		"producers": [
+			{ "binding": "CLASSIFICATIONS", "queue": "inbox-classifications" },
+			{
+				"binding": "CLASSIFIER_BACKFILLS",
+				"queue": "inbox-classifier-backfills",
+			},
+		],
+		"consumers": [
+			{
+				"queue": "inbox-classifications",
+				"max_batch_size": 1,
+				"max_batch_timeout": 1,
+				"max_concurrency": 1,
+				"max_retries": 3,
+				"retry_delay": 60,
+				"dead_letter_queue": "inbox-classifications-dead",
+			},
+			{
+				"queue": "inbox-classifier-backfills",
+				"max_batch_size": 1,
+				"max_batch_timeout": 1,
+				"max_concurrency": 1,
+				"max_retries": 3,
+				"retry_delay": 60,
+				"dead_letter_queue": "inbox-classifications-dead",
+			},
+			{
+				"queue": "inbox-classifications-dead",
+				"max_batch_size": 10,
+				"max_batch_timeout": 5,
+				"max_concurrency": 1,
+				"max_retries": 100,
+				"retry_delay": 900,
+			},
+		],
+	},
 	"send_email": [{ "name": "EMAIL" }],
 	"vars": {
 		"MAIL_MODE": "live",

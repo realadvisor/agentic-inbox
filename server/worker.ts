@@ -1,4 +1,10 @@
-import { runQueue } from "./classification/queue";
+import {
+	publishOutbox,
+	parkBatch,
+	consumeBatch,
+	type QueueBinding,
+	type QueueBatch,
+} from "./classification/dispatch";
 import { documentation } from "./docs";
 import { Hono, type ExecutionContext } from "hono";
 import { basicAuth } from "hono/basic-auth";
@@ -11,6 +17,8 @@ import type { MailSender } from "./outbound";
 export interface WorkerEnv {
 	PUBLIC_ORIGIN: string;
 	CLASSIFIERS_ENABLED?: string;
+	CLASSIFICATIONS?: QueueBinding;
+	CLASSIFIER_BACKFILLS?: QueueBinding;
 	TYPESAFE_API_KEY?: string;
 	PROTOTYPE_PASSWORD?: string;
 	MAIL_MODE?: "live" | "synthetic";
@@ -70,12 +78,10 @@ worker.all("/api/*", async (c) => {
 		fetch_types: false,
 	});
 	try {
-		return await createApi(db, {
+		const response = await createApi(db, {
 			origin: c.env.PUBLIC_ORIGIN,
-			classifiersEnabled:
-				c.env.CLASSIFIERS_ENABLED === "true" && !!c.env.TYPESAFE_API_KEY,
-			kickClassifiers: () =>
-				c.executionCtx.waitUntil(processClassifiers(c.env, 1)),
+			classifiersEnabled: queuesEnabled(c.env),
+
 			mode: c.env.MAIL_MODE ?? "synthetic",
 			sender: c.env.EMAIL,
 			actor: c.get("actor"),
@@ -91,24 +97,41 @@ worker.all("/api/*", async (c) => {
 				return object ? new Uint8Array(await object.arrayBuffer()) : null;
 			},
 		}).fetch(c.req.raw);
+		if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(c.req.method))
+			c.executionCtx.waitUntil(dispatchClassifiers(c.env, 10));
+		return response;
 	} finally {
 		c.executionCtx.waitUntil(db.end({ timeout: 5 }));
 	}
 });
 worker.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-async function processClassifiers(env: WorkerEnv, rounds = 10) {
-	if (env.CLASSIFIERS_ENABLED !== "true" || !env.TYPESAFE_API_KEY) return;
+function queuesEnabled(env: WorkerEnv) {
+	return (
+		env.CLASSIFIERS_ENABLED === "true" &&
+		!!env.TYPESAFE_API_KEY &&
+		!!env.CLASSIFICATIONS &&
+		!!env.CLASSIFIER_BACKFILLS
+	);
+}
+async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
+	if (!queuesEnabled(env)) return;
 	const db = postgres(env.HYPERDRIVE.connectionString, {
-		max: 5,
+		max: 2,
 		fetch_types: false,
 	});
 	try {
-		await runQueue(db, env.TYPESAFE_API_KEY, rounds);
+		for (let i = 0; i < rounds; i++) {
+			if (
+				(await publishOutbox(db, {
+					live: env.CLASSIFICATIONS!,
+					backfill: env.CLASSIFIER_BACKFILLS!,
+				})) < 100
+			)
+				break;
+		}
 	} catch {
-		console.error(
-			"Classifier queue invocation failed; pending jobs will retry",
-		);
+		console.error("Classifier outbox publish failed; recovery will retry");
 	} finally {
 		await db.end({ timeout: 5 });
 	}
@@ -116,9 +139,36 @@ async function processClassifiers(env: WorkerEnv, rounds = 10) {
 
 export default {
 	async scheduled(_event: unknown, env: WorkerEnv) {
-		await processClassifiers(env);
+		// Recovery only: normal ingestion/API writes publish immediately.
+		await dispatchClassifiers(env, 50);
 	},
-	async email(message: InboundMessage, env: WorkerEnv) {
+	async queue(batch: QueueBatch, env: WorkerEnv) {
+		if (!queuesEnabled(env)) {
+			// Leave dispatch intent recoverable while paused; do not exhaust retries.
+			const db = postgres(env.HYPERDRIVE.connectionString, {
+				max: 2,
+				fetch_types: false,
+			});
+			try {
+				await parkBatch(db, batch);
+			} finally {
+				await db.end({ timeout: 5 });
+			}
+			return;
+		}
+		const db = postgres(env.HYPERDRIVE.connectionString, {
+			max: 2,
+			fetch_types: false,
+		});
+		try {
+			await consumeBatch(db, env.TYPESAFE_API_KEY!, batch);
+		} finally {
+			await db.end({ timeout: 5 });
+		}
+		// Continue publishing large batches without waiting for the recovery cron.
+		await dispatchClassifiers(env, 1);
+	},
+	async email(message: InboundMessage, env: WorkerEnv, ctx?: ExecutionContext) {
 		if (
 			env.MAIL_MODE !== "live" ||
 			env.INBOUND_ENABLED !== "true" ||
@@ -138,6 +188,8 @@ export default {
 				get: (key) => env.ATTACHMENTS.get(key),
 				put: (key, value) => env.ATTACHMENTS.put!(key, value),
 			});
+			if (ctx) ctx.waitUntil(dispatchClassifiers(env, 10));
+			else await dispatchClassifiers(env, 10);
 		} finally {
 			await db.end({ timeout: 5 });
 		}
