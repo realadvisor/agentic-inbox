@@ -20,6 +20,7 @@ import { NavLink, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
+import { RenameFolder } from "./RenameFolder";
 import { useUIStore } from "~/hooks/useUIStore";
 
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
@@ -87,9 +88,9 @@ export default function Sidebar() {
 	const customFolders = useMemo(
 		() =>
 			folders.filter(
-				(f) => !(SYSTEM_FOLDER_IDS as readonly string[]).includes(f.id)
+				(f) => !(SYSTEM_FOLDER_IDS as readonly string[]).includes(f.id),
 			),
-		[folders]
+		[folders],
 	);
 
 	const getUnreadCount = (folderId: string) => {
@@ -192,14 +193,20 @@ export default function Sidebar() {
 							</Tooltip>
 						</div>
 						{customFolders.map((folder) => (
-							<FolderLink
-								key={folder.id}
-								to={`/mailbox/${mailboxId}/emails/${folder.id}`}
-								icon={<FolderIcon size={18} />}
-								label={folder.name}
-								unreadCount={folder.unreadCount}
-								onClick={handleNavClick}
-							/>
+							<div key={folder.id} className="flex items-center gap-1">
+								<div className="flex-1 min-w-0">
+									<FolderLink
+										to={`/mailbox/${mailboxId}/emails/${folder.id}`}
+										icon={<FolderIcon size={18} />}
+										label={folder.name}
+										unreadCount={folder.unreadCount}
+										onClick={handleNavClick}
+									/>
+								</div>
+								{mailboxId && folder.is_deletable !== false && (
+									<RenameFolder mailboxId={mailboxId} folder={folder} />
+								)}
+							</div>
 						))}
 					</div>
 				)}
