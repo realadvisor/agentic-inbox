@@ -1,9 +1,14 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
 import { PaperclipIcon, FileIcon, ImageIcon } from "@phosphor-icons/react";
-import { formatBytes, getAttachmentUrl, getNonInlineAttachments } from "~/lib/utils";
+import {
+	formatBytes,
+	getAttachmentUrl,
+	getNonInlineAttachments,
+} from "~/lib/utils";
 import type { Attachment } from "~/types";
 
 interface EmailAttachmentListProps {
@@ -55,7 +60,9 @@ export default function EmailAttachmentList({
 								<span className="text-kumo-default font-medium truncate max-w-[140px]">
 									{attachment.filename}
 								</span>
-								<span className="text-kumo-subtle">{formatBytes(attachment.size)}</span>
+								<span className="text-kumo-subtle">
+									{formatBytes(attachment.size)}
+								</span>
 							</button>
 						);
 					}
@@ -72,7 +79,9 @@ export default function EmailAttachmentList({
 							<span className="text-kumo-default font-medium truncate max-w-[140px]">
 								{attachment.filename}
 							</span>
-							<span className="text-kumo-subtle">{formatBytes(attachment.size)}</span>
+							<span className="text-kumo-subtle">
+								{formatBytes(attachment.size)}
+							</span>
 						</a>
 					);
 				})}

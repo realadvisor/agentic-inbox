@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -18,10 +19,7 @@ export class ApiError extends Error {
 	}
 }
 
-async function request<T>(
-	url: string,
-	options: RequestInit = {},
-): Promise<T> {
+async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -57,7 +55,14 @@ async function request<T>(
 	}
 }
 
-function get<T>(url: string, opts?: { params?: Record<string, string>; responseType?: string; signal?: AbortSignal }) {
+function get<T>(
+	url: string,
+	opts?: {
+		params?: Record<string, string>;
+		responseType?: string;
+		signal?: AbortSignal;
+	},
+) {
 	const query = opts?.params ? `?${new URLSearchParams(opts.params)}` : "";
 	return request<T>(`${url}${query}`, {
 		method: "GET",
@@ -69,6 +74,7 @@ function get<T>(url: string, opts?: { params?: Record<string, string>; responseT
 function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal }) {
 	return request<T>(url, {
 		method: "POST",
+		headers: { "Idempotency-Key": crypto.randomUUID() },
 		signal: opts?.signal,
 		body: body != null ? JSON.stringify(body) : undefined,
 	});
@@ -97,7 +103,11 @@ interface EmailListResponse {
 const api = {
 	// Config
 	getConfig: () =>
-		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
+		get<{
+			domains: string[];
+			emailAddresses: string[];
+			mode: "live" | "synthetic";
+		}>("/api/v1/config"),
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),
@@ -111,24 +121,44 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}`),
 
 	// Emails
-	listEmails: (mailboxId: string, params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
-		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/emails`, { params, signal: opts?.signal }),
+	listEmails: (
+		mailboxId: string,
+		params: Record<string, string>,
+		opts?: { signal?: AbortSignal },
+	) =>
+		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/emails`, {
+			params,
+			signal: opts?.signal,
+		}),
 	sendEmail: (mailboxId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails`, email),
 	getEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
-		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, { signal: opts?.signal }),
+		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, {
+			signal: opts?.signal,
+		}),
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
 		put<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
 	deleteEmail: (mailboxId: string, id: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
-		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, { folderId }),
-	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>
-		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, { signal: opts?.signal }),
+		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, {
+			folderId,
+		}),
+	getThread: (
+		mailboxId: string,
+		threadId: string,
+		opts?: { signal?: AbortSignal },
+	) =>
+		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, {
+			signal: opts?.signal,
+		}),
 	markThreadRead: (mailboxId: string, threadId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/read`),
 	getAttachment: (mailboxId: string, emailId: string, attachmentId: string) =>
-		get<Blob>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`, { responseType: "blob" }),
+		get<Blob>(
+			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`,
+			{ responseType: "blob" },
+		),
 	saveDraft: (
 		mailboxId: string,
 		draft: {
@@ -141,11 +171,15 @@ const api = {
 			thread_id?: string;
 			draft_id?: string;
 		},
-	) => post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
+	) =>
+		post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
 	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
-		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`, email),
+		post<void>(
+			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`,
+			email,
+		),
 
 	// Folders
 	listFolders: (mailboxId: string) =>
@@ -159,7 +193,9 @@ const api = {
 
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>
-		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, { params }),
+		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, {
+			params,
+		}),
 };
 
 export default api;

@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -33,10 +34,6 @@ interface UIState {
 	closeSidebar: () => void;
 	toggleSidebar: () => void;
 
-	// Agent panel
-	isAgentPanelOpen: boolean;
-	toggleAgentPanel: () => void;
-
 	// Legacy dialog support (kept for non-split views)
 	isComposeModalOpen: boolean;
 	openComposeModal: (options?: ComposeOptions) => void;
@@ -50,14 +47,14 @@ export const useUIStore = create<UIState>((set, get) => ({
 	composeOptions: { mode: "new", originalEmail: null },
 	isComposeModalOpen: false,
 	isSidebarOpen: false,
-	isAgentPanelOpen: true,
 
 	selectEmail: (id) => set({ selectedEmailId: id, isComposing: false }),
 
 	startCompose: (options) =>
 		set((state) => {
 			const mode = options?.mode || "new";
-			const isReplyOrForward = mode === "reply" || mode === "reply-all" || mode === "forward";
+			const isReplyOrForward =
+				mode === "reply" || mode === "reply-all" || mode === "forward";
 			return {
 				isComposing: true,
 				_previousEmailId: state.selectedEmailId,
@@ -68,7 +65,13 @@ export const useUIStore = create<UIState>((set, get) => ({
 			};
 		}),
 
-	closePanel: () => set({ selectedEmailId: null, isComposing: false, _previousEmailId: null, composeOptions: { mode: "new" as const, originalEmail: null } }),
+	closePanel: () =>
+		set({
+			selectedEmailId: null,
+			isComposing: false,
+			_previousEmailId: null,
+			composeOptions: { mode: "new" as const, originalEmail: null },
+		}),
 
 	closeCompose: () =>
 		set((state) => ({
@@ -81,8 +84,6 @@ export const useUIStore = create<UIState>((set, get) => ({
 	openSidebar: () => set({ isSidebarOpen: true }),
 	closeSidebar: () => set({ isSidebarOpen: false }),
 	toggleSidebar: () => set({ isSidebarOpen: !get().isSidebarOpen }),
-
-	toggleAgentPanel: () => set({ isAgentPanelOpen: !get().isAgentPanelOpen }),
 
 	openComposeModal: (options) =>
 		set({

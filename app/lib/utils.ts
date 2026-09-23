@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -30,7 +31,9 @@ export function formatBytes(bytes: number, decimals = 1): string {
 	const dm = decimals < 0 ? 0 : decimals;
 	const sizes = ["B", "KB", "MB", "GB"];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
-	return `${Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+	return `${Number.parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${
+		sizes[i]
+	}`;
 }
 
 /**
@@ -46,7 +49,9 @@ export function splitEmailList(value?: string | null): string[] {
 /**
  * Convert a list of addresses into the API payload format.
  */
-export function toEmailListValue(addresses: string[]): string | string[] | undefined {
+export function toEmailListValue(
+	addresses: string[]
+): string | string[] | undefined {
 	if (addresses.length === 0) return undefined;
 	return addresses.length === 1 ? addresses[0] : addresses;
 }
@@ -75,16 +80,19 @@ export function htmlToPlainText(html: string): string {
  * Strip all HTML tags from a string.
  */
 export function stripHtml(html: string): string {
-	return html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+	return html
+		.replace(/<[^>]*>/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 
 function decodeHtmlEntities(text: string): string {
 	return text
 		.replace(/&#(\d+);/g, (_match: string, code: string) =>
-			String.fromCharCode(Number(code)),
+			String.fromCharCode(Number(code))
 		)
 		.replace(/&#x([0-9a-f]+);/gi, (_match: string, hex: string) =>
-			String.fromCharCode(Number.parseInt(hex, 16)),
+			String.fromCharCode(Number.parseInt(hex, 16))
 		)
 		.replace(/&amp;/g, "&")
 		.replace(/&lt;/g, "<")
@@ -97,7 +105,7 @@ function decodeHtmlEntities(text: string): string {
 
 export function getSnippetText(
 	snippet?: string | null,
-	maxLength = 100,
+	maxLength = 100
 ): string {
 	if (!snippet) return "";
 
@@ -106,7 +114,7 @@ export function getSnippetText(
 			.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
 			.replace(/<style[^>]*>[\s\S]*/gi, "")
 			.replace(/<[^>]*>/g, " ")
-			.replace(/<[^>]*$/g, ""),
+			.replace(/<[^>]*$/g, "")
 	)
 		.replace(/\s+/g, " ")
 		.trim();
@@ -154,11 +162,11 @@ export function getSignatureBlock(settings?: {
 export function buildQuotedReplyBlock(
 	dateStr: string | undefined,
 	sender: string,
-	body: string,
+	body: string
 ): string {
 	if (!body) return "";
 	const formattedDate = formatComposeDate(dateStr);
-	
+
 	// HTML-escape sender to prevent <john@example.com> from disappearing as a tag
 	const escapedSender = escapeHtml(sender);
 
@@ -179,7 +187,11 @@ export function rewriteInlineImages(
 	body: string,
 	mailboxId: string,
 	emailId: string,
-	attachments?: { id: string; content_id?: string | null; disposition?: string | null }[],
+	attachments?: {
+		id: string;
+		content_id?: string | null;
+		disposition?: string | null;
+	}[]
 ): string {
 	if (!body || !attachments?.length) return body;
 	let result = body;
@@ -190,20 +202,28 @@ export function rewriteInlineImages(
 			const cid = att.content_id.startsWith("<")
 				? att.content_id.slice(1, -1)
 				: att.content_id;
-			result = result.replace(new RegExp(`cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), url);
+			result = result.replace(
+				new RegExp(`cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"),
+				url
+			);
 		}
 	}
 	return result;
 }
 
-export function getNonInlineAttachments(attachments?: Attachment[]): Attachment[] {
-	return attachments?.filter((attachment) => attachment.disposition !== "inline") ?? [];
+export function getNonInlineAttachments(
+	attachments?: Attachment[]
+): Attachment[] {
+	return (
+		attachments?.filter((attachment) => attachment.disposition !== "inline") ??
+		[]
+	);
 }
 
 export function getAttachmentUrl(
 	mailboxId: string,
 	emailId: string,
-	attachmentId: string,
+	attachmentId: string
 ): string {
 	return `/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`;
 }

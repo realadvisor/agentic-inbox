@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: inbox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run pnpm setup:local first}
+      POSTGRES_DB: agentic_inbox_prototype
+    ports:
+      - "127.0.0.1:55439:5432"
+    volumes:
+      - inbox-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inbox -d agentic_inbox_prototype"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+volumes:
+  inbox-postgres:

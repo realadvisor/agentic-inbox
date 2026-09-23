@@ -47,7 +47,7 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 				setHeight(event.data.height);
 			}
 		},
-		[autoSize],
+		[autoSize]
 	);
 
 	useEffect(() => {
@@ -81,7 +81,7 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 				setTimeout(reportHeight, 50);
 				setTimeout(reportHeight, 150);
 				setTimeout(reportHeight, 400);
-			<\/script>`
+			</script>`
 			: "";
 
 		// Use srcdoc so the iframe is truly sandboxed (no same-origin access).

@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -66,7 +67,7 @@ export default function RichTextEditor({
 			// Place cursor at the start of the document (above quoted text)
 			const rafId = requestAnimationFrame(() => {
 				if (!editor.isDestroyed) {
-					editor.commands.focus('start');
+					editor.commands.focus("start");
 				}
 			});
 			return () => cancelAnimationFrame(rafId);

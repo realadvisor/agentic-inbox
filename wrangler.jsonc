@@ -1,71 +1,45 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "agentic-inbox",
-	"compatibility_date": "2025-11-28",
-	"main": "./workers/app.ts",
-	"observability": {
-		"enabled": true
-	},
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"vars": {
-		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
-		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
-		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "example.com",
-		"EMAIL_ADDRESSES": []
+	"name": "realadvisor-email-inbox-prototype",
+	"account_id": "71c7813809b4adb2fc4766ba1fd5cf2d",
+	"main": "server/worker.ts",
+	"compatibility_date": "2026-09-22",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [{ "pattern": "inbox.realadvisor.com", "custom_domain": true }],
+	"preview_urls": false,
+	"assets": {
+		"directory": "./build/client",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": true,
 	},
 	"send_email": [
 		{
 			"name": "EMAIL",
-			"remote": true
-		}
+			"allowed_sender_addresses": [
+				"privacy@realadvisor.com",
+				"info@realadvisor.com",
+			],
+		},
+	],
+	"vars": {
+		"MAIL_MODE": "live",
+		"INBOUND_ENABLED": "true",
+		"ACCESS_ISSUER": "https://realadvisor.cloudflareaccess.com",
+		"ACCESS_AUDIENCE": "46ebcd3d8228fe0452ef2831b15d748f3f45de65ef84dd85a533a9cc8d543bd1",
+		"PUBLIC_ORIGIN": "https://inbox.realadvisor.com",
+	},
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "042751d6da4a41509d20e7a43f62e27f",
+		},
 	],
 	"r2_buckets": [
 		{
-			"binding": "BUCKET",
-			"bucket_name": "agentic-inbox",
-			"preview_bucket_name": "agentic-inbox"
-		}
+			"binding": "ATTACHMENTS",
+			"bucket_name": "realadvisor-email-inbox-prototype",
+		},
 	],
-	"ai": {
-		"binding": "AI"
-	},
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "MAILBOX",
-				"class_name": "MailboxDO"
-			},
-			{
-				"name": "EMAIL_AGENT",
-				"class_name": "EmailAgent"
-			},
-			{
-				"name": "EMAIL_MCP",
-				"class_name": "EmailMCP"
-			}
-		]
-	},
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": [
-				"MailboxDO"
-			]
-		},
-		{
-			"tag": "v2",
-			"new_sqlite_classes": [
-				"EmailAgent"
-			]
-		},
-		{
-			"tag": "v3",
-			"new_sqlite_classes": [
-				"EmailMCP"
-			]
-		}
-	]
 }

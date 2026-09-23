@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -30,7 +31,11 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
+	const {
+		data: mailboxes = [],
+		refetch: refetchMailboxes,
+		isFetched: mailboxesFetched,
+	} = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
 
@@ -68,9 +73,7 @@ export default function HomeRoute() {
 	useEffect(() => {
 		if (autoCreateDone.current) return;
 		if (emailAddresses.length === 0 || !mailboxesFetched) return;
-		const existingEmails = new Set(
-			mailboxes.map((m) => m.email.toLowerCase()),
-		);
+		const existingEmails = new Set(mailboxes.map((m) => m.email.toLowerCase()));
 		const toCreate = emailAddresses.filter(
 			(addr) => !existingEmails.has(addr.toLowerCase()),
 		);
@@ -85,8 +88,12 @@ export default function HomeRoute() {
 				const localPart = addr.split("@")[0] || addr;
 				return api.createMailbox(addr, localPart).catch(() => {});
 			}),
-		).then(() => { if (!cancelled) refetchMailboxes(); });
-		return () => { cancelled = true; };
+		).then(() => {
+			if (!cancelled) refetchMailboxes();
+		});
+		return () => {
+			cancelled = true;
+		};
 	}, [emailAddresses, mailboxes, refetchMailboxes]);
 
 	const handleCreate = async (e: FormEvent) => {
@@ -106,7 +113,9 @@ export default function HomeRoute() {
 			setNewPrefix("");
 			setNewName("");
 		} catch (err: unknown) {
-			const message = (err instanceof Error ? err.message : null) || "Failed to create mailbox";
+			const message =
+				(err instanceof Error ? err.message : null) ||
+				"Failed to create mailbox";
 			setCreateError(message);
 		} finally {
 			setIsCreating(false);
@@ -270,13 +279,13 @@ export default function HomeRoute() {
 								<span className="text-sm text-kumo-subtle">@</span>
 								{domains.length > 1 ? (
 									<div className="flex-1">
-							<Select
-								aria-label="Domain"
-								value={selectedDomain}
-								onValueChange={(value) => {
-									if (value) setSelectedDomain(value);
-								}}
-							>
+										<Select
+											aria-label="Domain"
+											value={selectedDomain}
+											onValueChange={(value) => {
+												if (value) setSelectedDomain(value);
+											}}
+										>
 											{domains.map((d) => (
 												<Select.Option key={d} value={d}>
 													{d}

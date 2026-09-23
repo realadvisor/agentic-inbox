@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -41,8 +42,10 @@ export function useUpdateMailbox() {
 		mutationFn: ({
 			mailboxId,
 			settings,
-		}: { mailboxId: string; settings: unknown }) =>
-			api.updateMailbox(mailboxId, settings),
+		}: {
+			mailboxId: string;
+			settings: unknown;
+		}) => api.updateMailbox(mailboxId, settings),
 		onSuccess: (_data, { mailboxId }) => {
 			qc.invalidateQueries({ queryKey: queryKeys.mailboxes.detail(mailboxId) });
 			qc.invalidateQueries({ queryKey: queryKeys.mailboxes.all });

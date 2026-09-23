@@ -1,3 +1,5 @@
+import { MailModeBanner } from "~/components/MailMode";
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -11,7 +13,11 @@ import {
 	TooltipProvider,
 } from "@cloudflare/kumo";
 import { WarningIcon } from "@phosphor-icons/react";
-import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+	MutationCache,
+	QueryClient,
+	QueryClientProvider,
+} from "@tanstack/react-query";
 import { forwardRef, useState } from "react";
 import {
 	isRouteErrorResponse,
@@ -33,7 +39,11 @@ function makeQueryClient() {
 				refetchOnWindowFocus: false,
 				retry: (failureCount, error) => {
 					// Don't retry 4xx errors (not found, unauthorized, etc.)
-					if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+					if (
+						error instanceof ApiError &&
+						error.status >= 400 &&
+						error.status < 500
+					) {
 						return false;
 					}
 					return failureCount < 2;
@@ -88,7 +98,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 					sizes="48x48 32x32 16x16"
 				/>
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-				<title>Agentic Inbox</title>
+				<title>RealAdvisor Inbox</title>
 				<Meta />
 				<Links />
 			</head>
@@ -118,6 +128,7 @@ export default function App() {
 			<LinkProvider component={KumoLink}>
 				<TooltipProvider>
 					<Toasty>
+						<MailModeBanner />
 						<Outlet />
 					</Toasty>
 				</TooltipProvider>

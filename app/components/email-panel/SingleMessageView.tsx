@@ -1,3 +1,4 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
@@ -30,7 +31,9 @@ export default function SingleMessageView({
 							<div className="text-sm font-medium text-kumo-default truncate">
 								{email.sender}
 							</div>
-							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
+							<div className="text-xs text-kumo-subtle">
+								To: {email.recipient}
+							</div>
 						</div>
 					</div>
 					<span className="text-xs text-kumo-subtle shrink-0">
@@ -45,7 +48,7 @@ export default function SingleMessageView({
 						email.body || "",
 						mailboxId || "",
 						email.id,
-						email.attachments,
+						email.attachments
 					)}
 				/>
 			</div>

@@ -1,10 +1,10 @@
+// Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useEffect, useRef } from "react";
 import { Outlet, useParams } from "react-router";
-import AgentSidebar from "~/components/AgentSidebar";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
 import Sidebar from "~/components/Sidebar";
@@ -16,13 +16,8 @@ export default function MailboxRoute() {
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);
 	const prevMailboxIdRef = useRef<string | undefined>(undefined);
-	const {
-		isSidebarOpen,
-		closeSidebar,
-		isAgentPanelOpen,
-		closePanel,
-		closeComposeModal,
-	} = useUIStore();
+	const { isSidebarOpen, closeSidebar, closePanel, closeComposeModal } =
+		useUIStore();
 
 	useEffect(() => {
 		if (
@@ -39,7 +34,7 @@ export default function MailboxRoute() {
 	}, [mailboxId, closeComposeModal, closePanel, closeSidebar]);
 
 	return (
-		<div className="flex h-screen overflow-hidden">
+		<div className="flex h-[calc(100dvh-36px)] overflow-hidden">
 			{/* Mobile sidebar overlay backdrop */}
 			{isSidebarOpen && (
 				<div
@@ -68,13 +63,6 @@ export default function MailboxRoute() {
 					<Outlet />
 				</main>
 			</div>
-
-			{/* Agent + MCP sidebar -- togglable on desktop */}
-			{isAgentPanelOpen && (
-				<div className="hidden lg:flex w-[380px] shrink-0 border-l border-kumo-line flex-col bg-kumo-base overflow-hidden">
-					<AgentSidebar />
-				</div>
-			)}
 
 			<ComposeEmail />
 		</div>
