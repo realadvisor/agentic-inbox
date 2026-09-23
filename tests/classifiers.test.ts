@@ -1,3 +1,10 @@
+import { readFile } from "node:fs/promises";
+import {
+	publishOutbox,
+	parkBatch,
+	consumeBatch,
+	queueNames,
+} from "../server/classification/dispatch";
 import postgres from "postgres";
 import { before, after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -5,8 +12,37 @@ import { connect } from "../server/db";
 import { migrate } from "../server/migrate";
 import { createApi } from "../server/api";
 import { InboxStore } from "../server/store";
-import { askJev, processOne, runQueue } from "../server/classification/queue";
+import {
+	askJev,
+	processJob,
+	failDelivery,
+	finishRuns,
+} from "../server/classification/queue";
 import { setConversationTags } from "../server/tags";
+// Test harness delivers individual broker jobs; production never polls for work.
+async function processOne(
+	target: typeof db,
+	key: string,
+	bulkFirst: boolean,
+	request: typeof fetch,
+) {
+	const [j] =
+		await target`SELECT token FROM conversation_classifications WHERE status='pending' AND available_at<=now() AND (lease_until IS NULL OR lease_until<now()) AND NOT EXISTS(SELECT 1 FROM classifier_provider_state WHERE cooldown_until>now()) ORDER BY ${bulkFirst ? target`priority DESC` : target`priority ASC`} LIMIT 1`;
+	if (!j) return false;
+	await processJob(target, key, j.token, request);
+	return true;
+}
+async function runQueue(
+	target: typeof db,
+	key: string,
+	rounds: number,
+	request: typeof fetch,
+) {
+	for (let i = 0; i < rounds * 2; i++)
+		if (!(await processOne(target, key, false, request))) break;
+	await finishRuns(target);
+}
+
 const schema = "test_classifiers_" + crypto.randomUUID().replaceAll("-", "");
 const admin = connect(),
 	db = connect(process.env.DATABASE_URL, schema),
@@ -41,7 +77,7 @@ async function reset() {
 	await db`UPDATE classifiers SET enabled=false`;
 	await db`DELETE FROM emails`;
 	await db`DELETE FROM conversations`;
-	await db`UPDATE classifier_worker_slots SET token=NULL,lease_until=NULL,cooldown_until=NULL`;
+	await db`UPDATE classifier_provider_state SET cooldown_until=NULL`;
 	await db`UPDATE classifiers SET enabled=true,mailbox_ids='{}' WHERE id=${classifierId}`;
 }
 async function message(
@@ -135,27 +171,27 @@ test("incoming mail queues, saves result and tag atomically, without a browser",
 	await runQueue(db, "test", 3, yes);
 	assert.equal((await job(thread)).attempts, 1);
 });
-test("concurrent invocations make at most two provider requests, each job once", async () => {
+test("duplicate deliveries execute the provider once and acknowledge completed work", async () => {
 	await reset();
-	for (let i = 0; i < 8; i++) await message();
-	let active = 0,
-		max = 0,
-		calls = 0;
+	const thread = await message();
+	const row = await job(thread);
+	let calls = 0;
 	const slow: typeof fetch = async (...args) => {
-		active++;
 		calls++;
-		max = Math.max(max, active);
-		await new Promise((r) => setTimeout(r, 25));
-		active--;
+		await new Promise((r) => setTimeout(r, 40));
 		return yes(...args);
 	};
-	await Promise.all(
-		Array.from({ length: 8 }, () => runQueue(db, "test", 8, slow)),
+	const results = await Promise.all(
+		Array.from({ length: 8 }, () => processJob(db, "test", row.token, slow)),
 	);
-	await runQueue(db, "test", 8, slow);
-	assert.equal(max, 2);
-	assert.equal(calls, 8);
+	assert.equal(calls, 1);
+	assert.ok(results.some((r) => "ack" in r));
+	assert.deepEqual(await processJob(db, "test", row.token, slow), {
+		ack: true,
+	});
+	assert.equal(calls, 1);
 });
+
 test("new mail invalidates an in-flight result and its automatic tag", async () => {
 	await reset();
 	const thread = await message();
@@ -228,15 +264,15 @@ test("human corrections are protected; stale corrections cannot overwrite new ma
 	await processOne(db, "test", false, yes);
 	assert.equal((await job(thread)).source, "jev");
 });
-test("transient errors back off then become visible errors after three attempts", async () => {
+test("transient errors request broker retry and dead letters become visible errors", async () => {
 	await reset();
 	const thread = await message();
 	const unavailable: typeof fetch = async () =>
 		new Response("", { status: 503 });
 	await run();
-	for (let i = 0; i < 3; i++) {
+	for (let i = 0; i < 4; i++) {
 		await processOne(db, "test", false, unavailable);
-		if (i < 2) {
+		if (i < 3) {
 			assert.equal((await job(thread)).status, "pending");
 			assert.ok(
 				new Date((await job(thread)).available_at).getTime() > Date.now(),
@@ -244,6 +280,7 @@ test("transient errors back off then become visible errors after three attempts"
 			await db`UPDATE conversation_classifications SET available_at=now()`;
 		}
 	}
+	await failDelivery(db, (await job(thread)).token);
 	assert.equal((await job(thread)).status, "error");
 	assert.equal((await job(thread)).answer, null);
 	const rows = await (await call("/classifiers")).json();
@@ -267,9 +304,9 @@ test("429 sets a shared provider cooldown", async () => {
 	);
 	assert.equal(
 		(
-			await db`SELECT * FROM classifier_worker_slots WHERE cooldown_until>now()+interval '100 seconds'`
+			await db`SELECT * FROM classifier_provider_state WHERE cooldown_until>now()+interval '100 seconds'`
 		).length,
-		2,
+		1,
 	);
 	assert.equal(await processOne(db, "test", false, yes), false);
 });
@@ -454,4 +491,274 @@ test("Cloudflare connections without type discovery round-trip mailbox scopes", 
 	} finally {
 		await workerDb.end();
 	}
+});
+
+test("outbox intent is atomic with job changes and ambiguous publishes are safe", async () => {
+	await reset();
+	const thread = await message();
+	const row = await job(thread);
+	await assert.rejects(
+		db.begin(async (tx) => {
+			await tx`UPDATE conversation_classifications SET token=gen_random_uuid() WHERE token=${row.token}`;
+			throw new Error("rollback");
+		}),
+		/rollback/,
+	);
+	assert.equal(
+		(await db`SELECT job_token FROM classifier_outbox`)[0].job_token,
+		row.token,
+	);
+	const sent: unknown[] = [];
+	const broken = {
+		sendBatch: async (messages: unknown[]) => {
+			sent.push(...messages);
+			throw new Error("ambiguous broker response");
+		},
+	};
+	await assert.rejects(
+		publishOutbox(db, { live: broken, backfill: broken }),
+		/ambiguous/,
+	);
+	assert.equal(
+		(await db`SELECT published_at FROM classifier_outbox`)[0].published_at,
+		null,
+	);
+	const queue = {
+		sendBatch: async (messages: unknown[]) => {
+			sent.push(...messages);
+		},
+	};
+	assert.equal(await publishOutbox(db, { live: queue, backfill: queue }), 1);
+	assert.deepEqual(sent[0], sent[1]);
+	assert.deepEqual(Object.keys((sent[0] as { body: object }).body).sort(), [
+		"token",
+		"version",
+	]);
+	assert.equal(await publishOutbox(db, { live: queue, backfill: queue }), 0);
+});
+
+test("concurrent outbox publishers split batches and isolate live mail from backfills", async () => {
+	await reset();
+	const liveThread = await message();
+	const bulkThread = await message();
+	await db`UPDATE conversation_classifications SET priority=1 WHERE thread_id=${bulkThread}`;
+	const live: unknown[] = [],
+		bulk: unknown[] = [];
+	const queues = {
+		live: {
+			sendBatch: async (m: unknown[]) => {
+				live.push(...m);
+			},
+		},
+		backfill: {
+			sendBatch: async (m: unknown[]) => {
+				bulk.push(...m);
+			},
+		},
+	};
+	const counts = await Promise.all([
+		publishOutbox(db, queues),
+		publishOutbox(db, queues),
+	]);
+	assert.equal(
+		counts.reduce((a, b) => a + b, 0),
+		2,
+	);
+	assert.equal(live.length, 1);
+	assert.equal(bulk.length, 1);
+	assert.equal(
+		(live[0] as { body: { token: string } }).body.token,
+		(await job(liveThread)).token,
+	);
+});
+
+test("broker messages acknowledge success and duplicates, retry transient failure, and dead-letter terminal failure", async () => {
+	await reset();
+	const thread = await message();
+	const row = await job(thread);
+	let acks = 0;
+	const retries: number[] = [];
+	const m = {
+		body: { version: 1, token: row.token },
+		ack: () => {
+			acks++;
+		},
+		retry: (o: { delaySeconds: number }) => {
+			retries.push(o.delaySeconds);
+		},
+	};
+	await run();
+	const current = await job(thread);
+	m.body.token = current.token;
+	await consumeBatch(
+		db,
+		"test",
+		{ queue: queueNames.live, messages: [m] },
+		async () => new Response("", { status: 503 }),
+	);
+	assert.equal(acks, 0);
+	assert.ok(retries[0] >= 30);
+	assert.equal((await job(thread)).status, "pending");
+	await consumeBatch(
+		db,
+		"test",
+		{ queue: queueNames.dead, messages: [m] },
+		yes,
+	);
+	assert.equal(acks, 1);
+	assert.equal((await job(thread)).status, "error");
+	assert.equal(
+		(await db`SELECT status FROM classifier_runs`)[0].status,
+		"completed",
+	);
+	await run("unprocessed");
+	m.body.token = (await job(thread)).token;
+	await consumeBatch(
+		db,
+		"test",
+		{ queue: queueNames.backfill, messages: [m] },
+		yes,
+	);
+	await consumeBatch(
+		db,
+		"test",
+		{ queue: queueNames.backfill, messages: [m] },
+		async () => {
+			throw new Error("duplicate must not call provider");
+		},
+	);
+	assert.equal(acks, 3);
+	assert.equal((await job(thread)).status, "complete");
+	assert.equal((await db`SELECT * FROM classifier_outbox`).length, 0);
+});
+
+test("stale queued and dead-letter deliveries cannot overwrite new mail or cancellation", async () => {
+	await reset();
+	const thread = await message();
+	await run();
+	const old = await job(thread);
+	const m = {
+		body: { version: 1, token: old.token },
+		ack: () => {},
+		retry: () => {
+			throw new Error("stale job should be acknowledged");
+		},
+	};
+	await message(thread);
+	const next = await job(thread);
+	assert.notEqual(next.token, old.token);
+	await consumeBatch(
+		db,
+		"test",
+		{ queue: queueNames.dead, messages: [m] },
+		yes,
+	);
+	await consumeBatch(
+		db,
+		"test",
+		{ queue: queueNames.live, messages: [m] },
+		async () => {
+			throw new Error("stale");
+		},
+	);
+	assert.equal((await job(thread)).status, "pending");
+	assert.equal((await job(thread)).token, next.token);
+	await call(`/classifiers/${classifierId}/cancel`, "POST", {});
+	assert.equal((await job(thread)).status, "pending"); // Independent new mail survives cancelled backfill.
+	assert.equal(
+		(await db`SELECT count(*)::int AS count FROM classifier_outbox`)[0].count,
+		1,
+	);
+});
+
+test("retention-expired queue delivery is recoverable from the outbox", async () => {
+	await reset();
+	await message();
+	let calls = 0;
+	const queues = {
+		live: {
+			sendBatch: async () => {
+				calls++;
+			},
+		},
+		backfill: {
+			sendBatch: async () => {
+				calls++;
+			},
+		},
+	};
+	await publishOutbox(db, queues);
+	await db`UPDATE classifier_outbox SET published_at=now()-interval '26 hours'`;
+	await publishOutbox(db, queues);
+	assert.equal(calls, 2);
+});
+
+test("queue config bounds provider concurrency and routes exhausted deliveries to a DLQ", async () => {
+	const text = await readFile(
+		new URL("../wrangler.jsonc", import.meta.url),
+		"utf8",
+	);
+	const config = JSON.parse(text.replace(/,\s*([}\]])/g, "$1"));
+	const consumers = config.queues.consumers.filter(
+		(c: { queue: string }) => c.queue !== queueNames.dead,
+	);
+	assert.equal(consumers.length, 2);
+	assert.equal(
+		consumers.reduce(
+			(n: number, c: { max_concurrency: number }) => n + c.max_concurrency,
+			0,
+		),
+		2,
+	);
+	for (const c of consumers) {
+		assert.equal(c.max_batch_size, 1);
+		assert.equal(c.dead_letter_queue, queueNames.dead);
+		assert.equal(c.max_retries, 3);
+	}
+	assert.deepEqual(config.triggers.crons, ["*/15 * * * *"]);
+});
+
+test("pausing preserves dispatch intent without exhausting broker retries", async () => {
+	await reset();
+	const thread = await message();
+	const row = await job(thread);
+	const queues = {
+		live: { sendBatch: async () => {} },
+		backfill: { sendBatch: async () => {} },
+	};
+	await publishOutbox(db, queues);
+	let acknowledged = false;
+	await parkBatch(db, {
+		queue: queueNames.live,
+		messages: [
+			{
+				body: { version: 1, token: row.token },
+				ack: () => {
+					acknowledged = true;
+				},
+				retry: () => {
+					throw new Error("must not retry while paused");
+				},
+			},
+		],
+	});
+	assert.equal(acknowledged, true);
+	assert.equal(
+		(await db`SELECT published_at FROM classifier_outbox`)[0].published_at,
+		null,
+	);
+	assert.equal(await publishOutbox(db, queues), 1);
+	assert.equal((await job(thread)).attempts, 0);
+});
+
+test("dead-letter duplicates cannot interrupt an active provider request", async () => {
+	await reset();
+	const thread = await message();
+	const row = await job(thread);
+	await processJob(db, "test", row.token, async (...args) => {
+		const result = await failDelivery(db, row.token);
+		assert.ok("retry" in result);
+		return yes(...args);
+	});
+	assert.equal((await job(thread)).status, "complete");
 });

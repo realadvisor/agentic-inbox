@@ -8,6 +8,9 @@ interface Job {
 	revision: number;
 	generation: number;
 	attempts: number;
+	token: string;
+	lease_until: Date | null;
+	available_at: Date;
 	run_id: string | null;
 }
 
@@ -92,46 +95,53 @@ export async function finishRuns(db: Database) {
 	await db`UPDATE classifier_runs r SET status='completed' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM classifier_run_items i WHERE i.run_id=r.id AND i.status='pending')`;
 }
 
-/** Shared leases cap provider concurrency across cron and interactive invocations. */
-export async function processOne(
+export type DeliveryResult = { ack: true } | { retry: number };
+
+/** Process exactly the version named by the broker. Leases only deduplicate delivery;
+ * concurrency, scheduling and redelivery belong to Cloudflare Queues. */
+export async function processJob(
 	db: Database,
 	key: string,
-	bulkFirst: boolean,
+	token: string,
 	request: typeof fetch = fetch,
-) {
+): Promise<DeliveryResult> {
 	const claimed = await db.begin(async (tx) => {
-		const [slot] =
-			await tx`SELECT id FROM classifier_worker_slots WHERE (lease_until IS NULL OR lease_until<now()) AND (cooldown_until IS NULL OR cooldown_until<now()) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1`;
-		if (!slot) return null;
-		const candidates =
-			await tx`SELECT j.* FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id WHERE j.status='pending' AND j.available_at<=now() AND (j.lease_until IS NULL OR j.lease_until<now()) AND c.enabled AND c.revision=j.revision ORDER BY ${bulkFirst ? tx`j.priority DESC` : tx`j.priority ASC`},j.available_at LIMIT 20`;
-		for (const candidate of candidates) {
-			const [classifier] =
-				await tx`SELECT * FROM classifiers WHERE id=${candidate.classifier_id} AND enabled FOR UPDATE SKIP LOCKED`;
-			if (!classifier) continue;
-			const [conversation] =
-				await tx`SELECT * FROM conversations WHERE mailbox_id=${candidate.mailbox_id} AND thread_id=${candidate.thread_id} FOR UPDATE SKIP LOCKED`;
-			if (!conversation) continue;
-			const [job] = await tx<
-				Job[]
-			>`SELECT * FROM conversation_classifications WHERE mailbox_id=${candidate.mailbox_id} AND thread_id=${candidate.thread_id} AND classifier_id=${candidate.classifier_id} AND status='pending' AND available_at<=now() AND (lease_until IS NULL OR lease_until<now()) FOR UPDATE SKIP LOCKED`;
-			if (!job) continue;
-			const token = crypto.randomUUID();
-			await tx`UPDATE classifier_worker_slots SET token=${token},lease_until=now()+interval '90 seconds' WHERE id=${slot.id}`;
-			await tx`UPDATE conversation_classifications SET token=${token},lease_until=now()+interval '90 seconds',attempts=attempts+1 WHERE mailbox_id=${job.mailbox_id} AND thread_id=${job.thread_id} AND classifier_id=${job.classifier_id}`;
-			return {
-				...job,
-				token,
-				attempts: job.attempts + 1,
-				question: classifier.question,
-				tag_id: classifier.tag_id,
-				slot: slot.id,
-			};
-		}
-		return null;
+		const [candidate] = await tx<
+			Job[]
+		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending'`;
+		if (!candidate) return { ack: true } as const;
+		const [classifier] =
+			await tx`SELECT * FROM classifiers WHERE id=${candidate.classifier_id} FOR UPDATE`;
+		const [conversation] =
+			await tx`SELECT generation FROM conversations WHERE mailbox_id=${candidate.mailbox_id} AND thread_id=${candidate.thread_id} FOR UPDATE`;
+		const [job] = await tx<
+			Job[]
+		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending' FOR UPDATE`;
+		if (
+			!job ||
+			!classifier?.enabled ||
+			classifier.revision !== job.revision ||
+			conversation?.generation !== job.generation
+		)
+			return { ack: true } as const;
+		const [wait] =
+			await tx`SELECT greatest(0,ceil(extract(epoch FROM greatest(${job.lease_until},${job.available_at},cooldown_until)-now())))::int AS seconds FROM classifier_provider_state WHERE singleton`;
+		if (wait.seconds > 0) return { retry: Math.min(86400, wait.seconds + 1) };
+		const lease_id = crypto.randomUUID();
+		await tx`UPDATE conversation_classifications SET lease_id=${lease_id},lease_until=now()+interval '90 seconds',attempts=attempts+1 WHERE token=${token}`;
+		return {
+			...job,
+			attempts: job.attempts + 1,
+			lease_id,
+			question: classifier.question,
+			tag_id: classifier.tag_id,
+		};
 	});
-	if (!claimed) return false;
+	if (claimed.ack === true) return { ack: true };
+	if (claimed.retry !== undefined) return { retry: claimed.retry };
 	const j = claimed;
+	let delivery: DeliveryResult = { ack: true };
+
 	let result: {
 		answer: boolean | null;
 		probability: number | null;
@@ -152,7 +162,6 @@ export async function processOne(
 		const [size] =
 			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent')`;
 		if (!eligibility.active || eligibility.manual) result.status = "skipped";
-		else if (j.attempts > 3) throw new JevError("retry_limit_reached", false);
 		else if (size.count > 30 || size.chars > 100_000)
 			result.error = "conversation_too_large";
 		else {
@@ -191,20 +200,23 @@ export async function processOne(
 			if (
 				!current ||
 				current.token !== j.token ||
+				current.lease_id !== j.lease_id ||
 				current.status !== "pending" ||
 				!classifier?.enabled ||
 				classifier.revision !== j.revision ||
 				conversation?.generation !== j.generation
 			)
 				return;
-			if (failure?.retryable && j.attempts < 3) {
+			if (failure?.retryable) {
 				const delay = Math.max(
 					failure.delay,
-					30 * 2 ** (j.attempts - 1) + Math.floor(Math.random() * 15),
+					Math.min(3600, 30 * 2 ** Math.min(j.attempts - 1, 7)) +
+						Math.floor(Math.random() * 15),
 				);
 				await tx`UPDATE conversation_classifications SET lease_until=NULL,available_at=now()+${delay}*interval '1 second',error=${failure.code},updated_at=now() WHERE token=${j.token}`;
 				if (failure.code === "provider_http_429")
-					await tx`UPDATE classifier_worker_slots SET cooldown_until=now()+${delay}*interval '1 second'`;
+					await tx`UPDATE classifier_provider_state SET cooldown_until=greatest(cooldown_until,now()+${delay}*interval '1 second') WHERE singleton`;
+				delivery = { retry: Math.ceil(delay) };
 				return;
 			}
 			if (failure) result = { ...result, status: "error", error: failure.code };
@@ -218,21 +230,33 @@ export async function processOne(
 				await tx`UPDATE classifier_run_items SET status=${result.status === "error" ? "failed" : result.status} WHERE run_id=${j.run_id} AND mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND status='pending'`;
 		});
 	} finally {
-		await db`UPDATE classifier_worker_slots SET token=NULL,lease_until=NULL WHERE id=${j.slot} AND token=${j.token}`;
+		await db`UPDATE conversation_classifications SET lease_id=NULL,lease_until=NULL WHERE token=${j.token} AND lease_id=${j.lease_id}`;
 	}
-	return true;
-}
-export async function runQueue(
-	db: Database,
-	key: string,
-	rounds = 3,
-	request: typeof fetch = fetch,
-) {
-	await Promise.all(
-		[false, true].map(async (bulkFirst) => {
-			for (let i = 0; i < rounds; i++)
-				if (!(await processOne(db, key, bulkFirst, request))) break;
-		}),
-	);
 	await finishRuns(db);
+	return delivery;
+}
+
+/** Called only by the dead-letter consumer after broker retries are exhausted. */
+export async function failDelivery(
+	db: Database,
+	token: string,
+): Promise<DeliveryResult> {
+	const result = await db.begin(async (tx) => {
+		const [candidate] = await tx<
+			Job[]
+		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending'`;
+		if (!candidate) return { ack: true } as const;
+		await tx`SELECT id FROM classifiers WHERE id=${candidate.classifier_id} FOR UPDATE`;
+		await tx`SELECT generation FROM conversations WHERE mailbox_id=${candidate.mailbox_id} AND thread_id=${candidate.thread_id} FOR UPDATE`;
+		const [current] =
+			await tx`SELECT greatest(0,ceil(extract(epoch FROM lease_until-now())))::int AS remaining FROM conversation_classifications WHERE token=${token} AND status='pending' FOR UPDATE`;
+		if (current?.remaining > 0) return { retry: current.remaining + 1 };
+		const [row] =
+			await tx`UPDATE conversation_classifications SET status='error',error=coalesce(error,'queue_delivery_exhausted'),lease_until=NULL,lease_id=NULL,updated_at=now() WHERE token=${token} AND status='pending' RETURNING *`;
+		if (row?.run_id)
+			await tx`UPDATE classifier_run_items SET status='failed' WHERE run_id=${row.run_id} AND mailbox_id=${row.mailbox_id} AND thread_id=${row.thread_id} AND status='pending'`;
+		return { ack: true } as const;
+	});
+	await finishRuns(db);
+	return result.ack === true ? { ack: true } : { retry: result.retry };
 }
