@@ -922,6 +922,20 @@
 							"enum": ["ASC", "DESC"],
 							"default": "DESC"
 						}
+					},
+					{
+						"name": "reply_status",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"reply_needed",
+								"no_reply_needed",
+								"needs_review",
+								"pending"
+							]
+						},
+						"description": "Filter by current thread classification before pagination."
 					}
 				],
 				"responses": {
@@ -2953,6 +2967,146 @@
 					}
 				}
 			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/classification": {
+			"put": {
+				"operationId": "setThreadClassification",
+				"summary": "Correct or retry reply classification",
+				"tags": ["Threads"],
+				"description": "Human correction persists until the conversation changes. Set decision to null to retry automatically. Pass classification_generation from the email list; stale updates return 409.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"$ref": "#/components/parameters/threadId"
+					}
+				],
+				"responses": {
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"200": {
+						"description": "Updated classification",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"decision": {
+											"type": "string",
+											"nullable": true
+										},
+										"manual": {
+											"type": "boolean"
+										},
+										"generation": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["decision", "generation"],
+								"properties": {
+									"decision": {
+										"type": "string",
+										"nullable": true,
+										"enum": [
+											"reply_needed",
+											"no_reply_needed",
+											"needs_review",
+											null
+										]
+									},
+									"generation": {
+										"type": "string",
+										"pattern": "^[0-9]+$"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -3142,6 +3296,27 @@
 					},
 					"has_draft": {
 						"type": "boolean"
+					},
+					"reply_status": {
+						"type": "string",
+						"nullable": true,
+						"enum": ["reply_needed", "no_reply_needed", "needs_review", null]
+					},
+					"reply_reason": {
+						"type": "string",
+						"nullable": true
+					},
+					"reply_confidence": {
+						"type": "number",
+						"nullable": true
+					},
+					"reply_manual": {
+						"type": "boolean",
+						"nullable": true
+					},
+					"classification_generation": {
+						"type": "string",
+						"nullable": true
 					}
 				},
 				"required": [

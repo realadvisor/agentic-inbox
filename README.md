@@ -12,7 +12,7 @@ This is an intentionally standalone pnpm workspace with its own lockfile: the up
 - The original UI supports browsing, search operators, reading, starring, folders, composing, drafts and replies.
 - Local **Simulate send** stores a simulated message. Hosted live mode sends through Cloudflare Email Sending using approved public From addresses. The app contains no SMTP or Google credentials.
 - Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Live raw MIME is retained privately in R2.
-- Google Groups, Probo, classification, historical imports, and the upstream AI/MCP features are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
+- Probo, historical imports, and the upstream AI/MCP features are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
 
 ## Run locally
 
@@ -136,3 +136,11 @@ Administrators see **New Mailbox** on the homepage. `MAILBOX_ADMINS` is a comma-
 Mailboxes use `name@ingest.realadvisor.com` and send as `name@realadvisor.com`. The zone catch-all sends otherwise unmatched mail to the inbox Worker; only registered ingest recipients are accepted, before writing MIME to R2. Existing explicit Privacy/Info routes still work. The apex Google MX stays unchanged. The Send Email binding permits the verified domain; the backend authorizes the specific sender by its Postgres mailbox registration. No Cloudflare administrative API credential is stored in the application.
 
 Creating an ingest mailbox does not create a Google Group or Workspace address. Configure the corresponding public address and forwarding separately if replies to `name@realadvisor.com` should return to this inbox. All Access-authorized users can read and send from registered mailboxes; creation is administrator-only.
+
+## Reply classification
+
+Hosted live mode classifies active received conversations with Typesafe Jev every two minutes (five threads per run). Store `TYPESAFE_API_KEY` with `wrangler secret put`; `CLASSIFIER_ENABLED` enables the worker and `CLASSIFIER_MODEL` selects the model. Apply migration 004 before deployment. Set `CLASSIFIER_ENABLED=false` to pause processing.
+
+The model receives chronological message bodies, subjects, participants, dates, direction and attachment counts. Attachment bytes are not sent. Results and the actual model/prompt versions are stored in Neon. Spam, trash and archive-only conversations are excluded; drafts never count as sent replies. Threads exceeding 30 messages or 100,000 characters require manual review. Confidence below 0.85 also requires review; this threshold is provisional, not a measured accuracy guarantee. Provider failures retry twice before requiring review.
+
+Use the reply-status filter above the email list. Each conversation has an editable status badge. Manual corrections persist until incoming mail or a sent reply changes the conversation, then classification runs again. Results from an older conversation version cannot overwrite newer mail or a correction. Classification does not send mail or move messages. The Scalar API documents `reply_status` filtering and the thread classification endpoint.

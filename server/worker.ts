@@ -1,3 +1,4 @@
+import { runClassifier } from "./classifier";
 import { documentation } from "./docs";
 import { Hono, type ExecutionContext } from "hono";
 import { basicAuth } from "hono/basic-auth";
@@ -9,6 +10,9 @@ import type { MailSender } from "./outbound";
 
 export interface WorkerEnv {
 	PUBLIC_ORIGIN: string;
+	TYPESAFE_API_KEY?: string;
+	CLASSIFIER_ENABLED?: string;
+	CLASSIFIER_MODEL?: string;
 	PROTOTYPE_PASSWORD?: string;
 	MAIL_MODE?: "live" | "synthetic";
 	ACCESS_ISSUER?: string;
@@ -91,6 +95,23 @@ worker.all("/api/*", async (c) => {
 worker.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default {
+	async scheduled(_event: unknown, env: WorkerEnv) {
+		if (
+			env.CLASSIFIER_ENABLED !== "true" ||
+			!env.TYPESAFE_API_KEY ||
+			env.MAIL_MODE !== "live"
+		)
+			return;
+		const db = postgres(env.HYPERDRIVE.connectionString, {
+			max: 2,
+			fetch_types: false,
+		});
+		try {
+			await runClassifier(db, env.TYPESAFE_API_KEY, env.CLASSIFIER_MODEL);
+		} finally {
+			await db.end({ timeout: 5 });
+		}
+	},
 	async email(message: InboundMessage, env: WorkerEnv) {
 		if (
 			env.MAIL_MODE !== "live" ||

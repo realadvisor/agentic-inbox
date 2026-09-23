@@ -6,7 +6,6 @@
 import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
-	ArrowBendUpLeftIcon,
 	ArrowsClockwiseIcon,
 	EnvelopeOpenIcon,
 	EnvelopeSimpleIcon,
@@ -22,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { Folders } from "shared/folders";
 import { formatListDate } from "shared/dates";
+import { ReplyClassification } from "~/components/ReplyClassification";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import { getSnippetText } from "~/lib/utils";
 import {
@@ -162,6 +162,7 @@ export default function EmailListRoute() {
 		startCompose,
 	} = useUIStore();
 	const [page, setPage] = useState(1);
+	const [replyStatus, setReplyStatus] = useState("");
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -171,16 +172,17 @@ export default function EmailListRoute() {
 	const params = useMemo(
 		() => ({
 			folder: folder || "",
+			...(replyStatus ? { reply_status: replyStatus } : {}),
 			page: String(page),
 			limit: String(PAGE_SIZE),
 		}),
-		[folder, page]
+		[folder, page, replyStatus],
 	);
 
 	const { data: emailData, isFetching: isRefreshing } = useEmails(
 		mailboxId,
 		params,
-		{ refetchInterval: 30_000 }
+		{ refetchInterval: 30_000 },
 	);
 
 	const emails = emailData?.emails ?? [];
@@ -206,6 +208,7 @@ export default function EmailListRoute() {
 		if (folderChanged) {
 			closePanel();
 			setPage(1);
+			setReplyStatus("");
 		}
 	}, [mailboxId, folder, closePanel]);
 
@@ -225,7 +228,7 @@ export default function EmailListRoute() {
 		e.stopPropagation();
 		if (mailboxId) {
 			const confirmed = window.confirm(
-				"Are you sure you want to delete this email?"
+				"Are you sure you want to delete this email?",
 			);
 			if (!confirmed) return;
 			deleteEmail.mutate({ mailboxId, id: emailId });
@@ -291,6 +294,21 @@ export default function EmailListRoute() {
 					{folderName}
 				</h1>
 				<div className="flex items-center gap-1">
+					<select
+						aria-label="Filter by reply status"
+						className="text-xs bg-kumo-base text-kumo-default border border-kumo-line rounded px-2 py-1 max-w-36"
+						value={replyStatus}
+						onChange={(e) => {
+							setReplyStatus(e.target.value);
+							setPage(1);
+						}}
+					>
+						<option value="">All conversations</option>
+						<option value="reply_needed">Reply needed</option>
+						<option value="needs_review">Needs review</option>
+						<option value="no_reply_needed">No reply needed</option>
+						<option value="pending">Not classified</option>
+					</select>
 					{totalCount > 0 && (
 						<span className="text-sm text-kumo-subtle mr-2 hidden sm:inline">
 							{totalCount} conversation{totalCount !== 1 ? "s" : ""}
@@ -335,6 +353,7 @@ export default function EmailListRoute() {
 									tabIndex={0}
 									onClick={() => handleRowClick(email)}
 									onKeyDown={(e) => {
+										if (e.target !== e.currentTarget) return;
 										if (e.key === "Enter" || e.key === " ") {
 											e.preventDefault();
 											handleRowClick(email);
@@ -393,13 +412,13 @@ export default function EmailListRoute() {
 													Draft
 												</span>
 											)}
-											{email.needs_reply && !email.has_draft && (
-												<Tooltip content="Needs reply" asChild>
-													<span className="shrink-0 text-kumo-warning">
-														<ArrowBendUpLeftIcon size={14} weight="bold" />
-													</span>
-												</Tooltip>
+											{mailboxId && email.classification_generation && (
+												<ReplyClassification
+													email={email}
+													mailboxId={mailboxId}
+												/>
 											)}
+
 											<span className="text-sm text-kumo-subtle shrink-0 ml-auto">
 												{formatListDate(email.date)}
 											</span>
@@ -467,6 +486,10 @@ export default function EmailListRoute() {
 							);
 						})}
 					</div>
+				) : replyStatus ? (
+					<p className="p-8 text-center text-kumo-subtle">
+						No conversations match this filter.
+					</p>
 				) : (
 					<FolderEmptyState folder={folder} onCompose={() => startCompose()} />
 				)}

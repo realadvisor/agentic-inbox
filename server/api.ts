@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Database } from "./db";
 import { InboxStore, serialize, type MessageRow } from "./store";
 
+import { decisions } from "./classifier";
 import { sendReal, type MailSender } from "./outbound";
 import { liveSender, mailboxConfig } from "./mailboxes";
 
@@ -38,6 +39,9 @@ const draftSchema = z.object({
 const querySchema = z.object({
 	page: z.coerce.number().int().min(1).max(100000).optional(),
 	limit: z.coerce.number().int().min(1).max(100).optional(),
+	reply_status: z
+		.enum(["reply_needed", "no_reply_needed", "needs_review", "pending"])
+		.optional(),
 	thread_id: id.optional(),
 	date_start: z.string().datetime({ offset: true }).optional(),
 	date_end: z.string().datetime({ offset: true }).optional(),
@@ -262,6 +266,30 @@ export function createApi(db: Database, options: ApiOptions) {
 		)} AND thread_id = ${id.parse(c.req.param("threadId"))}`;
 		return c.body(null, 204);
 	});
+	app.put(
+		"/api/v1/mailboxes/:mailboxId/threads/:threadId/classification",
+		async (c) => {
+			const { decision, generation } = z
+				.object({
+					decision: z.enum(decisions).nullable(),
+					generation: z.string().regex(/^\d+$/),
+				})
+				.parse(await c.req.json());
+			const threadId = z.string().uuid().parse(c.req.param("threadId"));
+			const [row] =
+				await db`UPDATE reply_classifications SET generation=generation+1,decision=${decision},manual=${decision !== null},actor=${options.actor ?? "local"},
+   confidence=NULL,reason=${decision ? "Manually set by a mailbox user; new messages trigger reevaluation." : null},
+   evaluated_at=now(),attempts=0,retry_at=now(),last_error=NULL,lease_id=NULL,lease_until=NULL
+   WHERE mailbox_id=${c.req.param("mailboxId")} AND thread_id=${threadId} AND generation=${generation}
+   RETURNING decision,manual,generation::text`;
+			if (!row)
+				throw new HTTPException(409, {
+					message: "The conversation changed. Refresh and try again.",
+				});
+			return c.json(row);
+		},
+	);
+
 	app.get("/api/v1/mailboxes/:mailboxId/folders", async (c) =>
 		c.json(await store.folders(c.req.param("mailboxId"))),
 	);

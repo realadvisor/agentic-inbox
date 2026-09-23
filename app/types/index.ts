@@ -24,6 +24,11 @@ export interface Mailbox {
 }
 
 export interface Email {
+	reply_status?: "reply_needed" | "no_reply_needed" | "needs_review" | null;
+	reply_reason?: string | null;
+	reply_confidence?: number | null;
+	reply_manual?: boolean;
+	classification_generation?: string | null;
 	reply_to?: string | null;
 	id: string;
 	thread_id?: string | null;

@@ -15,7 +15,10 @@
 		"run_worker_first": true,
 	},
 	"send_email": [{ "name": "EMAIL" }],
+	"triggers": { "crons": ["*/2 * * * *"] },
 	"vars": {
+		"CLASSIFIER_ENABLED": "true",
+		"CLASSIFIER_MODEL": "jev-latest",
 		"MAIL_MODE": "live",
 		"MAILBOX_ADMINS": "jonas@realadvisor.com",
 		"MAILBOX_CREATION_ENABLED": "true",

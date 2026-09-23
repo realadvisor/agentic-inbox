@@ -183,6 +183,16 @@ const api = {
 			email,
 		),
 
+	setReplyClassification: (
+		mailboxId: string,
+		threadId: string,
+		decision: string | null,
+		generation: string,
+	) =>
+		put(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/classification`, {
+			decision,
+			generation,
+		}),
 	// Folders
 	listFolders: (mailboxId: string) =>
 		get<Folder[]>(`/api/v1/mailboxes/${mailboxId}/folders`),

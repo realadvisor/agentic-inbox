@@ -127,6 +127,11 @@ export class InboxStore {
 		const page = Math.max(1, Number(params.page) || 1);
 		const limit = Math.min(100, Math.max(1, Number(params.limit) || 25));
 		const conditions = [this.db`e.mailbox_id = ${mailbox}`];
+		if (params.reply_status)
+			conditions.push(
+				this
+					.db`COALESCE((SELECT c.decision FROM reply_classifications c WHERE c.mailbox_id=e.mailbox_id AND c.thread_id=e.thread_id), 'pending') = ${params.reply_status}`,
+			);
 		if (params.folder) conditions.push(this.db`e.folder_id = ${params.folder}`);
 		if (params.thread_id)
 			conditions.push(this.db`e.thread_id = ${params.thread_id}`);
@@ -181,12 +186,15 @@ export class InboxStore {
 			: "date";
 		const direction =
 			params.sortDirection === "ASC" ? this.db`ASC` : this.db`DESC`;
-		const rows = await this.db<MessageRow[]>`SELECT selected.*,
+		const rows = await this.db<
+			MessageRow[]
+		>`SELECT selected.*, c.decision AS reply_status, c.reason AS reply_reason,
+ c.confidence AS reply_confidence,c.manual AS reply_manual,c.generation::text AS classification_generation,
 			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS thread_count,
 			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND NOT t.read) AS thread_unread_count,
 			EXISTS (SELECT 1 FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND t.folder_id = 'draft') AS has_draft,
 			(SELECT string_agg(DISTINCT t.sender, ', ') FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS participants
-			FROM (${selection}) selected ORDER BY ${this.db(
+			FROM (${selection}) selected LEFT JOIN reply_classifications c ON c.mailbox_id=selected.mailbox_id AND c.thread_id=selected.thread_id ORDER BY ${this.db(
 				column,
 			)} ${direction}, id LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
 		return { emails: rows.map(serialize), totalCount: count.count };
