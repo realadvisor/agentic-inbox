@@ -1,5 +1,10 @@
 import { HTTPException } from "hono/http-exception";
-import type { Email, Mailbox, Attachment } from "../app/types/index";
+import type {
+	Email,
+	Mailbox,
+	Attachment,
+	ConversationTag,
+} from "../app/types/index";
 import { FOLDER_DISPLAY_NAMES } from "../shared/folders";
 import type { Database } from "./db";
 
@@ -49,6 +54,15 @@ function required<T>(row: T | undefined): T {
 export class InboxStore {
 	constructor(readonly db: Database) {}
 
+	async tagsForThreads(mailbox: string, threads: string[]) {
+		if (!threads.length) return [];
+		return this.db<
+			(ConversationTag & { thread_id: string })[]
+		>`SELECT t.id, t.name, t.color, ct.thread_id, ct.source, ct.actor, ct.created_at, ct.updated_at
+		FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id
+		WHERE ct.mailbox_id=${mailbox} AND ct.thread_id IN ${this.db([...new Set(threads)])} AND ct.removed_at IS NULL ORDER BY lower(t.name), t.id`;
+	}
+
 	async listMailboxes() {
 		return this.db<Mailbox[]>`SELECT * FROM mailboxes ORDER BY name`;
 	}
@@ -85,7 +99,11 @@ export class InboxStore {
 		const attachments = await this.db<
 			Attachment[]
 		>`SELECT id, filename, mimetype, size FROM attachments WHERE mailbox_id = ${mailbox} AND email_id = ${id}`;
-		return { ...serialize(row), attachments };
+		return {
+			...serialize(row),
+			attachments,
+			tags: await this.tagsForThreads(mailbox, [row.thread_id!]),
+		};
 	}
 	async thread(mailbox: string, thread: string) {
 		const rows = await this.db<
@@ -96,7 +114,9 @@ export class InboxStore {
 		>`SELECT a.id, a.email_id, a.filename, a.mimetype, a.size
 			FROM attachments a JOIN emails e ON e.id = a.email_id AND e.mailbox_id = a.mailbox_id
 			WHERE e.mailbox_id = ${mailbox} AND e.thread_id = ${thread}`;
+		const tags = await this.tagsForThreads(mailbox, [thread]);
 		return rows.map((row) => ({
+			tags,
 			...serialize(row),
 			attachments: attachments.filter((a) => a.email_id === row.id),
 		}));
@@ -127,6 +147,11 @@ export class InboxStore {
 		const page = Math.max(1, Number(params.page) || 1);
 		const limit = Math.min(100, Math.max(1, Number(params.limit) || 25));
 		const conditions = [this.db`e.mailbox_id = ${mailbox}`];
+		if (params.tag_id)
+			conditions.push(
+				this
+					.db`EXISTS (SELECT 1 FROM conversation_tags ct WHERE ct.mailbox_id=e.mailbox_id AND ct.thread_id=e.thread_id AND ct.tag_id=${params.tag_id} AND ct.removed_at IS NULL)`,
+			);
 		if (params.folder) conditions.push(this.db`e.folder_id = ${params.folder}`);
 		if (params.thread_id)
 			conditions.push(this.db`e.thread_id = ${params.thread_id}`);
@@ -168,7 +193,7 @@ export class InboxStore {
 					.db`EXISTS (SELECT 1 FROM attachments a WHERE a.email_id = e.id AND a.mailbox_id = e.mailbox_id)`,
 			);
 		const where = conditions.reduce((a, b) => this.db`${a} AND ${b}`);
-		const threaded = params.threaded === "true" && !!params.folder;
+		const threaded = params.threaded === "true";
 		const selection = threaded
 			? this
 					.db`SELECT DISTINCT ON (e.thread_id) e.* FROM emails e WHERE ${where} ORDER BY e.thread_id, e.date DESC, e.id`
@@ -189,7 +214,17 @@ export class InboxStore {
 			FROM (${selection}) selected ORDER BY ${this.db(
 				column,
 			)} ${direction}, id LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
-		return { emails: rows.map(serialize), totalCount: count.count };
+		const tags = await this.tagsForThreads(
+			mailbox,
+			rows.map((row) => row.thread_id!),
+		);
+		return {
+			emails: rows.map((row) => ({
+				...serialize(row),
+				tags: tags.filter((tag) => tag.thread_id === row.thread_id),
+			})),
+			totalCount: count.count,
+		};
 	}
 }
 

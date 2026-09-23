@@ -1,10 +1,11 @@
+import { setConversationTags } from "./tags";
 import { documentation } from "./docs";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Database } from "./db";
-import { InboxStore, serialize, type MessageRow } from "./store";
+import { InboxStore, type MessageRow } from "./store";
 
 import { sendReal, type MailSender } from "./outbound";
 import { liveSender, mailboxConfig } from "./mailboxes";
@@ -35,7 +36,14 @@ const draftSchema = z.object({
 	thread_id: id.optional(),
 	draft_id: id.optional(),
 });
+const tagSchema = z
+	.object({
+		name: z.string().trim().min(1).max(80),
+		color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+	})
+	.strict();
 const querySchema = z.object({
+	tag_id: id.optional(),
 	page: z.coerce.number().int().min(1).max(100000).optional(),
 	limit: z.coerce.number().int().min(1).max(100).optional(),
 	thread_id: id.optional(),
@@ -126,6 +134,31 @@ export function createApi(db: Database, options: ApiOptions) {
 			mode: options.mode ?? "synthetic",
 		}),
 	);
+	app.get("/api/v1/tags", async (c) =>
+		c.json(await db`SELECT * FROM tags ORDER BY lower(name), id`),
+	);
+	app.post("/api/v1/tags", async (c) => {
+		const input = tagSchema.parse(await c.req.json());
+		const [tag] = await db`INSERT INTO tags ${db(input)} RETURNING *`;
+		return c.json(tag, 201);
+	});
+	app.put("/api/v1/tags/:tagId", async (c) => {
+		const input = tagSchema.parse(await c.req.json());
+		const [tag] =
+			await db`UPDATE tags SET ${db(input)}, updated_at=now() WHERE id=${id.parse(c.req.param("tagId"))} RETURNING *`;
+		if (!tag) throw new HTTPException(404);
+		return c.json(tag);
+	});
+	app.delete("/api/v1/tags/:tagId", async (c) => {
+		if (c.req.query("confirm") !== "true")
+			throw new HTTPException(400, {
+				message: "Deleting a shared tag requires confirm=true",
+			});
+		const rows =
+			await db`DELETE FROM tags WHERE id=${id.parse(c.req.param("tagId"))} RETURNING id`;
+		if (!rows.length) throw new HTTPException(404);
+		return c.body(null, 204);
+	});
 	app.get("/api/v1/mailboxes", async (c) =>
 		c.json(
 			(await store.listMailboxes()).filter(
@@ -171,6 +204,45 @@ export function createApi(db: Database, options: ApiOptions) {
 			throw new HTTPException(404);
 		await store.mailbox(c.req.param("mailboxId"));
 		await next();
+	});
+	const tagActor = () => {
+		if (isLive && !options.actor) throw new HTTPException(403);
+		return options.actor ?? "local-synthetic-user";
+	};
+	for (const method of ["put", "delete"] as const) {
+		app[method](
+			"/api/v1/mailboxes/:mailboxId/threads/:threadId/tags/:tagId",
+			async (c) => {
+				await setConversationTags(
+					db,
+					c.req.param("mailboxId"),
+					[id.parse(c.req.param("threadId"))],
+					id.parse(c.req.param("tagId")),
+					method === "put" ? "add" : "remove",
+					tagActor(),
+				);
+				return c.body(null, 204);
+			},
+		);
+	}
+	app.post("/api/v1/mailboxes/:mailboxId/tags/bulk", async (c) => {
+		const input = z
+			.object({
+				thread_ids: z.array(id).min(1).max(100),
+				tag_id: id,
+				action: z.enum(["add", "remove"]),
+			})
+			.strict()
+			.parse(await c.req.json());
+		await setConversationTags(
+			db,
+			c.req.param("mailboxId"),
+			input.thread_ids,
+			input.tag_id,
+			input.action,
+			tagActor(),
+		);
+		return c.body(null, 204);
 	});
 	app.get("/api/v1/mailboxes/:mailboxId", async (c) =>
 		c.json(await store.mailbox(c.req.param("mailboxId"))),
@@ -221,7 +293,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			"mailboxId",
 		)} AND id = ${messageId} RETURNING *`;
 		if (!row) throw new HTTPException(404);
-		return c.json(serialize(row));
+		return c.json(await store.message(row.mailbox_id, row.id));
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
 		const [outbound] =

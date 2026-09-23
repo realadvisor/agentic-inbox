@@ -44,6 +44,9 @@ test("Worker denies unconfigured deployments and anonymous UI/API/asset requests
 		"/api/health",
 		"/api/docs",
 		"/api/openapi.json",
+		"/api/v1/tags",
+		"/api/v1/mailboxes/test/threads/test/tags/test",
+		"/api/v1/mailboxes/test/tags/bulk",
 		"/vendor/scalar.js",
 		"/api/v1/mailboxes",
 	]) {
@@ -101,6 +104,9 @@ test("Live mode never falls back to the prototype password or unsigned identity 
 			"/",
 			"/api/docs",
 			"/api/openapi.json",
+			"/api/v1/tags",
+			"/api/v1/mailboxes/test/threads/test/tags/test",
+			"/api/v1/mailboxes/test/tags/bulk",
 			"/vendor/scalar.js",
 		]) {
 			assert.equal(

@@ -3,6 +3,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { TagActions } from "~/components/ConversationTags";
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
@@ -290,6 +291,16 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				onViewSource={() => setSourceViewEmail(email)}
 				onDelete={handleDelete}
 			/>
+
+			{mailboxId && (
+				<div className="px-5 py-3 border-b border-kumo-line">
+					<TagActions
+						mailboxId={mailboxId}
+						threadIds={[email.thread_id ?? email.id]}
+						tags={email.tags}
+					/>
+				</div>
+			)}
 
 			<EmailPanelHeader
 				subject={email.subject}

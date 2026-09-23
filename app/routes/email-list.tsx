@@ -3,6 +3,8 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { TagActions, TagChips } from "~/components/ConversationTags";
+import { useTags } from "~/queries/tags";
 import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
@@ -162,6 +164,12 @@ export default function EmailListRoute() {
 		startCompose,
 	} = useUIStore();
 	const [page, setPage] = useState(1);
+	const [tagId, setTagId] = useState("");
+	const catalog = useTags();
+	const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
+	useEffect(() => {
+		setSelectedThreads([]);
+	}, [mailboxId, folder, page, tagId]);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -173,14 +181,15 @@ export default function EmailListRoute() {
 			folder: folder || "",
 			page: String(page),
 			limit: String(PAGE_SIZE),
+			...(tagId ? { tag_id: tagId } : {}),
 		}),
-		[folder, page]
+		[folder, page, tagId],
 	);
 
 	const { data: emailData, isFetching: isRefreshing } = useEmails(
 		mailboxId,
 		params,
-		{ refetchInterval: 30_000 }
+		{ refetchInterval: 30_000 },
 	);
 
 	const emails = emailData?.emails ?? [];
@@ -225,7 +234,7 @@ export default function EmailListRoute() {
 		e.stopPropagation();
 		if (mailboxId) {
 			const confirmed = window.confirm(
-				"Are you sure you want to delete this email?"
+				"Are you sure you want to delete this email?",
 			);
 			if (!confirmed) return;
 			deleteEmail.mutate({ mailboxId, id: emailId });
@@ -319,6 +328,74 @@ export default function EmailListRoute() {
 				</div>
 			</div>
 
+			<div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-kumo-line text-sm">
+				<label className="flex items-center gap-2">
+					Tag filter
+					<select
+						aria-label="Tag filter"
+						className="rounded-md border border-kumo-line bg-kumo-base p-1.5 max-w-48"
+						value={tagId}
+						onChange={(e) => {
+							setTagId(e.target.value);
+							setPage(1);
+						}}
+					>
+						<option value="">All tags</option>
+						{catalog.data?.map((tag) => (
+							<option key={tag.id} value={tag.id}>
+								{tag.name}
+							</option>
+						))}
+						{tagId &&
+							catalog.data &&
+							!catalog.data.some((tag) => tag.id === tagId) && (
+								<option value={tagId}>Deleted tag</option>
+							)}
+					</select>
+				</label>
+				{catalog.error && <span role="alert">{catalog.error.message}</span>}
+				{emails.length > 0 && (
+					<label className="flex items-center gap-2">
+						<input
+							type="checkbox"
+							aria-label="Select all conversations on page"
+							checked={emails.every((email) =>
+								selectedThreads.includes(email.thread_id ?? email.id),
+							)}
+							onChange={(e) =>
+								setSelectedThreads(
+									e.target.checked
+										? [
+												...new Set(
+													emails.map((email) => email.thread_id ?? email.id),
+												),
+											]
+										: [],
+								)
+							}
+						/>
+						Select page
+					</label>
+				)}
+				{selectedThreads.length > 0 && mailboxId && (
+					<>
+						<span>{selectedThreads.length} selected</span>
+						<TagActions
+							bulk
+							mailboxId={mailboxId}
+							threadIds={selectedThreads}
+						/>
+						<Button
+							size="sm"
+							variant="ghost"
+							onClick={() => setSelectedThreads([])}
+						>
+							Clear selection
+						</Button>
+					</>
+				)}
+			</div>
+
 			{/* Email rows */}
 			<div className="flex-1 overflow-y-auto">
 				{isRefreshing && emails.length === 0 ? (
@@ -335,7 +412,10 @@ export default function EmailListRoute() {
 									tabIndex={0}
 									onClick={() => handleRowClick(email)}
 									onKeyDown={(e) => {
-										if (e.key === "Enter" || e.key === " ") {
+										if (
+											e.target === e.currentTarget &&
+											(e.key === "Enter" || e.key === " ")
+										) {
 											e.preventDefault();
 											handleRowClick(email);
 										}
@@ -344,6 +424,22 @@ export default function EmailListRoute() {
 										isPanelOpen ? "md:px-4 md:py-2.5" : ""
 									} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
 								>
+									<input
+										type="checkbox"
+										aria-label={`Select conversation ${email.subject}`}
+										checked={selectedThreads.includes(
+											email.thread_id ?? email.id,
+										)}
+										onClick={(e) => e.stopPropagation()}
+										onChange={(e) => {
+											const thread = email.thread_id ?? email.id;
+											setSelectedThreads((current) =>
+												e.target.checked
+													? [...new Set([...current, thread])]
+													: current.filter((id) => id !== thread),
+											);
+										}}
+									/>
 									{/* Unread dot */}
 									<div className="w-2.5 shrink-0 flex justify-center">
 										{hasUnread(email) && (
@@ -404,6 +500,7 @@ export default function EmailListRoute() {
 												{formatListDate(email.date)}
 											</span>
 										</div>
+										<TagChips tags={email.tags} />
 										<div className="truncate text-sm mt-0.5">
 											<span
 												className={
@@ -467,6 +564,10 @@ export default function EmailListRoute() {
 							);
 						})}
 					</div>
+				) : tagId ? (
+					<p className="p-8 text-center text-kumo-subtle">
+						No conversations with this tag in this folder.
+					</p>
 				) : (
 					<FolderEmptyState folder={folder} onCompose={() => startCompose()} />
 				)}

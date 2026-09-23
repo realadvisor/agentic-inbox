@@ -83,7 +83,7 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 			.click();
 		await expect(
 			page
-				.getByText("Simulated email saved — nothing was sent", { exact: true })
+				.getByText("Message submitted", { exact: true })
 				.first()
 		).toBeVisible();
 		await page.goto(`/mailbox/${mailbox}/emails/sent`);
