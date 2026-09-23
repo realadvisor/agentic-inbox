@@ -42,7 +42,9 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await expect(page.getByRole("textbox", { name: "Tag name" })).toHaveCount(
 			0,
 		);
-		await expect(page.getByText(name, { exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("main").getByText(name, { exact: true }),
+		).toBeVisible();
 		tagId = (await db`SELECT id FROM tags WHERE name=${name}`)[0].id;
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
 		await page.getByText("Synthetic privacy request", { exact: true }).click();
@@ -115,6 +117,40 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 						.totalCount,
 			)
 			.toBe(2);
+		// Sidebar tags span folders, persist on reload, and clear on folder navigation.
+		await db`UPDATE emails SET folder_id='archive' WHERE mailbox_id=${mailbox} AND thread_id=${first!.thread_id!}`;
+		await page
+			.getByRole("region", { name: "Tags", exact: true })
+			.getByRole("link", { name, exact: true })
+			.click();
+		await expect(page).toHaveURL(new RegExp(`/emails/all\\?tag_id=${tagId}`));
+		await expect(
+			page.getByRole("heading", { name, exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByText("Synthetic follow-up", { exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByText("Synthetic viewing enquiry", { exact: true }),
+		).toBeVisible();
+		await page.reload();
+		await expect(
+			page
+				.getByRole("region", { name: "Tags", exact: true })
+				.getByRole("link", { name, exact: true }),
+		).toHaveAttribute("aria-current", "page");
+		await expect(
+			page.getByText("Synthetic follow-up", { exact: true }),
+		).toBeVisible();
+		await page
+			.getByRole("navigation")
+			.getByRole("link", { name: /^Inbox/ })
+			.click();
+		await expect(page).toHaveURL(new RegExp(`/emails/inbox$`));
+		await expect(
+			page.getByText("Synthetic follow-up", { exact: true }),
+		).toHaveCount(0);
+		await db`UPDATE emails SET folder_id='inbox' WHERE mailbox_id=${mailbox} AND thread_id=${first!.thread_id!}`;
 		await page.goto(`/mailbox/${mailbox}/settings`);
 		await page
 			.getByRole("button", { name: `Edit tag ${name}`, exact: true })
@@ -124,7 +160,9 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await expect(page.getByRole("textbox", { name: "Tag name" })).toHaveCount(
 			0,
 		);
-		await expect(page.getByText(renamed, { exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("main").getByText(renamed, { exact: true }),
+		).toBeVisible();
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
 		await choose("Tag filter", renamed);
 		await expect(
@@ -156,7 +194,9 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await page
 			.getByRole("button", { name: `Delete tag ${renamed}`, exact: true })
 			.click();
-		await expect(page.getByText(renamed, { exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("main").getByText(renamed, { exact: true }),
+		).toBeVisible();
 		page.once("dialog", (dialog) => dialog.accept());
 		await page
 			.getByRole("button", { name: `Delete tag ${renamed}`, exact: true })

@@ -139,7 +139,7 @@ Creating an ingest mailbox does not create a Google Group or Workspace address. 
 
 ## Conversation tags
 
-Create, rename, recolor and delete shared tags in **Settings → Tags**. Inbox rows show colored chips; **Tag filter** narrows the current folder. Open a conversation to use **+ Tag** or remove a chip. Select rows (or the current page) for bulk add/remove. Selections reset when changing mailbox, folder, filter or page. Deleting a shared tag requires confirmation and removes its assignments everywhere; removing a conversation chip keeps the tag catalog entry.
+Create, rename, recolor and delete shared tags in **Settings → Tags**. Inbox rows show colored chips; **Tag filter** narrows the current folder. The **Tags** section below Folders in the sidebar opens tagged conversations across all folders in the current mailbox, including Archive. Tag filters are included in the URL for bookmarking and reloads. Open a conversation to use **+ Tag** or remove a chip. Select rows (or the current page) for bulk add/remove. Selections reset when changing mailbox, folder, filter or page. Deleting a shared tag requires confirmation and removes its assignments everywhere; removing a conversation chip keeps the tag catalog entry.
 
 Tags use stable UUIDs and case-insensitively unique names. Assignments are keyed by `(mailbox_id, thread_id, tag_id)`, independently of folders and individual messages. Replies, incoming messages and archiving retain a conversation's tags. Database triggers register conversations for every ingestion/send path, including existing messages backfilled by migration 005. Conversation identity persists even if its last message is deleted; assignment endpoints require an existing message in that mailbox.
 
