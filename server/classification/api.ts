@@ -43,7 +43,7 @@ export function classifierApi(
 	app.get("/classifiers", async (c) => {
 		await finishRuns(db);
 		return c.json(
-			await db`SELECT c.*,t.name,t.color,
+			await db`SELECT c.*,to_json(c.mailbox_ids) AS mailbox_ids,t.name,t.color,
    (SELECT row_to_json(s) FROM (SELECT r.id,r.status,r.created_at,count(i.*)::int AS total,
      count(*) FILTER(WHERE i.status IN ('complete','review'))::int AS processed,
      count(*) FILTER(WHERE i.status='review')::int AS review,
@@ -77,11 +77,11 @@ export function classifierApi(
 					await tx`SELECT count(*)::int AS count FROM classifiers`;
 				if (count >= 50) fail(400, "A maximum of 50 classifiers is supported");
 				const [created] =
-					await tx`INSERT INTO classifiers ${tx(values)} RETURNING *`;
+					await tx`INSERT INTO classifiers(question,tag_id,mailbox_ids,enabled) VALUES(${values.question},${values.tag_id},ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),${values.enabled}) RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 				return { ...created, ...tag, run: null };
 			}
 			const [old] =
-				await tx`SELECT * FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
+				await tx`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
 			if (!old) fail(404, "Classifier not found");
 			if (data.revision !== old.revision)
 				fail(409, "Classifier changed; refresh and try again");
@@ -96,7 +96,7 @@ export function classifierApi(
 				await tx`DELETE FROM conversation_tags WHERE tag_id=${old.tag_id} AND source='classifier'`;
 			}
 			const [updated] =
-				await tx`UPDATE classifiers SET ${tx(values)},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *`;
+				await tx`UPDATE classifiers SET question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 			// Enabling does not implicitly classify historical mail. Preserve existing jobs on a no-op edit.
 			if (!changed && data.enabled)
 				await tx`UPDATE conversation_classifications SET revision=${updated.revision},token=gen_random_uuid(),lease_until=NULL WHERE classifier_id=${classifierId}`;
@@ -124,7 +124,7 @@ export function classifierApi(
 			fail(400, "Choose all conversations to reset corrections");
 		const run = await db.begin(async (tx) => {
 			const [classifier] =
-				await tx`SELECT * FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
+				await tx`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
 			if (!classifier) fail(404, "Classifier not found");
 			const [active] =
 				await tx`SELECT * FROM classifier_runs WHERE classifier_id=${classifierId} AND status='running'`;
@@ -192,7 +192,7 @@ export function classifierApi(
 			.parse(await c.req.json());
 		await db.begin(async (tx) => {
 			const [classifier] =
-				await tx`SELECT * FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
+				await tx`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
 			if (!classifier?.enabled || classifier.revision !== data.revision)
 				fail(409, "Classifier changed; refresh and try again");
 			await tx`SELECT 1 FROM conversations WHERE mailbox_id=${mailbox} AND thread_id=${thread} FOR UPDATE`;

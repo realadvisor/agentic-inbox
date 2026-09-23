@@ -1,3 +1,4 @@
+import postgres from "postgres";
 import { before, after, test } from "node:test";
 import assert from "node:assert/strict";
 import { connect } from "../server/db";
@@ -391,4 +392,66 @@ test("only confirmed sent replies requeue, and active folder moves preserve corr
 		return yes(...args);
 	});
 	assert.equal(sent, true);
+});
+
+test("Cloudflare connections without type discovery round-trip mailbox scopes", async () => {
+	const workerDb = postgres(process.env.DATABASE_URL!, {
+		fetch_types: false,
+		connection: { search_path: schema },
+	});
+	try {
+		const workerApi = createApi(workerDb, {
+			readAttachment: async () => null,
+			classifiersEnabled: true,
+		});
+		const request = async (path: string, method = "GET", body?: unknown) => {
+			return workerApi.request(
+				"http://127.0.0.1:4311/api/v1/classification" + path,
+				{
+					method,
+					headers: { "Content-Type": "application/json" },
+					body: body === undefined ? undefined : JSON.stringify(body),
+				},
+			);
+		};
+		const [tag] =
+			await db`INSERT INTO tags(name,color) VALUES('Scope regression','#123456') RETURNING id`;
+		const input = {
+			question: "Does this need attention?",
+			tag_id: tag.id,
+			mailbox_ids: [mailbox],
+			enabled: false,
+		};
+		const created = await request("/classifiers", "POST", input);
+		assert.equal(created.status, 201, await created.clone().text());
+		const c = await created.json();
+		assert.deepEqual(c.mailbox_ids, [mailbox]);
+		const listed = await (await request("/classifiers")).json();
+		assert.ok(
+			listed.every((x: { mailbox_ids: unknown }) =>
+				Array.isArray(x.mailbox_ids),
+			),
+		);
+		const updated = await request("/classifiers/" + c.id, "PUT", {
+			...input,
+			revision: c.revision,
+			enabled: true,
+		});
+		assert.equal(updated.status, 200, await updated.clone().text());
+		assert.deepEqual((await updated.json()).mailbox_ids, [mailbox]);
+		const run = await request("/classifiers/" + c.id + "/runs", "POST", {
+			mailbox_ids: [mailbox],
+			selection: "all",
+		});
+		assert.equal(run.status, 201, await run.clone().text());
+		await runQueue(workerDb, "test", 3, yes);
+		assert.equal(
+			(
+				await db`SELECT status FROM classifier_runs WHERE classifier_id=${c.id}`
+			)[0].status,
+			"completed",
+		);
+	} finally {
+		await workerDb.end();
+	}
 });
