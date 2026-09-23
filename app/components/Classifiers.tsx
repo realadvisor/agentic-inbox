@@ -1,3 +1,4 @@
+import { useMailMode } from "./MailMode";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog } from "@cloudflare/kumo";
@@ -6,52 +7,48 @@ import { useTags } from "~/queries/tags";
 import { useMailboxes } from "~/queries/mailboxes";
 import { TagChips, TagPicker } from "./ConversationTags";
 import api from "~/services/api";
-import {
-	previewRequest,
-	type PreviewClassifier,
-} from "~/services/classifier-preview";
+import { classifierRequest, type Classifier } from "~/services/classifiers";
 const field =
 	"w-full rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm";
 function useRefresh() {
 	const qc = useQueryClient();
 	return async () => {
 		await Promise.all(
-			[
-				"preview-classifiers",
-				"preview-results",
-				"tags",
-				"emails",
-				"search",
-			].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+			["classifiers", "classification-results", "tags", "emails", "search"].map(
+				(key) => qc.invalidateQueries({ queryKey: [key] }),
+			),
 		);
 	};
 }
-export function ClassifierPreview() {
+export function Classifiers() {
+	const mode = useMailMode();
+	const canManage = !!(
+		mode.data?.classifierPreview || mode.data?.canManageClassifiers
+	);
 	const refresh = useRefresh();
 	const classifiers = useQuery({
-		queryKey: ["preview-classifiers"],
-		queryFn: () => previewRequest<PreviewClassifier[]>("/classifiers"),
-		refetchInterval: 1000,
+		queryKey: ["classifiers"],
+		queryFn: () => classifierRequest<Classifier[]>("/classifiers"),
+		refetchInterval: 5000,
 	});
-	const [editing, setEditing] = useState<
-		PreviewClassifier | null | undefined
-	>();
-	const [running, setRunning] = useState<PreviewClassifier | null>(null);
-	const [saved, setSaved] = useState<PreviewClassifier | null>(null);
+	const [editing, setEditing] = useState<Classifier | null | undefined>();
+	const [running, setRunning] = useState<Classifier | null>(null);
+	const [saved, setSaved] = useState<Classifier | null>(null);
 	const [error, setError] = useState("");
 	const toggle = useMutation({
-		mutationFn: (c: PreviewClassifier) =>
-			previewRequest("/classifiers/" + c.id, "PUT", {
+		mutationFn: (c: Classifier) =>
+			classifierRequest("/classifiers/" + c.id, "PUT", {
 				question: c.question,
 				tag_id: c.tag_id,
 				mailbox_ids: c.mailbox_ids,
 				enabled: !c.enabled,
+				revision: c.revision,
 			}),
 		onSuccess: refresh,
 	});
 	const cancel = useMutation({
 		mutationFn: (id: string) =>
-			previewRequest("/classifiers/" + id + "/cancel", "POST", {}),
+			classifierRequest("/classifiers/" + id + "/cancel", "POST", {}),
 		onSuccess: refresh,
 	});
 	return (
@@ -71,6 +68,7 @@ export function ClassifierPreview() {
 				<Button
 					size="sm"
 					variant="primary"
+					disabled={!canManage}
 					icon={<PlusIcon />}
 					onClick={() => setEditing(null)}
 				>
@@ -78,8 +76,9 @@ export function ClassifierPreview() {
 				</Button>
 			</div>
 			<div className="border-y border-kumo-line bg-kumo-tint px-5 py-3 text-xs text-kumo-subtle">
-				Interactive local preview. Runs use fixed sample answers, not Jev. New
-				or edited questions go to review.
+				{mode.data?.classifierPreview
+					? "Local preview uses fixture answers, not Jev."
+					: "Active classifiers run on the server after new mail and sent replies. Existing conversations run only when you request it."}
 			</div>
 			{classifiers.isPending && <p className="p-5">Loading classifiers…</p>}
 			{classifiers.data?.map((c) => (
@@ -106,7 +105,7 @@ export function ClassifierPreview() {
 									role="switch"
 									aria-label={"Enable " + c.name}
 									aria-checked={c.enabled}
-									disabled={toggle.isPending}
+									disabled={!canManage || toggle.isPending}
 									onClick={() => {
 										setEditing(undefined);
 										toggle.mutate(c);
@@ -120,6 +119,11 @@ export function ClassifierPreview() {
 							</div>
 						</div>
 					</div>
+					{(c.errors ?? 0) > 0 && (
+						<p className="text-xs text-kumo-danger mt-3">
+							{c.errors} conversations failed. Use Run on existing to retry.
+						</p>
+					)}
 					{editing?.id === c.id && (
 						<Editor
 							key={c.id}
@@ -137,6 +141,7 @@ export function ClassifierPreview() {
 							size="sm"
 							variant="secondary"
 							icon={<PencilSimpleIcon size={14} />}
+							disabled={!canManage}
 							aria-label={"Edit " + c.name}
 							onClick={() => setEditing(editing?.id === c.id ? undefined : c)}
 						>
@@ -145,16 +150,19 @@ export function ClassifierPreview() {
 						{c.run && (
 							<>
 								<span className="text-xs text-kumo-subtle" role="status">
-									{c.run.processed + c.run.skipped} of {c.run.total} processed ·{" "}
-									{c.run.status}
+									{c.run.processed + c.run.skipped + (c.run.failed ?? 0)} of{" "}
+									{c.run.total} processed · {c.run.status}
 									{c.run.review > 0 ? ` · ${c.run.review} need review` : ""}
+									{(c.run.failed ?? 0) > 0
+										? ` · ${c.run.failed} failed — run again to retry`
+										: ""}
 									{c.run.skipped > 0 ? ` · ${c.run.skipped} skipped` : ""}
 								</span>
 								{c.run.status === "running" && (
 									<Button
 										size="sm"
 										variant="ghost"
-										disabled={cancel.isPending}
+										disabled={!canManage || cancel.isPending}
 										onClick={() => cancel.mutate(c.id)}
 									>
 										Cancel run
@@ -166,6 +174,7 @@ export function ClassifierPreview() {
 							size="sm"
 							variant="secondary"
 							className="ml-auto"
+							disabled={!canManage || c.run?.status === "running"}
 							aria-label={"Run " + c.name + " on existing"}
 							onClick={() => setRunning(c)}
 						>
@@ -240,10 +249,10 @@ function Editor({
 	close,
 	done,
 }: {
-	current: PreviewClassifier | null;
-	all: PreviewClassifier[];
+	current: Classifier | null;
+	all: Classifier[];
 	close: () => void;
-	done: (c: PreviewClassifier) => void;
+	done: (c: Classifier) => void;
 }) {
 	const tags = useTags();
 	const mailboxes = useMailboxes();
@@ -272,7 +281,7 @@ function Editor({
 				setNewTag(false);
 			}
 			if (!target) throw new Error("Choose a tag.");
-			return previewRequest<PreviewClassifier>(
+			return classifierRequest<Classifier>(
 				"/classifiers" + (current ? "/" + current.id : ""),
 				current ? "PUT" : "POST",
 				{
@@ -280,6 +289,7 @@ function Editor({
 					tag_id: target,
 					mailbox_ids: scope === "all" ? [] : selected,
 					enabled: current?.enabled ?? false,
+					revision: current?.revision,
 				},
 			);
 		},
@@ -398,11 +408,12 @@ function RunDialog({
 	close,
 	done,
 }: {
-	classifier: PreviewClassifier;
+	classifier: Classifier;
 	close: () => void;
 	done: () => void;
 }) {
 	const mailboxes = useMailboxes();
+	const mode = useMailMode();
 	const [selected, setSelected] = useState<string[] | null>(null);
 	const [selection, setSelection] = useState("unprocessed");
 	const [reset, setReset] = useState(false);
@@ -413,7 +424,7 @@ function RunDialog({
 	const targets = selected ?? allowed.map((m) => m.id);
 	const run = useMutation({
 		mutationFn: () =>
-			previewRequest("/classifiers/" + classifier.id + "/runs", "POST", {
+			classifierRequest("/classifiers/" + classifier.id + "/runs", "POST", {
 				mailbox_ids: targets,
 				selection,
 				reset,
@@ -500,8 +511,9 @@ function RunDialog({
 							</p>
 						)}
 						<p className="text-xs text-kumo-subtle">
-							Preview runs use stored fixture answers. Edited or new questions
-							require review.
+							{mode.data?.classifierPreview
+								? "Preview runs use stored fixture answers."
+								: "Runs continue after you close this page. Conversation text and metadata are sent to Typesafe.ai. Up to 5,000 conversations per run."}
 						</p>
 						{run.error && (
 							<p role="alert" className="text-sm text-kumo-danger">

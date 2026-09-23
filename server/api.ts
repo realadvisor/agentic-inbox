@@ -1,3 +1,4 @@
+import { classifierApi } from "./classification/api";
 import { setConversationTags } from "./tags";
 import { documentation } from "./docs";
 import { Hono } from "hono";
@@ -55,6 +56,8 @@ const querySchema = z.object({
 
 export interface ApiOptions {
 	classifierPreview?: boolean;
+	classifiersEnabled?: boolean;
+	kickClassifiers?: () => void;
 	previewRoutes?: Hono;
 	readAttachment: (key: string) => Promise<Uint8Array | null>;
 	// Remote authentication is enforced by the Worker before it constructs this API.
@@ -133,6 +136,11 @@ export function createApi(db: Database, options: ApiOptions) {
 			emailAddresses: [],
 			canCreateMailboxes: canCreate,
 			classifierPreview: !isLive && options.classifierPreview === true,
+			classifiersEnabled: options.classifiersEnabled === true,
+			canManageClassifiers:
+				options.classifiersEnabled === true &&
+				(!isLive ||
+					(options.mailboxAdmins ?? []).includes(options.actor ?? "")),
 			canDeleteMailboxes: !isLive,
 			mode: options.mode ?? "synthetic",
 		}),
@@ -473,6 +481,16 @@ export function createApi(db: Database, options: ApiOptions) {
 				},
 			});
 		},
+	);
+	app.route(
+		"/api/v1/classification",
+		classifierApi(db, {
+			enabled: options.classifiersEnabled === true,
+			admin:
+				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+			actor: options.actor ?? "local",
+			kick: options.kickClassifiers,
+		}),
 	);
 	if (!isLive && options.classifierPreview && options.previewRoutes)
 		app.route("/api/preview", options.previewRoutes);

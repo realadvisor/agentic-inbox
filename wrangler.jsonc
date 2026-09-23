@@ -14,9 +14,11 @@
 		"not_found_handling": "single-page-application",
 		"run_worker_first": true,
 	},
+	"triggers": { "crons": ["*/2 * * * *"] },
 	"send_email": [{ "name": "EMAIL" }],
 	"vars": {
 		"MAIL_MODE": "live",
+		"CLASSIFIERS_ENABLED": "true",
 		"MAILBOX_ADMINS": "jonas@realadvisor.com",
 		"MAILBOX_CREATION_ENABLED": "true",
 		"INBOUND_ENABLED": "true",

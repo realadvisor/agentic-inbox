@@ -7,6 +7,7 @@ export async function migrate(db: Database) {
 		[2, "002_real_mail.sql"],
 		[3, "003_mailbox_creation.sql"],
 		[5, "005_conversation_tags.sql"],
+		[6, "006_classifiers.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),

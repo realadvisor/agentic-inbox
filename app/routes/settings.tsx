@@ -3,7 +3,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { ClassifierPreview } from "~/components/ClassifierPreview";
+import { Classifiers } from "~/components/Classifiers";
 import { useMailMode } from "~/components/MailMode";
 import { useSearchParams } from "react-router";
 import { TagSettings } from "~/components/TagSettings";
@@ -16,6 +16,8 @@ export default function SettingsRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const toastManager = useKumoToastManager();
 	const mode = useMailMode();
+	const hasClassifiers =
+		mode.data?.classifierPreview || mode.data?.classifiersEnabled;
 	const [params, setParams] = useSearchParams();
 	const tab = params.get("tab") ?? "classifiers";
 	const { data: mailbox } = useMailbox(mailboxId);
@@ -62,7 +64,7 @@ export default function SettingsRoute() {
 		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
 			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
 
-			{mode.data?.classifierPreview && (
+			{hasClassifiers && (
 				<div className="flex gap-2 mb-6" aria-label="Settings sections">
 					{["classifiers", "tags", "account"].map((t) => (
 						<Button
@@ -75,9 +77,9 @@ export default function SettingsRoute() {
 					))}
 				</div>
 			)}
-			{mode.data?.classifierPreview && tab === "classifiers" ? (
-				<ClassifierPreview />
-			) : mode.data?.classifierPreview && tab === "tags" ? (
+			{hasClassifiers && tab === "classifiers" ? (
+				<Classifiers />
+			) : hasClassifiers && tab === "tags" ? (
 				<TagSettings />
 			) : (
 				<div className="space-y-6">

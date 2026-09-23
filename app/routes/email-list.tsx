@@ -3,12 +3,9 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { ClassifierReviewPreview } from "~/components/ClassifierReviewPreview";
+import { ClassifierReview } from "~/components/ClassifierReview";
 import { useMailMode } from "~/components/MailMode";
-import {
-	previewRequest,
-	type PreviewResult,
-} from "~/services/classifier-preview";
+import { classifierRequest, type Classification } from "~/services/classifiers";
 import { TagActions, TagChips, TagPicker } from "~/components/ConversationTags";
 import { useTags } from "~/queries/tags";
 import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
@@ -165,13 +162,15 @@ export default function EmailListRoute() {
 	}>();
 	const mode = useMailMode();
 	const previewResults = useQuery({
-		queryKey: ["preview-results", mailboxId],
+		queryKey: ["classification-results", mailboxId],
 		queryFn: () =>
-			previewRequest<PreviewResult[]>(
+			classifierRequest<Classification[]>(
 				"/results/" + encodeURIComponent(mailboxId!),
 			),
-		enabled: !!mode.data?.classifierPreview && !!mailboxId,
-		refetchInterval: 2000,
+		enabled:
+			!!(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
+			!!mailboxId,
+		refetchInterval: 5000,
 	});
 
 	const {
@@ -538,8 +537,9 @@ export default function EmailListRoute() {
 												</span>
 											)}
 										</div>
-										{mode.data?.classifierPreview && (
-											<ClassifierReviewPreview
+										{(mode.data?.classifierPreview ||
+											mode.data?.classifiersEnabled) && (
+											<ClassifierReview
 												results={(previewResults.data ?? []).filter(
 													(r) => r.thread_id === email.thread_id,
 												)}

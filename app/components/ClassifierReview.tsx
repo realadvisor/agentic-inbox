@@ -1,27 +1,20 @@
 import { useState } from "react";
 import { Button, Dialog } from "@cloudflare/kumo";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-	previewRequest,
-	type PreviewResult,
-} from "~/services/classifier-preview";
-export function ClassifierReviewPreview({
-	results,
-}: {
-	results: PreviewResult[];
-}) {
+import { classifierRequest, type Classification } from "~/services/classifiers";
+export function ClassifierReview({ results }: { results: Classification[] }) {
 	const [open, setOpen] = useState(false);
 	const qc = useQueryClient();
 	const review = useMutation({
-		mutationFn: ({ row, answer }: { row: PreviewResult; answer: boolean }) =>
-			previewRequest(
+		mutationFn: ({ row, answer }: { row: Classification; answer: boolean }) =>
+			classifierRequest(
 				`/results/${encodeURIComponent(row.mailbox_id)}/${row.thread_id}/${row.classifier_id}`,
 				"PUT",
-				{ answer, revision: row.revision },
+				{ answer, revision: row.revision, token: row.token },
 			),
 		onSuccess: async () => {
 			await Promise.all(
-				["preview-results", "emails", "tags"].map((key) =>
+				["classification-results", "emails", "tags"].map((key) =>
 					qc.invalidateQueries({ queryKey: [key] }),
 				),
 			);
@@ -46,7 +39,7 @@ export function ClassifierReviewPreview({
 						Review classification
 					</Dialog.Title>
 					<p className="text-xs text-kumo-subtle mt-2 mb-4">
-						Local fixture results · Your correction is preserved on reruns.
+						Your correction is preserved on reruns, until new mail arrives.
 					</p>
 					{pending.map((row) => (
 						<div
@@ -55,6 +48,12 @@ export function ClassifierReviewPreview({
 						>
 							<p className="font-medium text-sm">{row.name}</p>
 							<p className="text-sm mt-1">{row.question}</p>
+							{row.status === "error" && (
+								<p className="text-xs text-kumo-subtle mt-2">
+									Classification failed. Answer manually here, or retry from
+									Classifiers.
+								</p>
+							)}
 							<div className="flex gap-2 justify-end mt-3">
 								<Button
 									size="sm"
