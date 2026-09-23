@@ -29,7 +29,7 @@ export async function sendReal(
 	parentId?: string,
 	isReply = false,
 ) {
-	const config = mailboxConfig(mailbox);
+	const config = await mailboxConfig(db, mailbox);
 	if (!config)
 		throw new HTTPException(403, {
 			message: "Mailbox is not enabled for sending",

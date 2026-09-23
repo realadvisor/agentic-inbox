@@ -15,7 +15,7 @@ import {
 } from "@cloudflare/kumo";
 import { EnvelopeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
 import {
@@ -31,11 +31,7 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const {
-		data: mailboxes = [],
-		refetch: refetchMailboxes,
-		isFetched: mailboxesFetched,
-	} = useMailboxes();
+	const { data: mailboxes = [] } = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
 
@@ -46,7 +42,6 @@ export default function HomeRoute() {
 	});
 
 	const domains = configData?.domains ?? [];
-	const emailAddresses = configData?.emailAddresses ?? [];
 
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [newPrefix, setNewPrefix] = useState("");
@@ -68,34 +63,6 @@ export default function HomeRoute() {
 		}
 	}, [domains, selectedDomain]);
 
-	// Auto-create mailboxes from config (run once when both data sources are ready)
-	const autoCreateDone = useRef(false);
-	useEffect(() => {
-		if (autoCreateDone.current) return;
-		if (emailAddresses.length === 0 || !mailboxesFetched) return;
-		const existingEmails = new Set(mailboxes.map((m) => m.email.toLowerCase()));
-		const toCreate = emailAddresses.filter(
-			(addr) => !existingEmails.has(addr.toLowerCase()),
-		);
-		if (toCreate.length === 0) {
-			autoCreateDone.current = true;
-			return;
-		}
-		autoCreateDone.current = true;
-		let cancelled = false;
-		Promise.all(
-			toCreate.map((addr) => {
-				const localPart = addr.split("@")[0] || addr;
-				return api.createMailbox(addr, localPart).catch(() => {});
-			}),
-		).then(() => {
-			if (!cancelled) refetchMailboxes();
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [emailAddresses, mailboxes, refetchMailboxes]);
-
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
@@ -103,7 +70,7 @@ export default function HomeRoute() {
 			setCreateError("Please fill in all fields");
 			return;
 		}
-		const email = `${newPrefix}@${selectedDomain}`;
+		const email = `${newPrefix.trim().toLowerCase()}@${selectedDomain}`;
 		const name = newName || newPrefix;
 		setIsCreating(true);
 		try {
@@ -137,14 +104,9 @@ export default function HomeRoute() {
 		}
 	};
 
-	const isConfigured = emailAddresses.length > 0;
-	const accounts = isConfigured
-		? emailAddresses.map((addr) => ({
-				id: addr,
-				email: addr,
-				name: addr.split("@")[0] || addr,
-			}))
-		: mailboxes;
+	const accounts = mailboxes;
+	const canCreate = configData?.canCreateMailboxes ?? false;
+	const canDelete = configData?.canDeleteMailboxes ?? false;
 
 	const isLoading = !configData;
 
@@ -154,7 +116,7 @@ export default function HomeRoute() {
 				<div className="mb-8">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold text-kumo-default">Mailboxes</h1>
-						{!isConfigured && (
+						{canCreate && (
 							<Button
 								variant="primary"
 								icon={<PlusIcon size={16} />}
@@ -196,7 +158,7 @@ export default function HomeRoute() {
 										{account.email}
 									</div>
 								</div>
-								{!isConfigured && (
+								{canDelete && (
 									<Button
 										variant="ghost"
 										size="sm"
@@ -231,11 +193,11 @@ export default function HomeRoute() {
 								No mailboxes yet
 							</h3>
 							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
-								{isConfigured
-									? "Your email routing is configured but no mailboxes have been created yet. They will appear here automatically."
-									: "Create a mailbox to start sending and receiving emails with your domain."}
+								{canCreate
+									? "Create a mailbox to start sending and receiving emails."
+									: "Ask a mailbox administrator to create a mailbox."}
 							</p>
-							{!isConfigured && (
+							{canCreate && (
 								<Button
 									variant="primary"
 									icon={<PlusIcon size={16} />}
@@ -300,6 +262,13 @@ export default function HomeRoute() {
 								)}
 							</div>
 						</div>
+						{configData?.mode === "live" && newPrefix && (
+							<p className="text-sm text-kumo-subtle">
+								Sends as {newPrefix.trim().toLowerCase()}@realadvisor.com.
+								Receiving replies at this public address requires a Google Group
+								or Workspace forwarding rule.
+							</p>
+						)}
 						<Input
 							label="Display Name (optional)"
 							placeholder="Info"

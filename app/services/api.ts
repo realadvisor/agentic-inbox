@@ -106,6 +106,8 @@ const api = {
 		get<{
 			domains: string[];
 			emailAddresses: string[];
+			canCreateMailboxes: boolean;
+			canDeleteMailboxes: boolean;
 			mode: "live" | "synthetic";
 		}>("/api/v1/config"),
 
