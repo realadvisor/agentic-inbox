@@ -54,6 +54,8 @@ const querySchema = z.object({
 });
 
 export interface ApiOptions {
+	classifierPreview?: boolean;
+	previewRoutes?: Hono;
 	readAttachment: (key: string) => Promise<Uint8Array | null>;
 	// Remote authentication is enforced by the Worker before it constructs this API.
 	origin?: string;
@@ -130,6 +132,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				options.mode === "live" ? ["ingest.realadvisor.com"] : ["example.test"],
 			emailAddresses: [],
 			canCreateMailboxes: canCreate,
+			classifierPreview: !isLive && options.classifierPreview === true,
 			canDeleteMailboxes: !isLive,
 			mode: options.mode ?? "synthetic",
 		}),
@@ -471,6 +474,8 @@ export function createApi(db: Database, options: ApiOptions) {
 			});
 		},
 	);
+	if (!isLive && options.classifierPreview && options.previewRoutes)
+		app.route("/api/preview", options.previewRoutes);
 	app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 	return app;
 }

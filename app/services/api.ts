@@ -126,6 +126,7 @@ const api = {
 			canCreateMailboxes: boolean;
 			canDeleteMailboxes: boolean;
 			mode: "live" | "synthetic";
+			classifierPreview?: boolean;
 		}>("/api/v1/config"),
 
 	// Mailboxes
