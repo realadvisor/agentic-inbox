@@ -1,5 +1,6 @@
 import { Button, Input, Popover } from "@cloudflare/kumo";
 import {
+	RobotIcon,
 	CheckIcon,
 	CaretDownIcon,
 	PlusIcon,
@@ -10,14 +11,14 @@ import {
 import { useState } from "react";
 import { useTags, useTagMutation } from "~/queries/tags";
 import api from "~/services/api";
-import type { Tag } from "~/types";
+import type { ConversationTag, Tag } from "~/types";
 
 export function TagChips({
 	tags = [],
 	onRemove,
 	disabled,
 }: {
-	tags?: Tag[];
+	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	onRemove?: (id: string) => void;
 	disabled?: boolean;
 }) {
@@ -26,6 +27,13 @@ export function TagChips({
 			{tags.map((tag) => (
 				<span
 					key={tag.id}
+					title={
+						tag.source === "classifier"
+							? "Applied automatically"
+							: tag.source === "manual"
+								? "Applied manually"
+								: undefined
+					}
 					className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium text-kumo-default"
 					style={{
 						backgroundColor: `${tag.color}20`,
@@ -33,6 +41,15 @@ export function TagChips({
 						borderColor: `${tag.color}14`,
 					}}
 				>
+					{tag.source === "classifier" && (
+						<RobotIcon
+							size={12}
+							weight="fill"
+							className="shrink-0"
+							role="img"
+							aria-label="Applied automatically"
+						/>
+					)}
 					<span className="truncate" title={tag.name}>
 						{tag.name}
 					</span>
