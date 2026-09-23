@@ -43,6 +43,7 @@ export function Classifiers() {
 				mailbox_ids: c.mailbox_ids,
 				enabled: !c.enabled,
 				revision: c.revision,
+				include_reviewed_examples: c.include_reviewed_examples ?? false,
 			}),
 		onSuccess: refresh,
 	});
@@ -94,6 +95,11 @@ export function Classifiers() {
 									? c.mailbox_ids.map((m) => m.split("@")[0]).join(", ")
 									: "All mailboxes"}
 							</p>
+							{c.include_reviewed_examples && (
+								<p className="text-xs text-kumo-subtle mt-1">
+									Uses recent human examples
+								</p>
+							)}
 						</div>
 						<div className="flex gap-2 items-center shrink-0">
 							<div className="flex items-center gap-2">
@@ -254,6 +260,10 @@ function Editor({
 	close: () => void;
 	done: (c: Classifier) => void;
 }) {
+	const mode = useMailMode();
+	const [includeExamples, setIncludeExamples] = useState(
+		current?.include_reviewed_examples ?? false,
+	);
 	const tags = useTags();
 	const mailboxes = useMailboxes();
 	const [question, setQuestion] = useState(current?.question ?? "");
@@ -290,6 +300,7 @@ function Editor({
 					mailbox_ids: scope === "all" ? [] : selected,
 					enabled: current?.enabled ?? false,
 					revision: current?.revision,
+					include_reviewed_examples: includeExamples,
 				},
 			);
 		},
@@ -389,6 +400,26 @@ function Editor({
 							</label>
 						))}
 					</div>
+				)}
+				{!mode.data?.classifierPreview && (
+					<label className="flex items-start gap-2 text-sm">
+						<input
+							type="checkbox"
+							className="mt-1"
+							checked={includeExamples}
+							onChange={(e) => setIncludeExamples(e.target.checked)}
+						/>
+						<span>
+							Use recent human examples
+							<small className="block text-kumo-subtle mt-1">
+								Send up to six recent reviewed or manually tagged conversations
+								from the same mailbox to Jev as examples. Includes yes and no
+								decisions from the last 30 days, saved as they looked when
+								labeled. Collection starts with new decisions; existing mail
+								runs only when requested.
+							</small>
+						</span>
+					</label>
 				)}
 				{save.error && (
 					<p role="alert" className="text-sm text-kumo-danger">

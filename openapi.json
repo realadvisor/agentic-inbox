@@ -4437,6 +4437,10 @@
 						"type": "integer",
 						"minimum": 1,
 						"description": "Required on update; optimistic version from GET classifiers."
+					},
+					"include_reviewed_examples": {
+						"type": "boolean",
+						"description": "Use up to six recent human-labeled snapshots from the same mailbox and question as Jev examples. Defaults to false on create; omission preserves the value on update. Does not rerun completed classifications."
 					}
 				}
 			},
@@ -4517,6 +4521,10 @@
 							}
 						],
 						"nullable": true
+					},
+					"include_reviewed_examples": {
+						"type": "boolean",
+						"description": "Use up to six recent human-labeled snapshots from the same mailbox and question as Jev examples. Defaults to false on create; omission preserves the value on update. Does not rerun completed classifications."
 					}
 				}
 			},

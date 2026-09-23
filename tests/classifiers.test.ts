@@ -762,3 +762,204 @@ test("dead-letter duplicates cannot interrupt an active provider request", async
 	});
 	assert.equal((await job(thread)).status, "complete");
 });
+
+test("human example snapshots preserve decision-time evidence and exclude predictions", async () => {
+	await reset();
+	const thread = await message(undefined, "Please answer this question.");
+	await processJob(db, "test", (await job(thread)).token, yes);
+	assert.equal((await db`SELECT * FROM classifier_examples`).length, 0);
+	await setConversationTags(
+		db,
+		mailbox,
+		[thread],
+		tagId,
+		"add",
+		"reviewer@example.test",
+	);
+	const [positive] = await db`SELECT * FROM classifier_examples`;
+	assert.equal(positive.answer, true);
+	assert.equal(positive.source, "manual");
+	assert.equal(positive.messages.length, 1);
+	await message(thread, "A later response", "sent");
+	assert.deepEqual(
+		(await db`SELECT messages FROM classifier_examples`)[0].messages,
+		positive.messages,
+	);
+	await setConversationTags(
+		db,
+		mailbox,
+		[thread],
+		tagId,
+		"remove",
+		"reviewer@example.test",
+	);
+	const [negative] = await db`SELECT * FROM classifier_examples`;
+	assert.equal(negative.answer, false);
+	assert.equal(negative.messages.length, 2);
+	await message(thread, "x".repeat(13000));
+	await setConversationTags(
+		db,
+		mailbox,
+		[thread],
+		tagId,
+		"add",
+		"reviewer@example.test",
+	);
+	assert.equal(
+		(await db`SELECT * FROM classifier_examples`).length,
+		0,
+		"oversized relabel removes stale example",
+	);
+});
+
+test("human classifier review becomes a labeled example without draft evidence", async () => {
+	await reset();
+	const thread = await message();
+	await message(thread, "Unsent draft", "draft");
+	await processJob(db, "test", (await job(thread)).token, uncertain);
+	const row = await job(thread);
+	const response = await call(
+		`/results/${mailbox}/${thread}/${classifierId}`,
+		"PUT",
+		{
+			answer: false,
+			revision: row.revision,
+			token: row.token,
+		},
+	);
+	assert.equal(response.status, 204, await response.text());
+	const [example] = await db`SELECT * FROM classifier_examples`;
+	assert.equal(example.answer, false);
+	assert.equal(example.source, "review");
+	assert.equal(example.messages.length, 1);
+});
+
+test("examples are opt-in, balanced, bounded, mailbox-scoped and separate from target", async () => {
+	await reset();
+	await db`UPDATE classifiers SET include_reviewed_examples=false WHERE id=${classifierId}`;
+	for (let i = 0; i < 8; i++) {
+		const thread = await message(undefined, `Human example ${i}`);
+		await setConversationTags(
+			db,
+			mailbox,
+			[thread],
+			tagId,
+			i < 4 ? "add" : "remove",
+			"reviewer@example.test",
+		);
+	}
+	const target = await message(undefined, "Current conversation");
+	let body: {
+		questions: {
+			match: {
+				criteria?: {
+					true: { examples: unknown[] };
+					false: { examples: unknown[] };
+				};
+			};
+		};
+		state: { messages: unknown[] };
+	} = { questions: { match: {} }, state: { messages: [] } };
+	const capture: typeof fetch = async (_url, init) => {
+		body = JSON.parse(init!.body as string);
+		return yes(_url, init);
+	};
+	await processJob(db, "test", (await job(target)).token, capture);
+	assert.equal(Object.hasOwn(body.questions.match, "criteria"), false);
+	await db`UPDATE classifiers SET include_reviewed_examples=true WHERE id=${classifierId}`;
+	await message(target, "New current message");
+	await processJob(db, "test", (await job(target)).token, capture);
+	assert.ok(body.questions.match.criteria);
+	assert.equal(body.questions.match.criteria.true.examples.length, 3);
+	assert.equal(body.questions.match.criteria.false.examples.length, 3);
+	assert.equal(body.state.messages.length, 2);
+	assert.ok(
+		!JSON.stringify(body.questions.match.criteria).includes(
+			"Current conversation",
+		),
+	);
+	assert.ok(
+		JSON.stringify(body.questions.match.criteria).includes("Human example 3"),
+	);
+	assert.ok(
+		!JSON.stringify(body.questions.match.criteria).includes("Human example 0"),
+	);
+	const { recentExamples } = await import("../server/classification/examples");
+	const [{ question }] =
+		await db`SELECT question FROM classifiers WHERE id=${classifierId}`;
+	assert.equal(
+		(
+			await recentExamples(
+				db,
+				classifierId,
+				"other@example.test",
+				target,
+				question,
+			)
+		).length,
+		0,
+	);
+	assert.equal(
+		(
+			await recentExamples(
+				db,
+				classifierId,
+				mailbox,
+				target,
+				"Different question",
+			)
+		).length,
+		0,
+	);
+	assert.equal(
+		(await recentExamples(db, classifierId, mailbox, target, question, 1))
+			.length,
+		0,
+	);
+	const [own] = await db`SELECT thread_id FROM classifier_examples LIMIT 1`;
+	assert.equal(
+		(await recentExamples(db, classifierId, mailbox, own.thread_id, question))
+			.length,
+		6,
+	);
+	await db`UPDATE classifier_examples SET labeled_at=now()-interval '31 days'`;
+	assert.equal(
+		(await recentExamples(db, classifierId, mailbox, target, question)).length,
+		0,
+	);
+});
+
+test("example setting persists without clearing decisions; changing question clears examples", async () => {
+	await reset();
+	const thread = await message();
+	await setConversationTags(
+		db,
+		mailbox,
+		[thread],
+		tagId,
+		"add",
+		"reviewer@example.test",
+	);
+	let [c] =
+		await db`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId}`;
+	const update = (extra: Record<string, unknown>) =>
+		call(`/classifiers/${classifierId}`, "PUT", {
+			question: c.question,
+			tag_id: c.tag_id,
+			mailbox_ids: c.mailbox_ids,
+			enabled: c.enabled,
+			revision: c.revision,
+			...extra,
+		});
+	let response = await update({ include_reviewed_examples: true });
+	assert.equal(response.status, 200);
+	c = await response.json();
+	assert.equal(c.include_reviewed_examples, true);
+	assert.equal((await db`SELECT * FROM classifier_examples`).length, 1);
+	response = await update({});
+	c = await response.json();
+	assert.equal(c.include_reviewed_examples, true);
+	response = await update({ question: "A new question?" });
+	assert.equal(response.status, 200);
+	assert.equal((await db`SELECT * FROM classifier_examples`).length, 0);
+});
