@@ -1,7 +1,7 @@
 import { useMailMode } from "./MailMode";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Dialog } from "@cloudflare/kumo";
+import { Button, Dialog, Select } from "@cloudflare/kumo";
 import { PlusIcon, SparkleIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import { useTags } from "~/queries/tags";
 import { useMailboxes } from "~/queries/mailboxes";
@@ -354,17 +354,21 @@ function Editor({
 							</label>
 						)}
 					</div>
-					<label className="text-sm">
-						Mailboxes
-						<select
-							className={field + " mt-1.5"}
+					<div>
+						<Select
+							label="Mailboxes"
+							className="w-full"
+							items={{ all: "All mailboxes", selected: "Selected mailboxes" }}
 							value={scope}
-							onChange={(e) => setScope(e.target.value)}
+							disabled={save.isPending}
+							onValueChange={(value) => {
+								if (value) setScope(value);
+							}}
 						>
-							<option value="all">All mailboxes</option>
-							<option value="selected">Selected mailboxes</option>
-						</select>
-					</label>
+							<Select.Option value="all">All mailboxes</Select.Option>
+							<Select.Option value="selected">Selected mailboxes</Select.Option>
+						</Select>
+					</div>
 				</div>
 				{scope === "selected" && (
 					<div className="flex gap-4 flex-wrap">
