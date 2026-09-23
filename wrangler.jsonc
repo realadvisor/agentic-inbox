@@ -5,7 +5,8 @@
 	"main": "server/worker.ts",
 	"compatibility_date": "2026-09-22",
 	"compatibility_flags": ["nodejs_compat"],
-	"workers_dev": true,
+	"workers_dev": false,
+	"routes": [{ "pattern": "inbox.realadvisor.com", "custom_domain": true }],
 	"preview_urls": false,
 	"assets": {
 		"directory": "./build/client",
@@ -27,7 +28,7 @@
 		"INBOUND_ENABLED": "true",
 		"ACCESS_ISSUER": "https://realadvisor.cloudflareaccess.com",
 		"ACCESS_AUDIENCE": "46ebcd3d8228fe0452ef2831b15d748f3f45de65ef84dd85a533a9cc8d543bd1",
-		"PUBLIC_ORIGIN": "https://realadvisor-email-inbox-prototype.rodriguezjoan.workers.dev",
+		"PUBLIC_ORIGIN": "https://inbox.realadvisor.com",
 	},
 	"hyperdrive": [
 		{

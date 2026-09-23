@@ -87,9 +87,9 @@ The hosted inbox runs on Cloudflare Workers with Neon Postgres through Hyperdriv
 
 Deployment remains manual from this fork: `pnpm install --frozen-lockfile`, then `pnpm run deploy`. Run database migrations separately first with `pnpm exec tsx --env-file=.env.cloud scripts/migrate.ts`. Credentials belong in ignored `.env.cloud` (permissions 0600), never in git. Local `.env` stays pointed at the local database. `pnpm deploy:check` builds and bundles without publishing.
 
-The existing Neon project is `email-inbox` (`jolly-rain-30890362`) in the RealAdvisor organization, Frankfurt (`aws-eu-central-1`). Hyperdrive query caching is disabled. The Worker and private R2 bucket retain the infrastructure name `realadvisor-email-inbox-prototype` to preserve the existing URL and data.
+The existing Neon project is `email-inbox` (`jolly-rain-30890362`) in the RealAdvisor organization, Frankfurt (`aws-eu-central-1`). Hyperdrive query caching is disabled. The Worker and private R2 bucket retain the infrastructure name `realadvisor-email-inbox-prototype` to preserve the existing resources and data. The public hostname is `inbox.realadvisor.com`; workers.dev and preview URLs are disabled.
 
-Hosted URL: <https://realadvisor-email-inbox-prototype.rodriguezjoan.workers.dev>.
+Hosted URL: <https://inbox.realadvisor.com>.
 
 ## Upstream updates
 
