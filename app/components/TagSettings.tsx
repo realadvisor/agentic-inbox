@@ -1,9 +1,28 @@
 import { Button, Dialog, Input } from "@cloudflare/kumo";
+import {
+	TagIcon,
+	PlusIcon,
+	PencilSimpleIcon,
+	TrashIcon,
+	CheckIcon,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTags, useTagMutation } from "~/queries/tags";
 import api from "~/services/api";
 import type { Tag } from "~/types";
 import { TagChips } from "./ConversationTags";
+
+const COLORS = [
+	["Blue", "#2563eb"],
+	["Violet", "#7c3aed"],
+	["Pink", "#db2777"],
+	["Red", "#dc2626"],
+	["Orange", "#ea580c"],
+	["Amber", "#ca8a04"],
+	["Green", "#16a34a"],
+	["Teal", "#0d9488"],
+	["Slate", "#64748b"],
+];
 
 export function TagSettings() {
 	const catalog = useTags();
@@ -23,36 +42,61 @@ export function TagSettings() {
 		save.reset();
 	};
 	return (
-		<section className="rounded-lg border border-kumo-line bg-kumo-base p-5 space-y-4">
-			<div className="flex justify-between items-center">
-				<h2 className="text-sm font-medium">Tags</h2>
-				<Button size="sm" onClick={() => open(null)}>
+		<section className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+			<div className="flex items-center justify-between gap-4 p-5">
+				<div className="flex items-center gap-3">
+					<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+						<TagIcon size={21} />
+					</div>
+					<div>
+						<h2 className="text-sm font-semibold">
+							Tags{" "}
+							<span className="ml-1.5 text-xs font-normal text-kumo-subtle">
+								{catalog.data?.length ?? 0}
+							</span>
+						</h2>
+						<p className="mt-0.5 text-xs text-kumo-subtle">
+							Organize your team’s conversations.
+						</p>
+					</div>
+				</div>
+				<Button
+					size="sm"
+					variant="primary"
+					icon={<PlusIcon size={14} />}
+					onClick={() => open(null)}
+				>
 					New tag
 				</Button>
 			</div>
-			<p className="text-sm text-kumo-subtle">
-				Shared across all mailboxes. Apply tags to conversations independently
-				of folders.
-			</p>
+			<div className="border-t border-kumo-line px-5 py-2.5 text-xs text-kumo-subtle bg-kumo-tint">
+				Shared across all mailboxes
+			</div>
+
 			{catalog.isPending && <p>Loading tags…</p>}
 			{catalog.data?.length === 0 && (
-				<p className="text-sm text-kumo-subtle">No tags yet.</p>
+				<p className="p-5 text-sm text-kumo-subtle">
+					Create your first tag to organize conversations.
+				</p>
 			)}
 			{catalog.data?.map((tag) => (
-				<div key={tag.id} className="flex items-center justify-between gap-2">
+				<div
+					key={tag.id}
+					className="group flex items-center justify-between gap-3 border-t border-kumo-line px-5 py-3.5 transition-colors hover:bg-kumo-tint"
+				>
 					<TagChips tags={[tag]} />
-					<div className="flex gap-2">
+					<div className="flex shrink-0 gap-1">
 						<Button
 							size="sm"
-							variant="secondary"
+							variant="ghost"
 							aria-label={`Edit tag ${tag.name}`}
 							onClick={() => open(tag)}
 						>
-							Edit
+							<PencilSimpleIcon size={15} />
 						</Button>
 						<Button
 							size="sm"
-							variant="secondary"
+							variant="ghost"
 							disabled={remove.isPending}
 							aria-label={`Delete tag ${tag.name}`}
 							onClick={() => {
@@ -64,7 +108,7 @@ export function TagSettings() {
 									remove.mutate(tag.id);
 							}}
 						>
-							Delete
+							<TrashIcon size={15} />
 						</Button>
 					</div>
 				</div>
@@ -103,16 +147,53 @@ export function TagSettings() {
 							disabled={save.isPending}
 							onChange={(e) => setName(e.target.value)}
 						/>
-						<label className="flex items-center gap-3 text-sm">
-							Tag color
-							<input
-								aria-label="Tag color"
-								type="color"
-								value={color}
-								disabled={save.isPending}
-								onChange={(e) => setColor(e.target.value)}
+						<fieldset disabled={save.isPending} className="space-y-3">
+							<legend className="mb-2 text-sm font-medium">Color</legend>
+							<div className="flex flex-wrap gap-2">
+								{COLORS.map(([label, hex]) => (
+									<button
+										key={hex}
+										type="button"
+										aria-label={`${label} color`}
+										aria-pressed={color.toLowerCase() === hex}
+										onClick={() => setColor(hex)}
+										className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-transparent text-white transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2"
+										style={{
+											backgroundColor: hex,
+											outline:
+												color.toLowerCase() === hex
+													? `2px solid ${hex}`
+													: undefined,
+											outlineOffset: 2,
+										}}
+									>
+										{color.toLowerCase() === hex && (
+											<CheckIcon size={14} weight="bold" />
+										)}
+									</button>
+								))}
+							</div>
+							<label className="flex items-center gap-2 text-xs text-kumo-subtle">
+								<input
+									aria-label="Tag color"
+									type="color"
+									value={color}
+									onChange={(e) => setColor(e.target.value)}
+									className="h-6 w-6 cursor-pointer overflow-hidden rounded border-0 bg-transparent p-0"
+								/>
+								Custom color
+								<span className="ml-auto font-mono">{color.toUpperCase()}</span>
+							</label>
+						</fieldset>
+						<div className="rounded-lg border border-dashed border-kumo-line bg-kumo-tint px-4 py-4">
+							<p className="mb-2.5 text-xs text-kumo-subtle">Preview</p>
+							<TagChips
+								tags={[
+									{ id: "preview", name: name.trim() || "Your tag", color },
+								]}
 							/>
-						</label>
+						</div>
+
 						{save.error && (
 							<p role="alert" className="text-sm text-kumo-danger">
 								{save.error.message}

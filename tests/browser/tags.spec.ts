@@ -5,6 +5,13 @@ import { InboxStore } from "../../server/store";
 test("create, edit, filter, apply/remove and bulk tag synthetic conversations", async ({
 	page,
 }) => {
+	const choose = async (label: string, tagName: string) => {
+		await page.getByRole("button", { name: label, exact: true }).click();
+		await page
+			.getByRole("button", { name: `Choose tag ${tagName}`, exact: true })
+			.click();
+	};
+
 	const db = connect();
 	const store = new InboxStore(db);
 	const mailbox = `tags-browser-${crypto.randomUUID()}@example.test`;
@@ -32,21 +39,23 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await page.getByRole("textbox", { name: "Tag name" }).fill(name);
 		await page.getByLabel("Tag color").fill("#16a34a");
 		await page.getByRole("button", { name: "Save tag" }).click();
+		await expect(page.getByRole("textbox", { name: "Tag name" })).toHaveCount(
+			0,
+		);
 		await expect(page.getByText(name, { exact: true })).toBeVisible();
 		tagId = (await db`SELECT id FROM tags WHERE name=${name}`)[0].id;
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
 		await page.getByText("Synthetic privacy request", { exact: true }).click();
+		await page.getByRole("button", { name: "+ Tag", exact: true }).click();
+		await page.getByRole("textbox", { name: "Search tags" }).fill(name);
 		await page
-			.getByRole("combobox", { name: "+ Tag", exact: true })
-			.selectOption(tagId!);
-		await page.getByRole("button", { name: "Apply tag", exact: true }).click();
+			.getByRole("button", { name: `Choose tag ${name}`, exact: true })
+			.click();
 		await expect(
 			page.getByRole("button", { name: `Remove tag ${name}`, exact: true }),
 		).toBeVisible();
 		await page.reload();
-		await page
-			.getByRole("combobox", { name: "Tag filter", exact: true })
-			.selectOption(tagId!);
+		await choose("Tag filter", name);
 		await expect(
 			page.getByText("Synthetic viewing enquiry", { exact: true }),
 		).toHaveCount(0);
@@ -71,16 +80,15 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await expect(
 			page.getByText("No conversations with this tag in this folder."),
 		).toBeVisible();
+		await page.getByRole("button", { name: "Tag filter", exact: true }).click();
 		await page
-			.getByRole("combobox", { name: "Tag filter", exact: true })
-			.selectOption("");
+			.getByRole("button", { name: "All conversations", exact: true })
+			.click();
 		await page
 			.getByRole("checkbox", { name: "Select all conversations on page" })
 			.check();
 		await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-		await page
-			.getByRole("combobox", { name: "Tag for selected conversations" })
-			.selectOption(tagId!);
+		await choose("Tag for selected conversations", name);
 		await page.getByRole("button", { name: "Add tag", exact: true }).click();
 		await expect
 			.poll(
@@ -89,9 +97,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 						.totalCount,
 			)
 			.toBe(2);
-		await page
-			.getByRole("combobox", { name: "Tag for selected conversations" })
-			.selectOption(tagId!);
+		await choose("Tag for selected conversations", name);
 		await page.getByRole("button", { name: "Remove tag", exact: true }).click();
 		await expect
 			.poll(
@@ -100,9 +106,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 						.totalCount,
 			)
 			.toBe(0);
-		await page
-			.getByRole("combobox", { name: "Tag for selected conversations" })
-			.selectOption(tagId!);
+		await choose("Tag for selected conversations", name);
 		await page.getByRole("button", { name: "Add tag", exact: true }).click();
 		await expect
 			.poll(
@@ -117,11 +121,12 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			.click();
 		await page.getByRole("textbox", { name: "Tag name" }).fill(renamed);
 		await page.getByRole("button", { name: "Save tag" }).click();
+		await expect(page.getByRole("textbox", { name: "Tag name" })).toHaveCount(
+			0,
+		);
 		await expect(page.getByText(renamed, { exact: true })).toBeVisible();
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
-		await page
-			.getByRole("combobox", { name: "Tag filter", exact: true })
-			.selectOption(tagId!);
+		await choose("Tag filter", renamed);
 		await expect(
 			page
 				.getByRole("button")

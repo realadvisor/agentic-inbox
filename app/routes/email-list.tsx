@@ -3,7 +3,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { TagActions, TagChips } from "~/components/ConversationTags";
+import { TagActions, TagChips, TagPicker } from "~/components/ConversationTags";
 import { useTags } from "~/queries/tags";
 import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
 import {
@@ -328,31 +328,19 @@ export default function EmailListRoute() {
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-kumo-line text-sm">
-				<label className="flex items-center gap-2">
-					Tag filter
-					<select
-						aria-label="Tag filter"
-						className="rounded-md border border-kumo-line bg-kumo-base p-1.5 max-w-48"
-						value={tagId}
-						onChange={(e) => {
-							setTagId(e.target.value);
-							setPage(1);
-						}}
-					>
-						<option value="">All tags</option>
-						{catalog.data?.map((tag) => (
-							<option key={tag.id} value={tag.id}>
-								{tag.name}
-							</option>
-						))}
-						{tagId &&
-							catalog.data &&
-							!catalog.data.some((tag) => tag.id === tagId) && (
-								<option value={tagId}>Deleted tag</option>
-							)}
-					</select>
-				</label>
+			<div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-kumo-line text-sm">
+				<TagPicker
+					tags={catalog.data ?? []}
+					value={tagId}
+					label="Tag filter"
+					placeholder="Filter by tag"
+					allowAll
+					onChange={(id) => {
+						setTagId(id);
+						setPage(1);
+					}}
+				/>
+
 				{catalog.error && <span role="alert">{catalog.error.message}</span>}
 				{emails.length > 0 && (
 					<label className="flex items-center gap-2">
@@ -379,7 +367,9 @@ export default function EmailListRoute() {
 				)}
 				{selectedThreads.length > 0 && mailboxId && (
 					<>
-						<span>{selectedThreads.length} selected</span>
+						<span className="rounded-md bg-kumo-tint px-2 py-1 text-xs font-medium">
+							{selectedThreads.length} selected
+						</span>
 						<TagActions
 							bulk
 							mailboxId={mailboxId}
