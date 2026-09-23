@@ -40,6 +40,9 @@
 		},
 		{
 			"name": "Attachments"
+		},
+		{
+			"name": "Tags"
 		}
 	],
 	"paths": {
@@ -789,7 +792,7 @@
 				"operationId": "getListEmails",
 				"summary": "List emails",
 				"tags": ["Messages"],
-				"description": "Page-based pagination. Query searches subject, sender, recipient and body as a literal substring. Filters combine with AND. date_start is inclusive; date_end exclusive. threaded=true requires folder and returns the latest matching email per thread. Mail arrival can shift page boundaries; deduplicate workflow processing by email UUID.",
+				"description": "Page-based pagination. Query searches subject, sender, recipient and body as a literal substring. Filters combine with AND. date_start is inclusive; date_end exclusive. threaded=true returns the latest matching email per thread. Mail arrival can shift page boundaries; deduplicate workflow processing by email UUID. Tags are returned on every message. Tag filtering never joins duplicate assignment rows into the result.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -922,6 +925,15 @@
 							"enum": ["ASC", "DESC"],
 							"default": "DESC"
 						}
+					},
+					{
+						"name": "tag_id",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"description": "Active conversation tag UUID. Applied before thread grouping, counting and pagination; combined with other filters using AND."
 					}
 				],
 				"responses": {
@@ -1157,7 +1169,7 @@
 				"operationId": "getSearchEmails",
 				"summary": "Search emails",
 				"tags": ["Messages"],
-				"description": "Page-based pagination. Query searches subject, sender, recipient and body as a literal substring. Filters combine with AND. date_start is inclusive; date_end exclusive. threaded=true requires folder and returns the latest matching email per thread. Mail arrival can shift page boundaries; deduplicate workflow processing by email UUID.",
+				"description": "Page-based pagination. Query searches subject, sender, recipient and body as a literal substring. Filters combine with AND. date_start is inclusive; date_end exclusive. threaded=true returns the latest matching email per thread. Mail arrival can shift page boundaries; deduplicate workflow processing by email UUID. Tags are returned on every message. Tag filtering never joins duplicate assignment rows into the result.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1290,6 +1302,15 @@
 							"enum": ["ASC", "DESC"],
 							"default": "DESC"
 						}
+					},
+					{
+						"name": "tag_id",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"description": "Active conversation tag UUID. Applied before thread grouping, counting and pagination; combined with other filters using AND."
 					}
 				],
 				"responses": {
@@ -2953,6 +2974,600 @@
 					}
 				}
 			}
+		},
+		"/api/v1/tags": {
+			"get": {
+				"operationId": "listTags",
+				"summary": "List shared tags",
+				"tags": ["Tags"],
+				"description": "Shared catalog across mailboxes, available to all authenticated inbox users.",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/Tag"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "createTag",
+				"summary": "Create shared tag",
+				"tags": ["Tags"],
+				"description": "Names are trimmed and case-insensitively unique.",
+				"parameters": [],
+				"responses": {
+					"201": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Tag"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/TagInput"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/tags/{tagId}": {
+			"put": {
+				"operationId": "updateTag",
+				"summary": "Edit tag name and color",
+				"tags": ["Tags"],
+				"description": "Stable UUID references preserve every assignment across renames.",
+				"parameters": [
+					{
+						"name": "tagId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Tag"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/TagInput"
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteTag",
+				"summary": "Delete shared tag and all assignments",
+				"tags": ["Tags"],
+				"description": "Confirm with the user first. Permanently deletes the tag and all assignments, including removal records, across every mailbox.",
+				"parameters": [
+					{
+						"name": "tagId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "confirm",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"enum": ["true"]
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/tags/{tagId}": {
+			"put": {
+				"operationId": "assignConversationTag",
+				"summary": "Assign conversation tag",
+				"tags": ["Tags"],
+				"description": "Idempotent membership; records manual source, verified actor, creation and update times. The conversation must exist in this mailbox.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "threadId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "tagId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "removeConversationTag",
+				"summary": "Remove conversation tag",
+				"tags": ["Tags"],
+				"description": "Keeps the shared tag. Persists a manual removal tombstone even if not assigned, so future classifiers can preserve human intent. Repeating an operation records the latest actor/time.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					},
+					{
+						"name": "threadId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "tagId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/tags/bulk": {
+			"post": {
+				"operationId": "bulkConversationTags",
+				"summary": "Add or remove tag on selected conversations",
+				"tags": ["Tags"],
+				"description": "Atomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers.",
+				"parameters": [
+					{
+						"$ref": "#/components/parameters/mailboxId"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input or confirmation missing",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Access login required",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Tag or conversation not found in this mailbox",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Duplicate name or conflicting reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["thread_ids", "tag_id", "action"],
+								"properties": {
+									"thread_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 100,
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										}
+									},
+									"tag_id": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"action": {
+										"type": "string",
+										"enum": ["add", "remove"]
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -3142,6 +3757,13 @@
 					},
 					"has_draft": {
 						"type": "boolean"
+					},
+					"tags": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ConversationTag"
+						},
+						"description": "Active tags on this mailbox/conversation; shared by every message, including replies and archived messages."
 					}
 				},
 				"required": [
@@ -3318,6 +3940,73 @@
 					}
 				},
 				"required": ["emails", "totalCount"]
+			},
+			"TagInput": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["name", "color"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{6}$",
+						"example": "#2563eb"
+					}
+				}
+			},
+			"Tag": {
+				"type": "object",
+				"required": ["id", "name", "color"],
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{6}$",
+						"example": "#2563eb"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updated_at": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"ConversationTag": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/Tag"
+					},
+					{
+						"type": "object",
+						"required": ["source", "actor", "created_at", "updated_at"],
+						"properties": {
+							"source": {
+								"type": "string",
+								"enum": ["manual", "classifier"],
+								"description": "Current write endpoints always record manual."
+							},
+							"actor": {
+								"type": "string",
+								"description": "Verified Access email or local-synthetic-user. Never client supplied."
+							}
+						}
+					}
+				]
 			}
 		},
 		"parameters": {

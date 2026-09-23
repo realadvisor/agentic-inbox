@@ -3,7 +3,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox } from "~/types";
+import type { Email, Folder, Mailbox, Tag } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -101,6 +101,23 @@ interface EmailListResponse {
 // ---------- API client ----------
 
 const api = {
+	listTags: () => get<Tag[]>("/api/v1/tags"),
+	createTag: (tag: Omit<Tag, "id">) => post<Tag>("/api/v1/tags", tag),
+	updateTag: (id: string, tag: Omit<Tag, "id">) =>
+		put<Tag>(`/api/v1/tags/${id}`, tag),
+	deleteTag: (id: string) => del<void>(`/api/v1/tags/${id}?confirm=true`),
+	setConversationTags: (
+		mailboxId: string,
+		thread_ids: string[],
+		tag_id: string,
+		action: "add" | "remove",
+	) =>
+		post<void>(`/api/v1/mailboxes/${mailboxId}/tags/bulk`, {
+			thread_ids,
+			tag_id,
+			action,
+		}),
+
 	// Config
 	getConfig: () =>
 		get<{

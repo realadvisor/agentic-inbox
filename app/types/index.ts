@@ -23,7 +23,21 @@ export interface Mailbox {
 	settings?: MailboxSettings;
 }
 
+export interface Tag {
+	id: string;
+	name: string;
+	color: string;
+}
+
+export interface ConversationTag extends Tag {
+	source: "manual" | "classifier";
+	actor: string;
+	created_at: string;
+	updated_at: string;
+}
+
 export interface Email {
+	tags?: ConversationTag[];
 	reply_to?: string | null;
 	id: string;
 	thread_id?: string | null;

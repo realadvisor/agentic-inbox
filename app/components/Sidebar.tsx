@@ -9,6 +9,8 @@ import {
 	CaretLeftIcon,
 	FileIcon,
 	FolderIcon,
+	TagIcon,
+	GearSixIcon,
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	PlusIcon,
@@ -16,9 +18,16 @@ import {
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import {
+	Link,
+	NavLink,
+	useNavigate,
+	useParams,
+	useSearchParams,
+} from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
+import { useTags } from "~/queries/tags";
 import { useMailbox } from "~/queries/mailboxes";
 import { RenameFolder } from "./RenameFolder";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -76,7 +85,12 @@ function FolderLink({
 }
 
 export default function Sidebar() {
-	const { mailboxId } = useParams<{ mailboxId: string }>();
+	const { mailboxId, folder } = useParams<{
+		mailboxId: string;
+		folder: string;
+	}>();
+	const [searchParams] = useSearchParams();
+	const catalog = useTags();
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
@@ -231,6 +245,60 @@ export default function Sidebar() {
 						</div>
 					</div>
 				)}
+				<section aria-label="Tags" className="pt-5 pb-4">
+					<div className="flex items-center justify-between px-3 mb-1.5">
+						<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							Tags
+						</span>
+						<Tooltip content="Manage tags" asChild>
+							<Button
+								variant="ghost"
+								shape="square"
+								size="sm"
+								icon={<GearSixIcon size={16} />}
+								aria-label="Manage tags"
+								onClick={() => {
+									navigate(`/mailbox/${mailboxId}/settings`);
+									closeSidebar();
+								}}
+							/>
+						</Tooltip>
+					</div>
+					{catalog.data?.map((tag) => {
+						const active =
+							folder === "all" && searchParams.get("tag_id") === tag.id;
+						return (
+							<Link
+								key={tag.id}
+								to={`/mailbox/${mailboxId}/emails/all?tag_id=${tag.id}`}
+								aria-current={active ? "page" : undefined}
+								onClick={handleNavClick}
+								className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${active ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
+							>
+								<TagIcon
+									size={18}
+									weight="duotone"
+									className="shrink-0"
+									style={{ color: tag.color }}
+								/>
+								<span className="truncate" title={tag.name}>
+									{tag.name}
+								</span>
+							</Link>
+						);
+					})}
+					{catalog.isPending && (
+						<p className="px-3 py-2 text-xs text-kumo-subtle">Loading tags…</p>
+					)}
+					{catalog.data?.length === 0 && (
+						<p className="px-3 py-2 text-xs text-kumo-subtle">No tags yet</p>
+					)}
+					{catalog.error && (
+						<p role="alert" className="px-3 py-2 text-xs text-kumo-danger">
+							{catalog.error.message}
+						</p>
+					)}
+				</section>
 			</nav>
 
 			{/* Create folder dialog */}

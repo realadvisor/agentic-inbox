@@ -3,6 +3,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { TagSettings } from "~/components/TagSettings";
 import { Button, Input, Loader, useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
@@ -56,6 +57,7 @@ export default function SettingsRoute() {
 			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
 
 			<div className="space-y-6">
+				<TagSettings />
 				{/* Account */}
 				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
 					<div className="text-sm font-medium text-kumo-default mb-4">

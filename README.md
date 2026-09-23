@@ -9,7 +9,7 @@ This is an intentionally standalone pnpm workspace with its own lockfile: the up
 
 - Postgres stores mailboxes, messages, folder state, drafts, thread identifiers and attachment metadata.
 - Privacy and Info are separate logical mailboxes in one database. Live mailboxes use `ingest.realadvisor.com`; local seed mailboxes remain synthetic.
-- The original UI supports browsing, search operators, reading, starring, folders, composing, drafts and replies.
+- The UI supports browsing, search operators, reading, starring, folders, composing, drafts, replies and manual conversation tags.
 - Local **Simulate send** stores a simulated message. Hosted live mode sends through Cloudflare Email Sending using approved public From addresses. The app contains no SMTP or Google credentials.
 - Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Live raw MIME is retained privately in R2.
 - Google Groups, Probo, classification, historical imports, and the upstream AI/MCP features are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
@@ -136,3 +136,13 @@ Administrators see **New Mailbox** on the homepage. `MAILBOX_ADMINS` is a comma-
 Mailboxes use `name@ingest.realadvisor.com` and send as `name@realadvisor.com`. The zone catch-all sends otherwise unmatched mail to the inbox Worker; only registered ingest recipients are accepted, before writing MIME to R2. Existing explicit Privacy/Info routes still work. The apex Google MX stays unchanged. The Send Email binding permits the verified domain; the backend authorizes the specific sender by its Postgres mailbox registration. No Cloudflare administrative API credential is stored in the application.
 
 Creating an ingest mailbox does not create a Google Group or Workspace address. Configure the corresponding public address and forwarding separately if replies to `name@realadvisor.com` should return to this inbox. All Access-authorized users can read and send from registered mailboxes; creation is administrator-only.
+
+## Conversation tags
+
+Create, rename, recolor and delete shared tags in **Settings → Tags**. Inbox rows show colored chips; **Tag filter** narrows the current folder. The **Tags** section below Folders in the sidebar opens tagged conversations across all folders in the current mailbox, including Archive. Tag filters are included in the URL for bookmarking and reloads. Open a conversation to use **+ Tag** or remove a chip. Select rows (or the current page) for bulk add/remove. Selections reset when changing mailbox, folder, filter or page. Deleting a shared tag requires confirmation and removes its assignments everywhere; removing a conversation chip keeps the tag catalog entry.
+
+Tags use stable UUIDs and case-insensitively unique names. Assignments are keyed by `(mailbox_id, thread_id, tag_id)`, independently of folders and individual messages. Replies, incoming messages and archiving retain a conversation's tags. Database triggers register conversations for every ingestion/send path, including existing messages backfilled by migration 005. Conversation identity persists even if its last message is deleted; assignment endpoints require an existing message in that mailbox.
+
+The authenticated Access email is recorded as the manual actor (local mode uses `local-synthetic-user`). Each assignment stores source, creation/update times and a nullable `removed_at`. Removing a chip writes a manual removal record, including when the chip is already absent. These rows are the latest explicit decisions, not a full event history: future classifiers must respect **all** manual rows, including removals. New messages never clear manual choices. No classifier, model calls or background classification are implemented by tags.
+
+Scalar documents tag CRUD, individual thread assignment/removal, atomic bulk changes (up to 100 thread IDs), and `tag_id` filtering on email/search endpoints. Filtering happens before conversation grouping, counting and pagination. All authenticated inbox users share the tag catalog; assignment routes enforce the existing registered-mailbox rules. Migration 005 is independent of migration 004 reserved by classifier PR #4. The versioned runner checks each migration individually, so 004 can still be applied later when that separate feature is merged.
