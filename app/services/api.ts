@@ -4,6 +4,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import type { Email, Folder, Mailbox, Tag } from "~/types";
+import type { TagGroup, TagGroupInput } from "../../shared/tag-groups";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -102,9 +103,18 @@ interface EmailListResponse {
 
 const api = {
 	listTags: () => get<Tag[]>("/api/v1/tags"),
+	listTagGroups: () => get<TagGroup[]>("/api/v1/tag-groups"),
+	createTagGroup: (group: TagGroupInput) =>
+		post<TagGroup>("/api/v1/tag-groups", group),
+	updateTagGroup: (id: string, group: TagGroupInput) =>
+		put<TagGroup>(`/api/v1/tag-groups/${id}`, group),
 	createTag: (tag: Omit<Tag, "id">) => post<Tag>("/api/v1/tags", tag),
 	updateTag: (id: string, tag: Omit<Tag, "id">) =>
 		put<Tag>(`/api/v1/tags/${id}`, tag),
+	deleteTagGroup: (group: { id: string; revision: number }) =>
+		del<void>(
+			`/api/v1/tag-groups/${group.id}?confirm=true&revision=${group.revision}`,
+		),
 	deleteTag: (id: string) => del<void>(`/api/v1/tags/${id}?confirm=true`),
 	setConversationTags: (
 		mailboxId: string,
@@ -117,6 +127,23 @@ const api = {
 			tag_id,
 			action,
 		}),
+
+	testClassifier: (data: unknown) =>
+		post<{
+			available: boolean;
+			results: {
+				name: string;
+				request: unknown;
+				result?: {
+					probability: number;
+					answer: boolean | null;
+					confidence?: number;
+					choice?: string;
+					probabilities?: Record<string, number>;
+				};
+				error?: string;
+			}[];
+		}>("/api/v1/classification/test", data),
 
 	// Config
 	getConfig: () =>

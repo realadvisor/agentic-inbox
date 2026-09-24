@@ -10,6 +10,8 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await page
 			.getByRole("button", { name: `Choose tag ${tagName}`, exact: true })
 			.click();
+		if (label === "Tag filter")
+			await page.getByRole("button", { name: "Done", exact: true }).click();
 	};
 
 	const db = connect();
@@ -34,8 +36,16 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			subject: "Synthetic viewing enquiry",
 			body: "<p>Can we arrange a synthetic viewing?</p>",
 		});
-		await page.goto(`/mailbox/${mailbox}/settings`);
-		await page.getByRole("button", { name: "New tag", exact: true }).click();
+		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
+		await page
+			.getByRole("button", { name: "Add tag or group", exact: true })
+			.click();
+		await page
+			.getByRole("button", {
+				name: "Tag A label you can use on its own",
+				exact: true,
+			})
+			.click();
 		await page.getByRole("textbox", { name: "Tag name" }).fill(name);
 		await page.getByLabel("Tag color").fill("#16a34a");
 		await page.getByRole("button", { name: "Save tag" }).click();
@@ -80,12 +90,15 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			.getByRole("button", { name: `Remove tag ${name}`, exact: true })
 			.click();
 		await expect(
-			page.getByText("No conversations with this tag in this folder."),
+			page.getByText("No conversations matching these tags in this folder."),
 		).toBeVisible();
 		await page.getByRole("button", { name: "Tag filter", exact: true }).click();
 		await page
 			.getByRole("button", { name: "All conversations", exact: true })
 			.click();
+		await expect(
+			page.getByRole("dialog", { name: "Filter by tag", exact: true }),
+		).not.toBeVisible();
 		await page
 			.getByRole("checkbox", { name: "Select all conversations on page" })
 			.check();
@@ -123,7 +136,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			.getByRole("region", { name: "Tags", exact: true })
 			.getByRole("link", { name, exact: true })
 			.click();
-		await expect(page).toHaveURL(new RegExp(`/emails/all\\?tag_id=${tagId}`));
+		await expect(page).toHaveURL(new RegExp(`/emails/all\\?tag_ids=${tagId}`));
 		await expect(
 			page.getByRole("heading", { name, exact: true }),
 		).toBeVisible();
@@ -151,7 +164,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			page.getByText("Synthetic follow-up", { exact: true }),
 		).toHaveCount(0);
 		await db`UPDATE emails SET folder_id='inbox' WHERE mailbox_id=${mailbox} AND thread_id=${first!.thread_id!}`;
-		await page.goto(`/mailbox/${mailbox}/settings`);
+		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
 		await page
 			.getByRole("button", { name: `Edit tag ${name}`, exact: true })
 			.click();
@@ -189,14 +202,22 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			fullPage: true,
 		});
 		await page.setViewportSize({ width: 1440, height: 1000 });
-		await page.goto(`/mailbox/${mailbox}/settings`);
+		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
+		await expect(
+			page.getByRole("button", { name: `Delete tag ${renamed}`, exact: true }),
+		).toHaveCount(0);
+		await page
+			.getByRole("button", { name: `Edit tag ${renamed}`, exact: true })
+			.click();
 		page.once("dialog", (dialog) => dialog.dismiss());
 		await page
 			.getByRole("button", { name: `Delete tag ${renamed}`, exact: true })
 			.click();
 		await expect(
-			page.getByRole("main").getByText(renamed, { exact: true }),
-		).toBeVisible();
+			page
+				.getByRole("dialog", { name: "Edit tag", exact: true })
+				.getByLabel("Tag name"),
+		).toHaveValue(renamed);
 		page.once("dialog", (dialog) => dialog.accept());
 		await page
 			.getByRole("button", { name: `Delete tag ${renamed}`, exact: true })

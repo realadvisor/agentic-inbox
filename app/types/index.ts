@@ -24,6 +24,9 @@ export interface Mailbox {
 }
 
 export interface Tag {
+	group_id?: string | null;
+	group_name?: string | null;
+	group_selection?: "single" | "multiple" | null;
 	id: string;
 	name: string;
 	color: string;

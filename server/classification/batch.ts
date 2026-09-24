@@ -7,6 +7,7 @@ export function batchRequests(
 		url: Parameters<typeof fetch>[0],
 		init: RequestInit,
 		indexes: number[],
+		questionKeys?: string[],
 	) => Promise<Response>,
 ) {
 	type Pending = {
@@ -36,6 +37,7 @@ export function batchRequests(
 							url,
 							init,
 							group.map((item) => item.index),
+							questionKeys(group),
 						)
 					: request(url, init);
 			const signal = AbortSignal.timeout(Math.min(20_000, remaining));
@@ -65,7 +67,7 @@ export function batchRequests(
 				item.resolve(
 					Response.json({
 						model: value?.model,
-						answers: { match: value?.answers?.[`q${index}`] },
+						answers: { match: value?.answers?.[questionKeys(group)[index]] },
 					}),
 				),
 			);
@@ -73,15 +75,30 @@ export function batchRequests(
 			for (const item of group) item.reject(error);
 		}
 	}
+	function questionKeys(group: Pending[]) {
+		const seen = new Map<string, string>();
+		return group.map((item, index) => {
+			const q = item.body.questions.match as { type?: string };
+			const signature = JSON.stringify(q);
+			const key = group.length === 1 ? "match" : `q${index}`;
+			if (q.type !== "choice") return key;
+			const existing = seen.get(signature);
+			if (existing) return existing;
+			seen.set(signature, key);
+			return key;
+		});
+	}
 	function payload(group: Pending[]) {
+		const keys = questionKeys(group);
 		return {
 			model: group[0].body.model,
 			state: group[0].body.state,
 			questions: Object.fromEntries(
-				group.map((item, index) => [`q${index}`, item.body.questions.match]),
+				group.map((item, i) => [keys[i], item.body.questions.match]),
 			),
 		};
 	}
+
 	async function flush() {
 		let group: Pending[] = [];
 		for (const item of pending) {

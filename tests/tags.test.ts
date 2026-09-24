@@ -365,3 +365,48 @@ test("tags persist across MIME ingestion, duplicate mail, replies, folder moves,
 		)[0].removed_at,
 	);
 });
+
+test("multiple tag filters support all/any, deduplication and legacy links", async () => {
+	const x = await tag(),
+		y = await tag(),
+		one = await message(),
+		two = await message();
+	await request(assignment(one.thread_id!, x.id), "PUT");
+	await request(assignment(one.thread_id!, y.id), "PUT");
+	await request(assignment(two.thread_id!, x.id), "PUT");
+	const ids = `${x.id},${y.id}`;
+	assert.equal(
+		(await store.list(a, { tag_ids: ids, tag_match: "all" })).totalCount,
+		1,
+	);
+	assert.equal(
+		(await store.list(a, { tag_ids: ids, tag_match: "any" })).totalCount,
+		2,
+	);
+	assert.equal(
+		(await store.list(a, { tag_ids: `${ids},${x.id}`, tag_id: x.id }))
+			.totalCount,
+		1,
+	);
+	assert.equal((await store.list(a, { tag_id: x.id })).totalCount, 2);
+	assert.equal(
+		(await store.list(b, { tag_ids: ids, tag_match: "any" })).totalCount,
+		0,
+	);
+	const response = await request(
+		`${prefix()}/emails?tag_ids=${ids}&tag_match=all`,
+	);
+	assert.equal(response.status, 200);
+	assert.equal((await response.json()).totalCount, 1);
+	assert.equal(
+		(await request(`${prefix()}/emails?tag_ids=invalid`)).status,
+		400,
+	);
+	assert.equal(
+		(await request(`${prefix()}/emails?tag_ids=${ids}&tag_match=invalid`))
+			.status,
+		400,
+	);
+	await request(assignment(one.thread_id!, y.id), "DELETE");
+	assert.equal((await store.list(a, { tag_ids: ids })).totalCount, 0);
+});

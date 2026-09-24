@@ -1,11 +1,10 @@
 import { z } from "zod";
 import type { Database } from "../db";
-import {
-	CLASSIFICATION_YES_THRESHOLD,
-	CLASSIFICATION_NO_THRESHOLD,
-} from "../../shared/classification";
+import { interpretAnswer, type JevQuestion } from "../../shared/jev-request";
 
 export interface CaptureJob {
+	option?: string;
+	question_key?: string;
 	mailbox_id: string;
 	thread_id: string;
 	classifier_id: string;
@@ -17,10 +16,6 @@ export interface CaptureJob {
 	lease_id: string;
 	attempts: number;
 }
-const answerSchema = z.object({
-	type: z.literal("noul"),
-	noul: z.number().finite().min(0).max(1),
-});
 const responseSchema = z.object({
 	model: z.string().optional(),
 	answers: z.record(z.unknown()),
@@ -38,16 +33,19 @@ export async function captureProviderRequest(
 	const payload = JSON.parse(body) as {
 		model: string;
 		state: { messages?: { subject?: string }[] };
-		questions: Record<string, unknown>;
+		questions: Record<string, JevQuestion>;
 	};
 	const keys = Object.keys(payload.questions);
-	if (!jobs.length || keys.length !== jobs.length)
+	if (
+		!jobs.length ||
+		jobs.some((j, i) => !payload.questions[j.question_key ?? keys[i]])
+	)
 		throw new Error("Invalid classifier log mapping");
 	const runId = crypto.randomUUID();
 	await db.begin(async (tx) => {
 		await tx`INSERT INTO classifier_provider_runs(id,mailbox_id,thread_id,subject,requested_model,request_body) VALUES(${runId},${jobs[0].mailbox_id},${jobs[0].thread_id},${payload.state.messages?.at(-1)?.subject ?? "Conversation"},${payload.model},${body})`;
 		for (const [index, j] of jobs.entries())
-			await tx`INSERT INTO classifier_provider_run_items(run_id,question_key,classifier_id,classifier_name,question,revision,generation,job_token,lease_id,attempt) VALUES(${runId},${keys[index]},${j.classifier_id},${j.classifier_name},${j.question},${j.revision},${j.generation},${j.token},${j.lease_id},${j.attempts})`;
+			await tx`INSERT INTO classifier_provider_run_items(run_id,question_key,classifier_id,classifier_name,question,revision,generation,job_token,lease_id,attempt) VALUES(${runId},${j.question_key ?? keys[index]},${j.classifier_id},${j.classifier_name},${j.question},${j.revision},${j.generation},${j.token},${j.lease_id},${j.attempts})`;
 	});
 	const start = Date.now();
 	let response: Response;
@@ -76,15 +74,22 @@ export async function captureProviderRequest(
 			? "invalid_provider_response"
 			: null;
 	await db.begin(async (tx) => {
-		for (const key of keys) {
-			const answer = answerSchema.safeParse(parsed?.answers[key]);
-			if (response.ok && parsed && !answer.success)
-				error = "invalid_provider_answer";
-			if (response.ok && answer.success) {
-				const probability = answer.data.noul;
-				await tx`UPDATE classifier_provider_run_items SET probability=${probability},answer=${probability >= CLASSIFICATION_YES_THRESHOLD ? true : probability <= CLASSIFICATION_NO_THRESHOLD ? false : null} WHERE run_id=${runId} AND question_key=${key}`;
+		for (const [index, j] of jobs.entries()) {
+			const key = j.question_key ?? keys[index];
+			if (response.ok && parsed) {
+				try {
+					const answer = interpretAnswer(
+						payload.questions[key],
+						parsed.answers[key],
+						j.option,
+					);
+					await tx`UPDATE classifier_provider_run_items SET probability=${answer.probability},answer=${answer.answer} WHERE run_id=${runId} AND job_token=${j.token}`;
+				} catch {
+					error = "invalid_provider_answer";
+				}
 			}
 		}
+
 		await tx`UPDATE classifier_provider_runs SET status=${error ? "failed" : "succeeded"},finished_at=now(),duration_ms=${Date.now() - start},http_status=${response.status},returned_model=${parsed?.model ?? null},response_body=${raw},error=${error} WHERE id=${runId}`;
 	});
 	// Rebuild the consumed response so existing parsing/retry behavior stays intact.

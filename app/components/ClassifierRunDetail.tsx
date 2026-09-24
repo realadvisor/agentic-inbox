@@ -149,7 +149,7 @@ export function RunDetail({
 								)}
 								{run.items.map((item) => (
 									<div
-										key={item.question_key}
+										key={`${item.question_key}-${item.classifier_id}`}
 										className="py-4 border-b border-kumo-line"
 									>
 										<div className="flex justify-between gap-3">

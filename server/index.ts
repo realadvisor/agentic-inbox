@@ -27,7 +27,10 @@ if (preview) {
 await db`SELECT 1 FROM inbox_migrations LIMIT 1`;
 const previewModule = preview ? await import("./preview/api") : null;
 const app = createApi(db, {
+	jevKey: process.env.TYPESAFE_API_KEY,
 	agent: agentProviders(undefined, process.env.AI_GATEWAY_API_KEY),
+
+	classifiersEnabled: process.env.CLASSIFIERS_ENABLED === "1",
 	previewRoutes: previewModule?.previewApi(db),
 	readAttachment: localAttachments(),
 	classifierPreview: preview,

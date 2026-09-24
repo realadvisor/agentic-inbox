@@ -56,7 +56,7 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 								<p className="font-medium">Why this needs review</p>
 								<p className="text-kumo-subtle mt-1">
 									{row.status === "error"
-										? "Classification failed, so there is no reliable automatic answer. Answer below or retry from Classifiers."
+										? "Classification failed, so there is no reliable automatic answer. Answer below or retry from Settings → Tags."
 										: row.error === "conversation_too_large"
 											? "This conversation exceeds 30 messages or 100,000 characters. It needs a human review because it was not sent to the classifier."
 											: row.probability != null

@@ -187,15 +187,22 @@ export default function EmailListRoute() {
 	const [page, setPage] = useState(1);
 	const [searchParams, setSearchParams] = useSearchParams();
 	const needsReview = searchParams.get("needs_review") === "true";
-	const tagId = searchParams.get("tag_id") ?? "";
+	const tagId = [
+		...new Set([
+			...(searchParams.get("tag_ids")?.split(",").filter(Boolean) ?? []),
+			...(searchParams.get("tag_id") ? [searchParams.get("tag_id")!] : []),
+		]),
+	].join(",");
+	const tagMatch = searchParams.get("tag_match") === "any" ? "any" : "all";
 	const setTagId = (id: string) =>
 		setSearchParams((current) => {
 			const next = new URLSearchParams(current);
-			if (id) next.set("tag_id", id);
-			else next.delete("tag_id");
+			next.delete("tag_id");
+			if (id) next.set("tag_ids", id);
+			else next.delete("tag_ids");
 			return next;
 		});
-	const viewKey = `${mailboxId}/${folder}/${tagId}/${needsReview}`;
+	const viewKey = `${mailboxId}/${folder}/${tagId}/${tagMatch}/${needsReview}`;
 	const prevFolderRef = useRef<string | undefined>(undefined);
 	const viewChanged = prevFolderRef.current !== viewKey;
 	const currentPage = viewChanged ? 1 : page;
@@ -203,7 +210,7 @@ export default function EmailListRoute() {
 	const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
 	useEffect(() => {
 		setSelectedThreads([]);
-	}, [mailboxId, folder, page, tagId, needsReview]);
+	}, [mailboxId, folder, page, tagId, tagMatch, needsReview]);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -216,10 +223,10 @@ export default function EmailListRoute() {
 			threaded: "true",
 			page: String(currentPage),
 			limit: String(PAGE_SIZE),
-			...(tagId ? { tag_id: tagId } : {}),
+			...(tagId ? { tag_ids: tagId, tag_match: tagMatch } : {}),
 			...(needsReview ? { needs_review: "true" } : {}),
 		}),
-		[folder, currentPage, tagId, needsReview],
+		[folder, currentPage, tagId, tagMatch, needsReview],
 	);
 
 	const { data: emailData, isFetching: isRefreshing } = useEmails(
@@ -372,11 +379,53 @@ export default function EmailListRoute() {
 					label="Tag filter"
 					placeholder="Filter by tag"
 					allowAll
+					multiple
 					onChange={(id) => {
 						setTagId(id);
 						setPage(1);
 					}}
 				/>
+
+				{tagId && (
+					<>
+						<select
+							aria-label="Tag matching"
+							value={tagMatch}
+							onChange={(e) => {
+								setSearchParams((current) => {
+									const next = new URLSearchParams(current);
+									next.set("tag_match", e.target.value);
+									return next;
+								});
+								setPage(1);
+							}}
+							className="h-8 rounded-lg border border-kumo-line bg-kumo-base px-2 text-xs"
+						>
+							<option value="all">Match all tags</option>
+							<option value="any">Match any tag</option>
+						</select>
+						<TagChips
+							removeLabel="Remove tag filter"
+							tags={tagId.split(",").map(
+								(id) =>
+									catalog.data?.find((t) => t.id === id) ?? {
+										id,
+										name: "Deleted tag",
+										color: "#64748b",
+									},
+							)}
+							onRemove={(id) => {
+								setTagId(
+									tagId
+										.split(",")
+										.filter((v) => v !== id)
+										.join(","),
+								);
+								setPage(1);
+							}}
+						/>
+					</>
+				)}
 
 				{catalog.error && <span role="alert">{catalog.error.message}</span>}
 				{emails.length > 0 && (
@@ -606,8 +655,8 @@ export default function EmailListRoute() {
 				) : tagId ? (
 					<p className="p-8 text-center text-kumo-subtle">
 						{folder === "all"
-							? "No conversations with this tag in this mailbox."
-							: "No conversations with this tag in this folder."}
+							? "No conversations matching these tags in this mailbox."
+							: "No conversations matching these tags in this folder."}
 					</p>
 				) : (
 					<FolderEmptyState

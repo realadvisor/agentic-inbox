@@ -157,7 +157,7 @@ The preview APIs mount only in the local Node entrypoint with `CLASSIFIER_PREVIE
 
 ## Live Jev classifiers
 
-Settings → Classifiers configures one yes/no question per shared tag. Migration 006 seeds Needs reply, Privacy: Deletion and Privacy: Data access, all **inactive**. Only `MAILBOX_ADMINS` can create/edit/enable classifiers or run/cancel batches. All authenticated inbox users can review uncertain results. Activating a classifier applies to new mail and confirmed sent replies; it never starts a historical scan. **Run on existing** explicitly queues active conversations (up to 5,000 per batch), with scope, unprocessed/all and optional reset of classifier corrections. Spam/trash/archive-only conversations are excluded.
+Settings → Tags configures Jev instructions within each tag or group editor. Migration 006 seeds Needs reply, Privacy: Deletion and Privacy: Data access, all **inactive**. Only `MAILBOX_ADMINS` can create/edit/enable classifiers or run/cancel batches. All authenticated inbox users can review uncertain results. Activating a classifier applies to new mail and confirmed sent replies; it never starts a historical scan. **Apply to existing conversations** explicitly queues active conversations (up to 5,000 per batch), with scope, unprocessed/all and optional reset of classifier corrections. Spam/trash/archive-only conversations are excluded.
 
 Cloudflare Queues delivers classifier work. New mail and confirmed sent replies use `inbox-classifications`; explicit historical runs use `inbox-classifier-backfills`. Each queue permits one concurrent consumer with batch size one, so backfills cannot occupy the new-mail consumer and at most two Jev requests run concurrently. Queue messages contain only `{version: 1, token: "uuid"}`, never email bodies or addresses. Neon remains the source of truth for configuration, results, corrections and run progress.
 
@@ -204,3 +204,38 @@ The chat follows the CRM/Mako Vercel AI SDK architecture: `@ai-sdk/react` `useCh
 Deployment requires migrations **009–013**, the Workers AI `AI` binding, and a dedicated queue created with `pnpm exec wrangler queues create inbox-agent-drafts` before deploying the checked-in Wrangler configuration. Enable Anthropic/OpenAI with `pnpm exec wrangler secret put AI_GATEWAY_API_KEY`, then refresh the model list in settings. Existing CRM/Mako gateway credentials can be supplied through the deployment secret store; do not commit keys. The ingestion event dispatches its durable Postgres outbox; the existing 15-minute cron recovers unpublished or exhausted deliveries. Chat does not depend on the automatic queue. The local Node server supports gateway chat when `AI_GATEWAY_API_KEY` is in `.env`; automatic drafting requires the Worker queue. Integration tests exercise catalogs, model overrides, streaming, draft tools and queue processing using deterministic models and isolated local Postgres schemas, with no external email delivery.
 
 The assistant normalizes historical tool calls across providers, including failed and interrupted turns. Old context is omitted as complete turns when its budget is exceeded; there is no automatic summary generation. **Stop** revokes a specific run’s write lease, retaining earlier saved changes; generation observes cancellation within its polling interval. Refreshing reconnects the UI to persisted progress through polling, not SSE replay. Completed turns record token usage and, when catalog pricing exists, an approximate model cost excluding caching adjustments, discounts and additional fees. Failed or stopped turns do not display a potentially incomplete cost estimate.
+
+For a local preview of the complete classifier UI (including Runs and Needs review),
+set `CLASSIFIERS_ENABLED=1` in `.env` and restart `pnpm dev`. This exposes the
+existing database-backed classifier routes; the local server does not run the
+hosted Jev queue worker.
+
+## Tag groups
+
+Settings → Tags extends the shared tag catalogue with groups. Each group has a
+name, single or multiple selection, editable options and one instruction for Jev.
+Urgency, Importance and Topic start with automatic classification disabled. Enable
+it in the group editor to classify new mail through the existing Jev queue and
+batching pipeline. Saving a group updates its managed per-option classifiers,
+cancels obsolete jobs/runs and clears automatic results; manual choices remain.
+Existing conversations are not silently reclassified. Use “Apply to existing conversations” in the tag or group editor for explicit
+historical runs. The Tags page is the only configuration surface: standalone
+tags retain their existing Jev prompts, mailbox scope, and reviewed-example
+settings. Manual groups do not require a prompt. The former Classifiers tab
+opens Tags for compatibility; Runs remains the execution history.
+
+Single-select conversation badges open a picker that replaces the current choice
+atomically. Manual edits take precedence for the group on later mail. Contradictory
+positive Jev answers in an exclusive group clear the automatic selection and enter
+the existing review queue. Removed options are retired, preserving classifier run
+history. Existing standalone tags and classifiers keep their current behavior.
+Group configuration requires inbox administrator access in live mode. Apply
+migration 014 before deploying this change.
+
+In a tag or group editor, **Try on emails** searches the current mailbox and selects up to five conversations. **Preview requests** shows the exact batched payloads with conversation content. **Test with Jev** sends those conversations using unsaved instructions and shows probabilities without saving configuration, assigning tags, or creating historical runs. Received and confirmed-sent messages are included; attachments are excluded. Local testing requires `TYPESAFE_API_KEY` in `.env`; hosted testing uses the existing Worker secret. Uncertain answers and conflicting positive answers in a single-selection group require review.
+
+Single-selection groups compile to one native Jev Choice with per-tag descriptions and an `insufficient_evidence` fallback. Multiple-selection groups and standalone tags remain Noul questions. Production and tests share request construction, conversation text normalization, batching, and answer validation. Choice initially requires confidence ≥0.60, winning probability ≥0.75, and a ≥0.20 margin; otherwise every option goes to review. These are provisional thresholds, separate from Noul's 0.85/0.15 policy, and require validation on reviewed mail. Manual overrides and stale-job fencing still apply. Provider logs retain the raw Choice distribution and associate the shared question with each affected classifier job.
+
+Migration 015 adds optional tag descriptions and allows multiple classifier audit items per provider question. Migration 016 refines only untouched, disabled default Urgency/Importance groups; customized or enabled groups retain their instructions. Review their definitions in Settings before enabling. Message state includes readable text, UTC evaluation time, direction and attachment counts. Only exact previously seen `>`-quoted lines are deduplicated; unique quoted evidence remains. Deadline arithmetic is not delegated to Jev, and no deadline extraction is added here.
+
+Run `pnpm eval:jev --live` to compare native Choice with independent Noul questions on eight synthetic multilingual triage fixtures using the local key. This sends only synthetic text and does not access mailboxes. It holds revised instructions constant to compare request types, reports correct/review/incorrect outcomes, and is a smoke evaluation rather than a real-mail accuracy benchmark. Use separate, held-out reviewed emails to tune thresholds and measure production accuracy.

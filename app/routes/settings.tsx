@@ -1,11 +1,10 @@
+import AgentModelSettings from "~/components/AgentModelSettings";
 import ClassifierRuns from "~/components/ClassifierRuns";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import AgentModelSettings from "~/components/AgentModelSettings";
-import { Classifiers } from "~/components/Classifiers";
 import { useMailMode } from "~/components/MailMode";
 import { useSearchParams } from "react-router";
 import { TagSettings } from "~/components/TagSettings";
@@ -21,7 +20,9 @@ export default function SettingsRoute() {
 	const hasClassifiers =
 		mode.data?.classifierPreview || mode.data?.classifiersEnabled;
 	const [params, setParams] = useSearchParams();
-	const tab = params.get("tab") ?? (hasClassifiers ? "classifiers" : "account");
+	const requestedTab = params.get("tab");
+	const tab =
+		requestedTab === "classifiers" ? "tags" : (requestedTab ?? "tags");
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 
@@ -70,13 +71,12 @@ export default function SettingsRoute() {
 
 			<div className="flex flex-wrap gap-2 mb-6" aria-label="Settings sections">
 				{[
-					...(hasClassifiers ? ["classifiers"] : []),
+					"account",
+					"tags",
+					"models",
 					...(hasClassifiers && mode.data?.canManageClassifiers
 						? ["runs"]
 						: []),
-					"tags",
-					"models",
-					"account",
 				].map((t) => (
 					<Button
 						key={t}
@@ -91,8 +91,6 @@ export default function SettingsRoute() {
 				<AgentModelSettings key={mailboxId} mailboxId={mailboxId!} />
 			) : hasClassifiers && tab === "runs" ? (
 				<ClassifierRuns />
-			) : hasClassifiers && tab === "classifiers" ? (
-				<Classifiers />
 			) : tab === "tags" ? (
 				<TagSettings />
 			) : (

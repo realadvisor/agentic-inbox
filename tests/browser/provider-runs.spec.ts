@@ -20,7 +20,7 @@ test.beforeAll(async () => {
 	const store = new InboxStore(db);
 	await store.createMailbox(mailbox, "Run logs");
 	const classifiers =
-		await db`UPDATE classifiers SET enabled=true RETURNING id`;
+		await db`UPDATE classifiers SET enabled=true WHERE tag_id IN (SELECT id FROM tags WHERE group_id IS NULL) RETURNING id`;
 	for (const [index, subject] of [
 		"Help with my account",
 		"Provider failure",
@@ -112,7 +112,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	const detail = page.getByRole("complementary", { name: "Run details" });
 	await expect(detail.getByText("94.0% yes")).toHaveCount(3);
 	await detail.getByRole("tab", { name: "Request", exact: true }).click();
-	await expect(detail.locator("pre")).toContainText("body_html");
+	await expect(detail.locator("pre")).toContainText("Please help with my account.");
 	await expect(detail.locator("pre")).toContainText("q0");
 	await detail.getByRole("button", { name: "Copy JSON" }).click();
 	await expect(detail.getByRole("status")).toHaveText("Copied");
@@ -148,7 +148,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await page.getByRole("option", { name: /^Latest/ }).click();
 
 	await drawer.getByRole("tab", { name: "Request", exact: true }).click();
-	await expect(drawer.locator("pre")).toContainText("body_html");
+	await expect(drawer.locator("pre")).toContainText("Please help with my account.");
 	await drawer.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(drawer.locator("pre")).toContainText("jev-test");
 	await page.screenshot({

@@ -11,9 +11,14 @@ export function useTagMutation<T>(mutationFn: (input: T) => Promise<unknown>) {
 		mutationFn,
 		onSuccess: async () => {
 			await Promise.all(
-				["tags", "emails", "search"].map((key) =>
-					client.invalidateQueries({ queryKey: [key] }),
-				),
+				[
+					"tags",
+					"tag-groups",
+					"classifiers",
+					"classification-results",
+					"emails",
+					"search",
+				].map((key) => client.invalidateQueries({ queryKey: [key] })),
 			);
 		},
 	});

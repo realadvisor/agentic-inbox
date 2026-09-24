@@ -101,6 +101,9 @@ importers:
       jose:
         specifier: ^6.2.12
         version: 6.2.12
+      parse5:
+        specifier: 7.3.0
+        version: 7.3.0
       postal-mime:
         specifier: ^3.0.0
         version: 3.0.0
