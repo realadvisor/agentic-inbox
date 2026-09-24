@@ -4183,7 +4183,7 @@
 			"get": {
 				"operationId": "getAgentState",
 				"tags": ["Agent"],
-				"summary": "Read mailbox agent settings and recent chat history",
+				"summary": "Read agent settings and a page of one conversation",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4191,6 +4191,22 @@
 						"required": true,
 						"schema": {
 							"type": "string"
+						}
+					},
+					{
+						"name": "conversationId",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "before",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
 						}
 					}
 				],
@@ -4235,6 +4251,12 @@
 										},
 										"catalog": {
 											"$ref": "#/components/schemas/AgentCatalog"
+										},
+										"conversation": {
+											"type": "object"
+										},
+										"hasMore": {
+											"type": "boolean"
 										}
 									}
 								}
@@ -4326,7 +4348,7 @@
 				"operationId": "postAgentChat",
 				"tags": ["Agent"],
 				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
-				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs continue to persist their results; read history before retrying.",
+				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4363,6 +4385,11 @@
 										"type": "string",
 										"maxLength": 200,
 										"description": "Optional model override for this turn. Does not change the mailbox default."
+									},
+									"conversationId": {
+										"type": "string",
+										"format": "uuid",
+										"description": "Conversation in the current mailbox; omitted by legacy clients."
 									}
 								}
 							}
@@ -4731,6 +4758,64 @@
 					},
 					"503": {
 						"description": "Classifiers disabled or Jev key unavailable"
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/conversations": {
+			"get": {
+				"operationId": "listAgentConversations",
+				"tags": ["Agent"],
+				"summary": "Browse saved assistant conversations, newest first",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "offset",
+						"in": "query",
+						"schema": {
+							"type": "integer",
+							"minimum": 0,
+							"maximum": 100000
+						}
+					},
+					{
+						"name": "search",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Up to 50 conversations and hasMore"
+					}
+				}
+			},
+			"post": {
+				"operationId": "createAgentConversation",
+				"tags": ["Agent"],
+				"summary": "Start a separate assistant conversation",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "New conversation with id, title, and timestamps"
 					}
 				}
 			}

@@ -948,3 +948,141 @@ test("a disconnected run cannot save another draft even before the lease monitor
 	assert.equal(saved.count, 1);
 	await stopRun(db, mailbox, r.id);
 });
+
+test("saved conversations isolate model context and reject cross-mailbox access", async () => {
+	const mailbox = "conversations@example.test";
+	await store.createMailbox(mailbox, "Conversations");
+	const tasks: Promise<unknown>[] = [];
+	const model = textModel();
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => model, waitUntil: (task) => tasks.push(task) },
+	});
+	const base = `/api/v1/mailboxes/${mailbox}/agent`;
+	const create = async () => {
+		const response = await app.request(`${base}/conversations`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: "{}",
+		});
+		assert.equal(response.status, 201);
+		return (await response.json()).id as string;
+	};
+	const first = await create(),
+		second = await create();
+	const send = async (conversationId: string, prompt: string) => {
+		const response = await app.request(`${base}/chat`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ id: randomUUID(), conversationId, prompt }),
+		});
+		assert.equal(response.status, 200);
+		await response.text();
+		await Promise.all(tasks);
+	};
+	await send(first, "Secret topic in first chat");
+	await send(second, "Independent second topic");
+	assert.doesNotMatch(
+		JSON.stringify(model.doStreamCalls.at(-1)?.prompt),
+		/Secret topic/,
+	);
+	await send(first, "Continue the first topic");
+	assert.match(
+		JSON.stringify(model.doStreamCalls.at(-1)?.prompt),
+		/Secret topic/,
+	);
+	assert.doesNotMatch(
+		JSON.stringify(model.doStreamCalls.at(-1)?.prompt),
+		/Independent second/,
+	);
+	const state = await (
+		await app.request(`${base}?conversationId=${first}`)
+	).json();
+	assert.equal(state.turns.length, 2);
+	assert.equal(state.conversation.title, "Secret topic in first chat");
+	const otherBase = `/api/v1/mailboxes/${b}/agent`;
+	assert.equal(
+		(await app.request(`${otherBase}?conversationId=${first}`)).status,
+		404,
+	);
+	const invalid = await app.request(`${otherBase}/chat`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			id: randomUUID(),
+			conversationId: first,
+			prompt: "Cross mailbox",
+		}),
+	});
+	assert.equal(invalid.status, 404);
+	const [lease] =
+		await db`SELECT active_run FROM agent_settings WHERE mailbox_id=${b}`;
+	assert.ok(!lease?.active_run);
+	const search = await (
+		await app.request(`${base}/conversations?search=secret`)
+	).json();
+	assert.deepEqual(
+		search.conversations.map((c: { id: string }) => c.id),
+		[first],
+	);
+});
+
+test("conversation and message history can be paged without losing equal-timestamp turns", async () => {
+	const mailbox = "history-pages@example.test";
+	await store.createMailbox(mailbox, "History pages");
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => textModel() },
+	});
+	const base = `/api/v1/mailboxes/${mailbox}/agent`;
+	const [conversation] =
+		await db`INSERT INTO agent_conversations(mailbox_id,title) VALUES(${mailbox},'Long history') RETURNING id`;
+	await db`INSERT INTO agent_turns(id,mailbox_id,conversation_id,model,actor,prompt,answer,status,created_at) SELECT gen_random_uuid(),${mailbox},${conversation.id},${AGENT_MODELS[0].id},'tester','Prompt '||n,'Answer','complete',now() FROM generate_series(1,65) n`;
+	const ids: string[] = [];
+	let before = "";
+	for (let page = 0; page < 3; page++) {
+		const result = await (
+			await app.request(
+				`${base}?conversationId=${conversation.id}${before ? `&before=${before}` : ""}`,
+			)
+		).json();
+		ids.push(...result.turns.map((t: { id: string }) => t.id));
+		before = result.turns[0].id;
+		assert.equal(result.hasMore, page < 2);
+	}
+	assert.equal(new Set(ids).size, 65);
+	await db`INSERT INTO agent_conversations(mailbox_id,title) SELECT ${mailbox},'Chat '||n FROM generate_series(1,55) n`;
+	const first = await (await app.request(`${base}/conversations`)).json();
+	const second = await (
+		await app.request(`${base}/conversations?offset=50`)
+	).json();
+	assert.equal(first.hasMore, true);
+	assert.equal(second.hasMore, false);
+	assert.equal(
+		new Set([...first.conversations, ...second.conversations].map((c) => c.id))
+			.size,
+		56,
+	);
+});
+
+test("legacy Worker inserts remain visible during rollout and repeated migration preserves history", async () => {
+	const mailbox = "legacy-rollout@example.test";
+	await store.createMailbox(mailbox, "Legacy rollout");
+	const id = randomUUID();
+	await db`INSERT INTO agent_turns(id,mailbox_id,model,actor,prompt,answer,status) VALUES(${id},${mailbox},${AGENT_MODELS[0].id},'legacy-worker','Existing prompt','Existing answer','complete')`;
+	await migrate(db);
+	const [turn] =
+		await db`SELECT t.conversation_id,c.title FROM agent_turns t JOIN agent_conversations c ON c.id=t.conversation_id WHERE t.id=${id}`;
+	assert.ok(turn.conversation_id);
+	assert.equal(turn.title, "Previous conversations");
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => textModel() },
+	});
+	const state = await (
+		await app.request(
+			`/api/v1/mailboxes/${mailbox}/agent?conversationId=${turn.conversation_id}`,
+		)
+	).json();
+	assert.equal(state.turns[0].answer, "Existing answer");
+});
