@@ -14,6 +14,24 @@ This is an intentionally standalone pnpm workspace with its own lockfile: the up
 - Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Live raw MIME is retained privately in R2.
 - Probo, historical imports, and the upstream MCP server are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
 
+## Conversation status
+
+Conversations have an Open or Done status, independent of tags and classification.
+Inbox defaults to Open; Open, Done, and All filters work alongside tag filters
+and Needs review. The conversation panel offers Mark done and Reopen, with the
+latest 50 status transitions behind the information icon next to the status.
+
+Migration 018 adds workflow state; migration 019 moves previous Waiting
+conversations to Open, preserving their history. Waiting and scheduled reopening
+are disabled. New received messages reopen Done conversations; duplicate ingestion,
+drafts, and outgoing messages do not. Status writes require the current revision
+and record the authenticated actor in live mode. Stale actions are rejected.
+Classification and email-agent execution remain independent of completion.
+
+Run `pnpm db:migrate` before deploying this version. No live data is changed by
+building or testing. For a separate built local preview, use
+`PORT=4392 PUBLIC_ORIGIN=http://127.0.0.1:4392 pnpm start`.
+
 ## Run locally
 
 Requires Node 22, pnpm 10, and either Docker or native PostgreSQL 17 (`pg_config` on PATH, or `PG_BIN` set to its binary directory).

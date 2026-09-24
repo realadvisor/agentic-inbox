@@ -34,7 +34,7 @@ const app = createApi(db, {
 	previewRoutes: previewModule?.previewApi(db),
 	readAttachment: localAttachments(),
 	classifierPreview: preview,
-	origin: preview ? `http://127.0.0.1:${port}` : undefined,
+	origin: preview ? `http://127.0.0.1:${port}` : process.env.PUBLIC_ORIGIN,
 });
 if (preview) {
 	const { tickPreview } = await import("./preview/api");

@@ -977,6 +977,14 @@
 							"enum": ["all", "any"],
 							"default": "all"
 						}
+					},
+					{
+						"in": "query",
+						"name": "status",
+						"schema": {
+							"type": "string",
+							"enum": ["open", "done"]
+						}
 					}
 				],
 				"responses": {
@@ -1381,6 +1389,14 @@
 							"type": "string",
 							"enum": ["all", "any"],
 							"default": "all"
+						}
+					},
+					{
+						"in": "query",
+						"name": "status",
+						"schema": {
+							"type": "string",
+							"enum": ["open", "done"]
 						}
 					}
 				],
@@ -4818,6 +4834,104 @@
 						"description": "New conversation with id, title, and timestamps"
 					}
 				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/status": {
+			"get": {
+				"summary": "Read conversation status and recent activity",
+				"responses": {
+					"200": {
+						"description": "Status, revision, and latest 50 transitions"
+					},
+					"404": {
+						"description": "Conversation not found"
+					}
+				},
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "threadId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				]
+			},
+			"put": {
+				"summary": "Change conversation status using the current revision",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["status", "revision"],
+								"additionalProperties": false,
+								"properties": {
+									"status": {
+										"type": "string",
+										"enum": ["open", "done"]
+									},
+									"revision": {
+										"type": "integer",
+										"minimum": 0
+									},
+									"reason": {
+										"type": "string",
+										"maxLength": 1000,
+										"description": "Optional reason for the status change"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated conversation status and revision"
+					},
+					"400": {
+						"description": "Invalid status, reason or follow-up"
+					},
+					"403": {
+						"description": "Authenticated identity required"
+					},
+					"404": {
+						"description": "Conversation not found"
+					},
+					"409": {
+						"description": "Conversation changed; review before retrying"
+					}
+				},
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "threadId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				]
 			}
 		}
 	},

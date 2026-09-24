@@ -40,6 +40,7 @@ export interface ConversationTag extends Tag {
 }
 
 export interface Email {
+	thread_status?: import("shared/thread-status").ThreadStatus;
 	delivery_status?:
 		| "received"
 		| "draft"

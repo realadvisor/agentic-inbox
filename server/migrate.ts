@@ -20,6 +20,8 @@ export async function migrate(db: Database) {
 		[15, "015_jev_choice.sql"],
 		[16, "016_jev_default_rubrics.sql"],
 		[17, "017_agent_conversations.sql"],
+		[18, "018_thread_status.sql"],
+		[19, "019_retire_waiting_status.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),

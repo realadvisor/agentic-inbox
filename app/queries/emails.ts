@@ -20,7 +20,7 @@ interface EmailListResponse {
 export function useEmails(
 	mailboxId: string | undefined,
 	params: Record<string, string>,
-	options?: { enabled?: boolean; refetchInterval?: number }
+	options?: { enabled?: boolean; refetchInterval?: number },
 ) {
 	const queryParams = params.folder ? { ...params, threaded: "true" } : params;
 
@@ -30,8 +30,7 @@ export function useEmails(
 			: ["emails", "_disabled"],
 		queryFn: async () => {
 			const data = (await api.listEmails(mailboxId!, queryParams)) as
-				| EmailListResponse
-				| Email[];
+				EmailListResponse | Email[];
 			if (data && typeof data === "object" && "emails" in data) {
 				return {
 					emails: (data as EmailListResponse).emails ?? [],
@@ -48,7 +47,7 @@ export function useEmails(
 
 export function useEmail(
 	mailboxId: string | undefined,
-	emailId: string | undefined
+	emailId: string | undefined,
 ) {
 	return useQuery<Email>({
 		queryKey:
@@ -62,7 +61,7 @@ export function useEmail(
 
 export function useThreadReplies(
 	mailboxId: string | undefined,
-	threadId: string | undefined | null
+	threadId: string | undefined | null,
 ) {
 	const qc = useQueryClient();
 
@@ -98,6 +97,7 @@ function useInvalidateEmailData() {
 	const qc = useQueryClient();
 	return (mailboxId: string) => {
 		qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+		qc.invalidateQueries({ queryKey: ["thread-status", mailboxId] });
 		qc.invalidateQueries({
 			queryKey: queryKeys.folders.list(mailboxId),
 		});
@@ -155,7 +155,7 @@ export function useUpdateEmail() {
 				qc.setQueryData(key, {
 					...cached,
 					emails: cached.emails.map((e) =>
-						e.id === id ? { ...e, ...(data as Partial<Email>) } : e
+						e.id === id ? { ...e, ...(data as Partial<Email>) } : e,
 					),
 				});
 			}
@@ -186,6 +186,7 @@ export function useUpdateEmail() {
 		onSettled: (_data, _err, { mailboxId }) => {
 			// Always refetch to ensure server truth
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+			qc.invalidateQueries({ queryKey: ["thread-status", mailboxId] });
 			qc.invalidateQueries({
 				queryKey: queryKeys.folders.list(mailboxId),
 			});
@@ -205,6 +206,7 @@ export function useMarkThreadRead() {
 		}) => api.markThreadRead(mailboxId, threadId),
 		onSuccess: (_data, { mailboxId }) => {
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+			qc.invalidateQueries({ queryKey: ["thread-status", mailboxId] });
 			qc.invalidateQueries({
 				queryKey: queryKeys.folders.list(mailboxId),
 			});

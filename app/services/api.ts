@@ -1,3 +1,8 @@
+import type {
+	ThreadWorkflow,
+	ThreadState,
+	StatusChange,
+} from "shared/thread-status";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -201,6 +206,19 @@ const api = {
 		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, {
 			signal: opts?.signal,
 		}),
+	getThreadStatus: (mailboxId: string, threadId: string) =>
+		get<ThreadWorkflow>(
+			`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/status`,
+		),
+	updateThreadStatus: (
+		mailboxId: string,
+		threadId: string,
+		input: StatusChange,
+	) =>
+		put<ThreadState>(
+			`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/status`,
+			input,
+		),
 	markThreadRead: (mailboxId: string, threadId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/read`),
 	getAttachment: (mailboxId: string, emailId: string, attachmentId: string) =>
