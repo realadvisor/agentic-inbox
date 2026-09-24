@@ -199,6 +199,7 @@ export default function ClassifierRuns() {
 				</section>
 				{selected && (
 					<RunDetail
+						className="border-t xl:border-t-0 xl:border-l border-kumo-line"
 						key={selected}
 						id={selected}
 						close={() => changeFilters({ run: "" })}

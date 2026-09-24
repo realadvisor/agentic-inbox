@@ -32,10 +32,12 @@ export function RunDetail({
 	id,
 	close,
 	showConversationLink = true,
+	className = "",
 }: {
 	id: string;
 	close?: () => void;
 	showConversationLink?: boolean;
+	className?: string;
 }) {
 	const panelId = useId();
 	const [tab, setTab] = useState<"results" | "request" | "response">("results");
@@ -61,7 +63,7 @@ export function RunDetail({
 	return (
 		<aside
 			aria-label="Run details"
-			className="border-t xl:border-t-0 xl:border-l border-kumo-line min-w-0 bg-kumo-base"
+			className={`min-w-0 bg-kumo-base ${className}`}
 		>
 			<div className="p-5">
 				<div className="flex justify-between gap-3 items-start">
