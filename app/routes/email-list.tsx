@@ -1,3 +1,5 @@
+import { statusLabels, type ThreadStatus } from "shared/thread-status";
+import { StatusBadge } from "~/components/ThreadStatus";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -186,6 +188,13 @@ export default function EmailListRoute() {
 	} = useUIStore();
 	const [page, setPage] = useState(1);
 	const [searchParams, setSearchParams] = useSearchParams();
+	const rawStatus = searchParams.get("status");
+	const status: ThreadStatus | "all" =
+		rawStatus === "done" || rawStatus === "open" || rawStatus === "all"
+			? rawStatus
+			: folder === Folders.INBOX
+				? "open"
+				: "all";
 	const needsReview = searchParams.get("needs_review") === "true";
 	const tagId = [
 		...new Set([
@@ -202,7 +211,7 @@ export default function EmailListRoute() {
 			else next.delete("tag_ids");
 			return next;
 		});
-	const viewKey = `${mailboxId}/${folder}/${tagId}/${tagMatch}/${needsReview}`;
+	const viewKey = `${mailboxId}/${folder}/${tagId}/${tagMatch}/${needsReview}/${status}`;
 	const prevFolderRef = useRef<string | undefined>(undefined);
 	const viewChanged = prevFolderRef.current !== viewKey;
 	const currentPage = viewChanged ? 1 : page;
@@ -210,7 +219,7 @@ export default function EmailListRoute() {
 	const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
 	useEffect(() => {
 		setSelectedThreads([]);
-	}, [mailboxId, folder, page, tagId, tagMatch, needsReview]);
+	}, [mailboxId, folder, page, tagId, tagMatch, needsReview, status]);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -221,12 +230,13 @@ export default function EmailListRoute() {
 		() => ({
 			folder: folder === "all" ? "" : folder || "",
 			threaded: "true",
+			...(status !== "all" ? { status } : {}),
 			page: String(currentPage),
 			limit: String(PAGE_SIZE),
 			...(tagId ? { tag_ids: tagId, tag_match: tagMatch } : {}),
 			...(needsReview ? { needs_review: "true" } : {}),
 		}),
-		[folder, currentPage, tagId, tagMatch, needsReview],
+		[folder, currentPage, tagId, tagMatch, needsReview, status],
 	);
 
 	const { data: emailData, isFetching: isRefreshing } = useEmails(
@@ -472,6 +482,33 @@ export default function EmailListRoute() {
 				)}
 			</div>
 
+			<div
+				className="flex flex-wrap gap-2 px-4 py-2 border-b border-kumo-line"
+				aria-label="Conversation views"
+			>
+				{(["open", "done", "all"] as const).map((value) => (
+					<Button
+						key={value}
+						size="sm"
+						variant={status === value ? "primary" : "ghost"}
+						aria-pressed={status === value}
+						aria-label={
+							value === "all"
+								? "All statuses"
+								: `${statusLabels[value]} conversations`
+						}
+						onClick={() =>
+							setSearchParams((current) => {
+								const next = new URLSearchParams(current);
+								next.set("status", value);
+								return next;
+							})
+						}
+					>
+						{value === "all" ? "All" : statusLabels[value]}
+					</Button>
+				))}
+			</div>
 			{/* Email rows */}
 			<div className="flex-1 overflow-y-auto">
 				{isRefreshing && emails.length === 0 ? (
@@ -559,6 +596,9 @@ export default function EmailListRoute() {
 												<span className="shrink-0 text-xs text-kumo-subtle bg-kumo-fill rounded-full px-1.5 py-0.5 font-medium">
 													{email.thread_count}
 												</span>
+											)}
+											{email.thread_status && (
+												<StatusBadge status={email.thread_status} />
 											)}
 											{email.has_draft && (
 												<span className="shrink-0 text-xs text-kumo-destructive font-medium">
@@ -652,6 +692,10 @@ export default function EmailListRoute() {
 							);
 						})}
 					</div>
+				) : status !== "all" && !tagId && !needsReview ? (
+					<p className="p-8 text-center text-kumo-subtle">
+						No {statusLabels[status].toLowerCase()} conversations.
+					</p>
 				) : tagId ? (
 					<p className="p-8 text-center text-kumo-subtle">
 						{folder === "all"

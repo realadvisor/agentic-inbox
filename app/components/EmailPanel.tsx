@@ -1,3 +1,4 @@
+import ThreadStatus from "./ThreadStatus";
 import { ConversationClassifierDrawer } from "./ConversationClassifierDrawer";
 import { useMailMode } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
@@ -312,6 +313,13 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				</div>
 			)}
 
+			{mailboxId && email.thread_id && !isDraftFolder && (
+				<ThreadStatus
+					key={`${mailboxId}/${email.thread_id}`}
+					mailboxId={mailboxId}
+					threadId={email.thread_id}
+				/>
+			)}
 			<EmailPanelHeader
 				subject={email.subject}
 				messageCount={allMessages.length}

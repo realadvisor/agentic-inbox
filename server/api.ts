@@ -1,3 +1,8 @@
+import {
+	statusChangeSchema,
+	threadStatusSchema,
+} from "../shared/thread-status";
+import { getThreadWorkflow, changeThreadStatus } from "./thread-status";
 import { agentApi, type AgentOptions } from "./agent/api";
 import { classifierApi } from "./classification/api";
 import { setConversationTags } from "./tags";
@@ -46,6 +51,7 @@ const tagSchema = z
 	})
 	.strict();
 const querySchema = z.object({
+	status: threadStatusSchema.optional(),
 	tag_id: id.optional(),
 	tag_ids: z
 		.string()
@@ -376,6 +382,34 @@ export function createApi(db: Database, options: ApiOptions) {
 				id.parse(c.req.param("threadId")),
 			),
 		),
+	);
+	app.get("/api/v1/mailboxes/:mailboxId/threads/:threadId/status", async (c) =>
+		c.json(
+			await getThreadWorkflow(
+				db,
+				c.req.param("mailboxId"),
+				id.parse(c.req.param("threadId")),
+			),
+		),
+	);
+	app.put(
+		"/api/v1/mailboxes/:mailboxId/threads/:threadId/status",
+		async (c) => {
+			const parsed = statusChangeSchema.safeParse(await c.req.json());
+			if (!parsed.success)
+				throw new HTTPException(400, {
+					message: parsed.error.issues[0].message,
+				});
+			return c.json(
+				await changeThreadStatus(
+					db,
+					c.req.param("mailboxId"),
+					id.parse(c.req.param("threadId")),
+					parsed.data,
+					tagActor(),
+				),
+			);
+		},
 	);
 	app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c) => {
 		await db`UPDATE emails SET read = true WHERE mailbox_id = ${c.req.param(

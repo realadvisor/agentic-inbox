@@ -181,6 +181,11 @@ export class InboxStore {
 				AND NOT tag_manually_overridden(r.mailbox_id,r.thread_id,c.tag_id)
 			)`);
 		}
+		if (params.status)
+			conditions.push(
+				this
+					.db`EXISTS (SELECT 1 FROM conversations workflow WHERE workflow.mailbox_id = e.mailbox_id AND workflow.thread_id = e.thread_id AND workflow.status = ${params.status})`,
+			);
 		if (params.folder) conditions.push(this.db`e.folder_id = ${params.folder}`);
 		if (params.thread_id)
 			conditions.push(this.db`e.thread_id = ${params.thread_id}`);
@@ -236,6 +241,7 @@ export class InboxStore {
 		const direction =
 			params.sortDirection === "ASC" ? this.db`ASC` : this.db`DESC`;
 		const rows = await this.db<MessageRow[]>`SELECT selected.*,
+ (SELECT status FROM conversations workflow WHERE workflow.mailbox_id = selected.mailbox_id AND workflow.thread_id = selected.thread_id) AS thread_status,
 			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS thread_count,
 			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND NOT t.read) AS thread_unread_count,
 			EXISTS (SELECT 1 FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND t.folder_id = 'draft') AS has_draft,
