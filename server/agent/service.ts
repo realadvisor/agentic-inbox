@@ -1,6 +1,8 @@
 import { modelIdSchema, requireModel } from "./catalog";
 import {
 	streamText,
+	convertToModelMessages,
+	isToolOrDynamicToolUIPart,
 	stepCountIs,
 	tool,
 	type LanguageModel,
@@ -18,6 +20,7 @@ import {
 	type AgentAction,
 	type AgentEvent,
 	type AgentModel,
+	type AgentTurn,
 } from "../../shared/agent";
 
 export type AiBinding = Extract<
@@ -426,7 +429,7 @@ export function createTools(
 	};
 }
 
-export async function executeRun(
+export async function startRun(
 	db: Database,
 	run: Run,
 	settings: AgentSettings,
@@ -434,67 +437,127 @@ export async function executeRun(
 	emit: (event: AgentEvent) => void = () => {},
 ) {
 	let answer = "";
+	const history = run.automatic
+		? []
+		: await db<
+				AgentTurn[]
+			>`SELECT id,model,prompt,answer,actions,ui_message,status,created_at FROM agent_turns WHERE mailbox_id=${run.mailbox} AND status='complete' AND id<>${run.id} ORDER BY created_at DESC LIMIT 3`;
+	const messages: ModelMessage[] = [];
+	for (const turn of history.reverse()) {
+		messages.push({ role: "user", content: turn.prompt.slice(0, 4000) });
+		if (turn.ui_message) {
+			const bounded = {
+				...turn.ui_message,
+				parts: turn.ui_message.parts
+					.filter((p) => p.type !== "reasoning")
+					.map((p) => {
+						if (p.type === "text") return { ...p, text: p.text.slice(0, 4000) };
+						if (
+							isToolOrDynamicToolUIPart(p) &&
+							p.state === "output-available" &&
+							JSON.stringify(p.output).length > 12000
+						)
+							return {
+								...p,
+								output: {
+									truncated: true,
+									excerpt: JSON.stringify(p.output).slice(0, 12000),
+								},
+							};
+						return p;
+					}),
+			};
+			messages.push(
+				...(await convertToModelMessages([bounded], {
+					ignoreIncompleteToolCalls: true,
+				})),
+			);
+		} else {
+			messages.push({
+				role: "assistant",
+				content:
+					turn.answer.slice(0, 4000) +
+					(turn.actions.length
+						? `\nSaved actions: ${JSON.stringify(turn.actions).slice(0, 4000)}`
+						: ""),
+			});
+		}
+	}
+	let prompt = run.prompt;
+	let generation: number | undefined;
+	if (run.emailId) {
+		const email = await new InboxStore(db).message(run.mailbox, run.emailId);
+		const [conversation] =
+			await db`SELECT generation FROM conversations WHERE mailbox_id=${run.mailbox} AND thread_id=${email.thread_id!}`;
+		generation = conversation?.generation;
+		prompt += `\nSelected email ID: ${email.id}. Thread ID: ${email.thread_id}. Use get_thread to read its context.`;
+	}
+	messages.push({ role: "user", content: prompt });
+	const tools = createTools(db, run, emit, generation);
+	const result = streamText({
+		model: model(settings.model),
+		system: `${SYSTEM}\nMailbox: ${run.mailbox}\nAdditional operator preferences:\n${settings.system_prompt}`,
+		messages,
+		tools,
+		stopWhen: stepCountIs(5),
+		maxOutputTokens: 4000,
+		maxRetries: 0,
+		onError: () => {
+			console.error("Inbox agent provider request failed");
+		},
+		abortSignal: AbortSignal.timeout(120000),
+	});
+	const completion = (async () => {
+		try {
+			let failed = false;
+			for await (const part of result.fullStream) {
+				if (part.type === "error") throw new Error("Model request failed");
+				if (part.type === "tool-error") {
+					failed = true;
+					emit({
+						type: "error",
+						message:
+							"An agent action failed. Check the saved drafts and try again.",
+					});
+				}
+				if (part.type === "text-delta") {
+					answer += part.text;
+					emit({ type: "text", text: part.text });
+				}
+			}
+			if (!answer.trim())
+				answer =
+					"Finished. Check the actions below and review saved drafts before sending.";
+			await db`UPDATE agent_turns SET answer=${answer},status=${failed ? "failed" : "complete"} WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
+			emit({ type: "done" });
+			return !failed;
+		} catch {
+			const message =
+				"The agent could not finish. Any drafts already saved remain available. Check them before trying again.";
+			await db`UPDATE agent_turns SET answer=${answer ? `${answer}\n\n${message}` : message},status='failed' WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
+			emit({ type: "error", message });
+			return false;
+		} finally {
+			await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${run.mailbox} AND active_run=${run.id}`;
+		}
+	})();
+	return { result, completion };
+}
+
+export async function executeRun(
+	db: Database,
+	run: Run,
+	settings: AgentSettings,
+	model: ModelFactory,
+	emit: (event: AgentEvent) => void = () => {},
+) {
 	try {
-		const history = run.automatic
-			? []
-			: await db`SELECT prompt,answer,actions FROM agent_turns WHERE mailbox_id=${run.mailbox} AND status='complete' AND id<>${run.id} ORDER BY created_at DESC LIMIT 3`;
-		const messages: ModelMessage[] = history.reverse().flatMap((turn) => [
-			{ role: "user" as const, content: turn.prompt.slice(0, 4000) },
-			{ role: "assistant" as const, content: turn.answer.slice(0, 4000) },
-		]);
-		let prompt = run.prompt;
-		let generation: number | undefined;
-		if (run.emailId) {
-			const email = await new InboxStore(db).message(run.mailbox, run.emailId);
-			const [conversation] =
-				await db`SELECT generation FROM conversations WHERE mailbox_id=${run.mailbox} AND thread_id=${email.thread_id!}`;
-			generation = conversation?.generation;
-			prompt += `\nSelected email ID: ${email.id}. Thread ID: ${email.thread_id}. Use get_thread to read its context.`;
-		}
-		messages.push({ role: "user", content: prompt });
-		const tools = createTools(db, run, emit, generation);
-		const result = streamText({
-			model: model(settings.model),
-			system: `${SYSTEM}\nMailbox: ${run.mailbox}\nAdditional operator preferences:\n${settings.system_prompt}`,
-			messages,
-			tools,
-			stopWhen: stepCountIs(5),
-			maxOutputTokens: 4000,
-			maxRetries: 0,
-			onError: () => {
-				console.error("Inbox agent provider request failed");
-			},
-			abortSignal: AbortSignal.timeout(120000),
-		});
-		let failed = false;
-		for await (const part of result.fullStream) {
-			if (part.type === "error") throw new Error("Model request failed");
-			if (part.type === "tool-error") {
-				failed = true;
-				emit({
-					type: "error",
-					message:
-						"An agent action failed. Check the saved drafts and try again.",
-				});
-			}
-			if (part.type === "text-delta") {
-				answer += part.text;
-				emit({ type: "text", text: part.text });
-			}
-		}
-		if (!answer.trim())
-			answer =
-				"Finished. Check the actions below and review saved drafts before sending.";
-		await db`UPDATE agent_turns SET answer=${answer},status=${failed ? "failed" : "complete"} WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
-		emit({ type: "done" });
-		return !failed;
+		return await (
+			await startRun(db, run, settings, model, emit)
+		).completion;
 	} catch {
-		const message =
-			"The agent could not finish. Any drafts already saved remain available. Check them before trying again.";
-		await db`UPDATE agent_turns SET answer=${answer ? `${answer}\n\n${message}` : message},status='failed' WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
-		emit({ type: "error", message });
-		return false;
-	} finally {
+		await db`UPDATE agent_turns SET status='failed',answer='Could not start the model. Check provider configuration.' WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
 		await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${run.mailbox} AND active_run=${run.id}`;
+		return false;
 	}
 }

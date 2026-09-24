@@ -13,6 +13,7 @@ export async function migrate(db: Database) {
 		[10, "010_classifier_provider_runs.sql"],
 		[9, "009_email_agent.sql"],
 		[10, "010_agent_model_catalog.sql"],
+		[11, "011_agent_ui_messages.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),

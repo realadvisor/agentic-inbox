@@ -1,6 +1,13 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import {
+	DefaultChatTransport,
+	readUIMessageStream,
+	isToolOrDynamicToolUIPart,
+} from "ai";
+import { turnsToMessages } from "../shared/agent-messages";
+import type { InboxChatMessage, AgentTurn } from "../shared/agent";
 import { MockLanguageModelV3 } from "ai/test";
 import { connect } from "../server/db";
 import { migrate } from "../server/migrate";
@@ -248,9 +255,14 @@ test("streamed chat uses the saved model, persists history, and keeps DB work re
 		},
 	);
 	assert.equal(response.status, 200);
+	assert.match(
+		response.headers.get("content-type") ?? "",
+		/text\/event-stream/,
+	);
+	assert.equal(response.headers.get("x-vercel-ai-ui-message-stream"), "v1");
 	assert.match(await response.text(), /Hello from the selected model/);
 	await Promise.all(tasks);
-	assert.equal(tasks.length, 1);
+	assert.equal(tasks.length, 2);
 	assert.deepEqual(chosen, [AGENT_MODELS[1].id]);
 	const [turn] = await db`SELECT * FROM agent_turns WHERE id=${r.id}`;
 	assert.equal(turn.status, "complete");
@@ -587,4 +599,133 @@ test("provider routing keeps Workers AI local to the binding and external provid
 		() => gateway.model!(AGENT_MODELS[0].id),
 		/Workers AI is not configured/,
 	);
+});
+
+test("native SDK transport persists structured tools and replays results in follow-up context", async () => {
+	const mailbox = "sdk@example.test";
+	await store.createMailbox(mailbox, "SDK");
+	const email = (await incoming(mailbox))!;
+	let calls = 0;
+	const prompts: unknown[] = [];
+	const tasks: Promise<unknown>[] = [];
+	const model = new MockLanguageModelV3({
+		doStream: async (options) => {
+			prompts.push(options.prompt);
+			if (calls++ > 0) return textModel().doStream(options);
+			return {
+				stream: new ReadableStream({
+					start(controller) {
+						controller.enqueue({
+							type: "tool-call",
+							toolCallId: "read-original",
+							toolName: "get_email",
+							input: JSON.stringify({ emailId: email.id }),
+						});
+						controller.enqueue({
+							type: "finish",
+							finishReason: { unified: "tool-calls", raw: "tool_calls" },
+							usage: {
+								inputTokens: {
+									total: 1,
+									noCache: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+								},
+								outputTokens: { total: 1, text: 1, reasoning: 0 },
+							},
+						});
+						controller.close();
+					},
+				}),
+			};
+		},
+	});
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => model, waitUntil: (task) => tasks.push(task) },
+	});
+	const transport = new DefaultChatTransport<InboxChatMessage>({
+		api: `http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/chat`,
+		fetch: async (input, init) => app.request(String(input), init),
+		prepareSendMessagesRequest: ({ messages }) => ({
+			body: { id: messages[messages.length - 1].id, prompt: "Read my email" },
+		}),
+	});
+	const id = randomUUID();
+	const stream = await transport.sendMessages({
+		trigger: "submit-message",
+		chatId: mailbox,
+		messageId: undefined,
+		abortSignal: undefined,
+		messages: [
+			{ id, role: "user", parts: [{ type: "text", text: "Read my email" }] },
+		],
+	});
+	let last: InboxChatMessage | undefined;
+	for await (const message of readUIMessageStream<InboxChatMessage>({ stream }))
+		last = message;
+	await Promise.all(tasks);
+	assert.equal(last?.id, `${id}-assistant`);
+	assert.equal(last?.metadata?.model, AGENT_MODELS[0].id);
+	assert.ok(
+		last?.parts.some(
+			(p) =>
+				isToolOrDynamicToolUIPart(p) &&
+				p.state === "output-available" &&
+				JSON.stringify(p.output).includes(email.id),
+		),
+	);
+	const [turn] = await db<
+		AgentTurn[]
+	>`SELECT * FROM agent_turns WHERE id=${id}`;
+	assert.deepEqual(turn.ui_message, JSON.parse(JSON.stringify(last)));
+	assert.deepEqual(
+		turnsToMessages([turn])[1].parts,
+		JSON.parse(JSON.stringify(last?.parts)),
+	);
+	const followup = await app.request(
+		`http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/chat`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				id: randomUUID(),
+				prompt: "What did that email say?",
+			}),
+		},
+	);
+	await followup.text();
+	await Promise.all(tasks);
+	assert.match(JSON.stringify(prompts.at(-1)), new RegExp(email.id));
+	assert.match(JSON.stringify(prompts.at(-1)), /Please help/);
+});
+
+test("browser disconnect does not lose native UI history or leave the mailbox lease active", async () => {
+	const mailbox = "disconnect@example.test";
+	await store.createMailbox(mailbox, "Disconnect");
+	const tasks: Promise<unknown>[] = [];
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => textModel(), waitUntil: (task) => tasks.push(task) },
+	});
+	const id = randomUUID();
+	const response = await app.request(
+		`http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/chat`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ id, prompt: "Hello" }),
+		},
+	);
+	await response.body!.cancel();
+	await Promise.all(tasks);
+	const [turn] =
+		await db`SELECT status,ui_message FROM agent_turns WHERE id=${id}`;
+	assert.equal(turn.status, "complete");
+	assert.ok(
+		turn.ui_message.parts.some((p: { type: string }) => p.type === "text"),
+	);
+	const [lease] =
+		await db`SELECT active_run FROM agent_settings WHERE mailbox_id=${mailbox}`;
+	assert.equal(lease.active_run, null);
 });

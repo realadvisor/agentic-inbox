@@ -1,3 +1,10 @@
+import type { UIMessage } from "ai";
+
+export type InboxChatMessage = UIMessage<{
+	model?: string;
+	status?: "running" | "complete" | "failed";
+}>;
+
 // Workers AI seed choices. Gateway choices come from the refreshed catalog.
 export const AGENT_MODELS = [
 	{ id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6" },
@@ -41,6 +48,7 @@ export interface AgentTurn {
 	status: "running" | "complete" | "failed";
 	actions: AgentAction[];
 	created_at: string;
+	ui_message?: InboxChatMessage | null;
 }
 export interface AgentState {
 	available: boolean;

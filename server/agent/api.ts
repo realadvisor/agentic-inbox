@@ -12,13 +12,14 @@ import { z } from "zod";
 import type { Database } from "../db";
 import {
 	claimRun,
-	executeRun,
+	startRun,
 	getSettings,
 	saveSettings,
 	settingsSchema,
 	type ModelFactory,
 } from "./service";
-import type { AgentEvent } from "../../shared/agent";
+import { consumeStream } from "ai";
+import type { InboxChatMessage } from "../../shared/agent";
 
 export interface AgentOptions {
 	model?: ModelFactory;
@@ -41,7 +42,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 	});
 	app.get("/api/v1/mailboxes/:mailboxId/agent", async (c) => {
 		const mailbox = c.req.param("mailboxId");
-		const turns = await db`SELECT id,model,prompt,answer,actions,
+		const turns = await db`SELECT id,model,prompt,answer,actions,ui_message,
 		 CASE WHEN status='running' AND created_at<now()-interval '3 minutes' THEN 'failed' ELSE status END AS status,created_at
 		 FROM agent_turns WHERE mailbox_id=${mailbox} ORDER BY created_at DESC LIMIT 30`;
 		return c.json({
@@ -86,39 +87,36 @@ export function agentApi(db: Database, options: AgentOptions) {
 			sources,
 		);
 		const settings = await claimRun(db, run);
-		let disconnected = false;
-		let task: Promise<unknown> | undefined;
-		const encoder = new TextEncoder();
-		const stream = new ReadableStream<Uint8Array>({
-			start(controller) {
-				const emit = (event: AgentEvent) => {
-					if (!disconnected)
-						controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-				};
-				task = executeRun(db, run, settings, options.model!, emit)
-					.catch(() => {
-						emit({
-							type: "error",
-							message:
-								"The agent was interrupted. Reload its history before trying again.",
-						});
-					})
-					.finally(() => {
-						if (!disconnected) controller.close();
-					});
-			},
-			cancel() {
-				disconnected = true;
-			},
-		});
-		// Keep the request's DB alive until streamed work and persistence finish.
-		options.waitUntil?.(task!);
-		return new Response(stream, {
-			headers: {
-				"Content-Type": "application/x-ndjson",
-				"Cache-Control": "no-store",
-			},
-		});
+		try {
+			const execution = await startRun(db, run, settings, options.model);
+			options.waitUntil?.(execution.completion);
+			return execution.result.toUIMessageStreamResponse<InboxChatMessage>({
+				generateMessageId: () => `${run.id}-assistant`,
+				sendReasoning: false,
+				messageMetadata: ({ part }) =>
+					part.type === "start" ? { model: settings.model } : undefined,
+				onError: (error) =>
+					error instanceof Error ? error.message : "The model request failed",
+				onFinish: async ({ responseMessage }) => {
+					await execution.completion;
+					await db`UPDATE agent_turns SET ui_message=${db.json(JSON.parse(JSON.stringify(responseMessage)))} WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
+				},
+				// Consume independently of the browser so disconnects cannot lose tool results.
+				consumeSseStream: ({ stream }) => {
+					const task = consumeStream({ stream });
+					options.waitUntil?.(task);
+					return task;
+				},
+				headers: {
+					"Cache-Control": "no-store",
+					"x-chat-model": settings.model,
+				},
+			});
+		} catch (error) {
+			await db`UPDATE agent_turns SET status='failed',answer='Could not start the model. Check provider configuration.' WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
+			await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${run.mailbox} AND active_run=${run.id}`;
+			throw error;
+		}
 	});
 	return app;
 }

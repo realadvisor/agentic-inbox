@@ -4288,7 +4288,7 @@
 				"operationId": "postAgentChat",
 				"tags": ["Agent"],
 				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
-				"description": "Never sends email. Reuse a request ID only to detect duplicates; duplicate requests return 409 and are never replayed. Read history after interruption before submitting another request. Newline-delimited JSON events: text, action, done, error. An error may follow successful actions; saved drafts remain available.",
+				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs continue to persist their results; read history before retrying.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4333,9 +4333,22 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Newline-delimited JSON stream",
+						"description": "Native Vercel AI SDK UI message stream",
+						"headers": {
+							"x-vercel-ai-ui-message-stream": {
+								"schema": {
+									"type": "string",
+									"enum": ["v1"]
+								}
+							},
+							"x-chat-model": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						},
 						"content": {
-							"application/x-ndjson": {
+							"text/event-stream": {
 								"schema": {
 									"type": "string"
 								}
