@@ -63,3 +63,26 @@ test("provider throttling is returned to every job with retry headers intact", a
 		assert.equal(response.headers.get("Retry-After"), "60");
 	}
 });
+
+test("split batches stop before leases expire and leave remaining questions retryable", async (t) => {
+	t.mock.timers.enable({ apis: ["Date"], now: 1000 });
+	let calls = 0;
+	const batch = batchRequests(async () => {
+		calls++;
+		t.mock.timers.setTime(62000);
+		return Response.json({ answers: { match: { type: "noul", noul: 0.9 } } });
+	}, 2);
+	const send = (index: number) =>
+		batch.forJob(index)("https://api.typesafe.ai/v1/systemone", {
+			method: "POST",
+			body: JSON.stringify({
+				model: "jev-latest",
+				state: { snapshot: index },
+				questions: { match: { type: "noul", instructions: "Question" } },
+			}),
+		});
+	const responses = await Promise.allSettled([send(0), send(1)]);
+	assert.equal(calls, 1);
+	assert.equal(responses[0].status, "fulfilled");
+	assert.equal(responses[1].status, "rejected");
+});

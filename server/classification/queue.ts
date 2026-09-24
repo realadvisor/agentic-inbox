@@ -133,8 +133,8 @@ export async function processJob(
 	 WHERE token=${token} AND status='pending' AND available_at<=now()
 	 AND (lease_until IS NULL OR lease_until<=now())`;
 	if (!anchor) return processSingleJob(db, key, token, request);
-	// At most three jobs: even payload splits fit within the 90-second lease
-	// with a 20-second timeout per provider call. Queue concurrency stays unchanged.
+	// Collect all ready questions; the batch transport bounds elapsed time so
+	// payload splits cannot outlive the job leases.
 	const siblings = await db<{ token: string }[]>`SELECT j.token
 	 FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id
 	 WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id}
@@ -142,7 +142,7 @@ export async function processJob(
 	 AND j.status='pending' AND j.available_at<=now()
 	 AND (j.lease_until IS NULL OR j.lease_until<=now())
 	 AND c.enabled AND c.revision=j.revision
-	 ORDER BY j.classifier_id LIMIT 2`;
+	 ORDER BY j.classifier_id`;
 	if (!siblings.length) return processSingleJob(db, key, token, request);
 	const tokens = [token, ...siblings.map((j) => j.token)];
 	const batch = batchRequests(request, tokens.length);

@@ -1181,3 +1181,35 @@ test("overlapping deliveries never send the same question twice", async () => {
 		2,
 	);
 });
+
+test("all ready classifiers are included without the former three-question cap", async () => {
+	await reset();
+	for (let i = 0; i < 7; i++) await siblingClassifier(`Extra question ${i}?`);
+	const target = await message();
+	let calls = 0;
+	await processJob(
+		db,
+		"test",
+		(await job(target)).token,
+		async (_url, init) => {
+			calls++;
+			const { questions } = JSON.parse(init!.body as string);
+			assert.equal(Object.keys(questions).length, 8);
+			return Response.json({
+				answers: Object.fromEntries(
+					Object.keys(questions).map((id) => [
+						id,
+						{ type: "noul", noul: 0.99 },
+					]),
+				),
+			});
+		},
+	);
+	assert.equal(calls, 1);
+	assert.equal(
+		(
+			await db`SELECT * FROM conversation_classifications WHERE thread_id=${target} AND status='complete'`
+		).length,
+		8,
+	);
+});

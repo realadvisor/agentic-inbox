@@ -8,16 +8,22 @@ export function batchRequests(request: typeof fetch, participants: number) {
 		resolve: (response: Response) => void;
 		reject: (error: unknown) => void;
 	};
+	// Include preparation time and leave 30 seconds for persistence before leases expire.
+	const deadline = Date.now() + 60_000;
 	const pending: Pending[] = [];
 	const ready = new Set<number>();
 	let started = false;
 	async function send(group: Pending[]) {
 		try {
+			const remaining = deadline - Date.now();
+			if (remaining <= 0)
+				throw new Error("Batch delivery time budget exhausted");
+			const signal = AbortSignal.timeout(Math.min(20_000, remaining));
 			if (group.length === 1) {
 				group[0].resolve(
 					await request(group[0].url, {
 						...group[0].init,
-						signal: AbortSignal.timeout(20_000),
+						signal,
 					}),
 				);
 				return;
@@ -25,7 +31,7 @@ export function batchRequests(request: typeof fetch, participants: number) {
 			const response = await request(group[0].url, {
 				...group[0].init,
 				body: JSON.stringify(payload(group)),
-				signal: AbortSignal.timeout(20_000),
+				signal,
 			});
 			if (!response.ok) {
 				for (const item of group) item.resolve(response.clone());
