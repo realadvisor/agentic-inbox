@@ -821,3 +821,130 @@ test("completed runs persist token usage and catalog cost estimates", async () =
 	assert.equal(turn.usage.estimatedCostUsd, 0.00001);
 	await db`UPDATE agent_models SET input_price=NULL,output_price=NULL WHERE id=${AGENT_MODELS[0].id}`;
 });
+
+test("request disconnect aborts generation and saves partial history within the cleanup window", async () => {
+	const mailbox = "request-abort@example.test";
+	await store.createMailbox(mailbox, "Request abort");
+	const controller = new AbortController();
+	const tasks: Promise<unknown>[] = [];
+	let aborted = false;
+	const slow = new MockLanguageModelV3({
+		doStream: async (options) => ({
+			stream: new ReadableStream({
+				start(stream) {
+					stream.enqueue({ type: "text-start", id: "partial" });
+					stream.enqueue({
+						type: "text-delta",
+						id: "partial",
+						delta: "Partial answer before disconnect.",
+					});
+					options.abortSignal?.addEventListener(
+						"abort",
+						() => {
+							aborted = true;
+							stream.close();
+						},
+						{ once: true },
+					);
+				},
+			}),
+		}),
+	});
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: {
+			model: () => slow,
+			disconnectSignal: controller.signal,
+			waitUntil: (task) => tasks.push(task),
+		},
+	});
+	const id = randomUUID();
+	const response = await app.request(
+		`http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/chat`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ id, prompt: "Hello" }),
+		},
+	);
+	const reader = response.body!.getReader();
+	let received = "";
+	while (!received.includes("Partial answer")) {
+		const chunk = await reader.read();
+		assert.equal(chunk.done, false);
+		received += new TextDecoder().decode(chunk.value);
+	}
+	const started = Date.now();
+	controller.abort();
+	// The independent drain must finalize even if the browser stops consuming SSE.
+	void reader.cancel();
+	await Promise.all(tasks);
+	assert.ok(Date.now() - started < 5000);
+	assert.equal(aborted, true);
+	const [turn] =
+		await db`SELECT status,answer,ui_message FROM agent_turns WHERE id=${id}`;
+	assert.equal(turn.status, "failed");
+	assert.match(turn.answer, /connection closed/);
+	assert.match(JSON.stringify(turn.ui_message), /Partial answer/);
+	const [lease] =
+		await db`SELECT active_run FROM agent_settings WHERE mailbox_id=${mailbox}`;
+	assert.equal(lease.active_run, null);
+});
+
+test("a startup error cannot overwrite an acknowledged stop", async () => {
+	const mailbox = "stop-startup@example.test";
+	await store.createMailbox(mailbox, "Startup race");
+	const id = randomUUID();
+	const failingDb = new Proxy(db, {
+		apply(target, thisArg, args) {
+			const sql = (args[0] as TemplateStringsArray).join("");
+			if (sql.includes("SELECT context_window,input_price,output_price"))
+				return (async () => {
+					await stopRun(db, mailbox, id);
+					throw new Error("Simulated startup failure after Stop");
+				})();
+			return Reflect.apply(target, thisArg, args);
+		},
+	});
+	const app = createApi(failingDb, {
+		readAttachment: async () => null,
+		agent: { model: () => textModel() },
+	});
+	const response = await app.request(
+		`http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/chat`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ id, prompt: "Hello" }),
+		},
+	);
+	assert.equal(response.status, 500);
+	const [turn] = await db`SELECT status FROM agent_turns WHERE id=${id}`;
+	assert.equal(turn.status, "stopped");
+});
+
+test("a disconnected run cannot save another draft even before the lease monitor polls", async () => {
+	const mailbox = "abort-fence@example.test";
+	await store.createMailbox(mailbox, "Abort fence");
+	const email = (await incoming(mailbox))!;
+	const r = run(mailbox);
+	await claimRun(db, r);
+	const controller = new AbortController();
+	const tools = createTools(db, r, () => {}, undefined, controller.signal);
+	await tools.draft_reply.execute!(
+		{ originalEmailId: email.id, body: "Keep this draft" },
+		toolOptions,
+	);
+	controller.abort();
+	await assert.rejects(
+		() =>
+			tools.draft_reply.execute!(
+				{ originalEmailId: email.id, body: "Must not save" },
+				toolOptions,
+			) as Promise<unknown>,
+	);
+	const [saved] =
+		await db`SELECT count(*)::int AS count FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='draft'`;
+	assert.equal(saved.count, 1);
+	await stopRun(db, mailbox, r.id);
+});

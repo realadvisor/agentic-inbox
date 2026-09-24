@@ -29,6 +29,7 @@ export interface AgentOptions {
 	fetchCatalog?: CatalogFetch;
 	autoDraftAvailable?: boolean;
 	actor?: string;
+	disconnectSignal?: AbortSignal;
 	waitUntil?: (task: Promise<unknown>) => void;
 }
 export function agentApi(db: Database, options: AgentOptions) {
@@ -99,7 +100,14 @@ export function agentApi(db: Database, options: AgentOptions) {
 		);
 		const settings = await claimRun(db, run);
 		try {
-			const execution = await startRun(db, run, settings, options.model);
+			const execution = await startRun(
+				db,
+				run,
+				settings,
+				options.model,
+				undefined,
+				options.disconnectSignal ?? c.req.raw.signal,
+			);
 			options.waitUntil?.(execution.completion);
 			return execution.result.toUIMessageStreamResponse<InboxChatMessage>({
 				generateMessageId: () => `${run.id}-assistant`,
@@ -111,7 +119,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 					await execution.completion;
 					await db`UPDATE agent_turns SET ui_message=${db.json(JSON.parse(JSON.stringify(responseMessage)))} WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
 				},
-				// Consume independently of the browser so disconnects cannot lose tool results.
+				// Drain final stream state after abort so partial history is saved.
 				consumeSseStream: ({ stream }) => {
 					const task = consumeStream({ stream });
 					options.waitUntil?.(task);
@@ -123,7 +131,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 				},
 			});
 		} catch (error) {
-			await db`UPDATE agent_turns SET status='failed',answer='Could not start the model. Check provider configuration.' WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
+			await db`UPDATE agent_turns SET status='failed',answer='Could not start the model. Check provider configuration.' WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
 			await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${run.mailbox} AND active_run=${run.id}`;
 			throw error;
 		}

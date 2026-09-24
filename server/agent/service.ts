@@ -143,6 +143,7 @@ export function createTools(
 	run: Run,
 	emit: (event: AgentEvent) => void,
 	autoGeneration?: number,
+	signal?: AbortSignal,
 ) {
 	const store = new InboxStore(db);
 	const uuid = z.string().uuid();
@@ -195,6 +196,7 @@ export function createTools(
 		callback: (tx: Database) => Promise<unknown>,
 		key?: string,
 	) => {
+		signal?.throwIfAborted();
 		if (++writes > 10) throw new Error("Too many changes in one request");
 		const result = await db.begin(async (transaction) => {
 			const tx = transaction as unknown as Database;
@@ -232,7 +234,9 @@ export function createTools(
 						"The triggering email is no longer the latest active message",
 					);
 			}
+			signal?.throwIfAborted();
 			const value = await callback(tx);
+			signal?.throwIfAborted();
 			const action: AgentAction = {
 				tool: name,
 				result: JSON.stringify(value),
@@ -446,6 +450,7 @@ export async function startRun(
 	settings: AgentSettings,
 	model: ModelFactory,
 	emit: (event: AgentEvent) => void = () => {},
+	clientSignal?: AbortSignal,
 ) {
 	let answer = "";
 	let checkpointAt = Date.now();
@@ -472,12 +477,13 @@ export async function startRun(
 		prompt += `\nSelected email ID: ${email.id}. Thread ID: ${email.thread_id}. Use get_thread to read its context.`;
 	}
 	messages.push({ role: "user", content: prompt });
-	const tools = createTools(db, run, emit, generation);
 	const controller = new AbortController();
 	const abortSignal = AbortSignal.any([
 		controller.signal,
 		AbortSignal.timeout(120000),
+		...(clientSignal ? [clientSignal] : []),
 	]);
+	const tools = createTools(db, run, emit, generation, abortSignal);
 	let checking = false;
 	const checkActive = async () => {
 		if (checking) return;
@@ -547,7 +553,9 @@ export async function startRun(
 			emit({ type: "done" });
 			return !failed;
 		} catch (error) {
-			const message = agentErrorMessage(error);
+			const message = clientSignal?.aborted
+				? "The connection closed before the assistant finished. Any changes already saved remain available; review them before continuing."
+				: agentErrorMessage(error);
 			await db`UPDATE agent_turns SET answer=${answer ? `${answer}\n\n${message}` : message},status='failed' WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
 			emit({ type: "error", message });
 			return false;

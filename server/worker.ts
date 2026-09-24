@@ -92,6 +92,7 @@ worker.all("/api/*", async (c) => {
 			agent: {
 				...agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY),
 				autoDraftAvailable: !!c.env.AGENT_JOBS,
+				disconnectSignal: c.req.raw.signal,
 				waitUntil: (task) => {
 					agentTasks.push(task);
 					c.executionCtx.waitUntil(task);
