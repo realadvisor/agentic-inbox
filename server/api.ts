@@ -1,6 +1,7 @@
 import { agentApi, type AgentOptions } from "./agent/api";
 import { classifierApi } from "./classification/api";
 import { setConversationTags } from "./tags";
+import { tagGroupsApi } from "./tag-groups";
 import { documentation } from "./docs";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -150,8 +151,17 @@ export function createApi(db: Database, options: ApiOptions) {
 			mode: options.mode ?? "synthetic",
 		}),
 	);
+	app.route(
+		"/api/v1/tag-groups",
+		tagGroupsApi(
+			db,
+			!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+		),
+	);
 	app.get("/api/v1/tags", async (c) =>
-		c.json(await db`SELECT * FROM tags ORDER BY lower(name), id`),
+		c.json(
+			await db`SELECT t.*,g.name AS group_name,g.selection AS group_selection FROM tags t LEFT JOIN tag_groups g ON g.id=t.group_id WHERE t.archived_at IS NULL ORDER BY g.name,t.position,lower(t.name),t.id`,
+		),
 	);
 	app.post("/api/v1/tags", async (c) => {
 		const input = tagSchema.parse(await c.req.json());
@@ -160,12 +170,25 @@ export function createApi(db: Database, options: ApiOptions) {
 	});
 	app.put("/api/v1/tags/:tagId", async (c) => {
 		const input = tagSchema.parse(await c.req.json());
+		const [grouped] =
+			await db`SELECT 1 FROM tags WHERE id=${id.parse(c.req.param("tagId"))} AND group_id IS NOT NULL`;
+		if (grouped)
+			throw new HTTPException(409, {
+				message:
+					"Edit this tag in its group so Jev's instructions stay in sync.",
+			});
 		const [tag] =
 			await db`UPDATE tags SET ${db(input)}, updated_at=now() WHERE id=${id.parse(c.req.param("tagId"))} RETURNING *`;
 		if (!tag) throw new HTTPException(404);
 		return c.json(tag);
 	});
 	app.delete("/api/v1/tags/:tagId", async (c) => {
+		const [grouped] =
+			await db`SELECT 1 FROM tags WHERE id=${id.parse(c.req.param("tagId"))} AND group_id IS NOT NULL`;
+		if (grouped)
+			throw new HTTPException(409, {
+				message: "Remove this tag through its group.",
+			});
 		if (c.req.query("confirm") !== "true")
 			throw new HTTPException(400, {
 				message: "Deleting a shared tag requires confirm=true",

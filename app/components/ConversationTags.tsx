@@ -51,7 +51,7 @@ export function TagChips({
 						/>
 					)}
 					<span className="truncate" title={tag.name}>
-						{tag.name}
+						{tag.group_name ? `${tag.group_name}: ${tag.name}` : tag.name}
 					</span>
 					{onRemove && (
 						<button
@@ -126,7 +126,13 @@ export function TagPicker({
 					<PlusIcon size={14} />
 				)}
 				<span className="max-w-40 truncate">
-					{selected?.name ?? (allowAll && value ? "Deleted tag" : placeholder)}
+					{selected
+						? selected.group_name
+							? `${selected.group_name}: ${selected.name}`
+							: selected.name
+						: allowAll && value
+							? "Deleted tag"
+							: placeholder}
 				</span>
 				<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
 			</Popover.Trigger>
@@ -215,11 +221,28 @@ export function TagActions({
 			aria-label={bulk ? "Bulk tags" : "Conversation tags"}
 		>
 			{!bulk && (
-				<TagChips
-					tags={tags}
-					disabled={mutation.isPending}
-					onRemove={(id) => change(id, "remove")}
-				/>
+				<>
+					<TagChips
+						tags={tags?.filter((tag) => tag.group_selection !== "single")}
+						disabled={mutation.isPending}
+						onRemove={(id) => change(id, "remove")}
+					/>
+					{tags
+						?.filter((tag) => tag.group_selection === "single")
+						.map((tag) => (
+							<TagPicker
+								key={tag.id}
+								tags={(catalog.data ?? []).filter(
+									(option) => option.group_id === tag.group_id,
+								)}
+								value={tag.id}
+								label={`Change ${tag.group_name ?? "tag"}`}
+								placeholder={tag.name}
+								disabled={mutation.isPending}
+								onChange={(id) => change(id, "add")}
+							/>
+						))}
+				</>
 			)}
 			<TagPicker
 				tags={choices}

@@ -250,7 +250,7 @@ async function processSingleJob(
 	let failure: JevError | undefined;
 	try {
 		const [eligibility] =
-			await db`SELECT classifier_thread_active(${j.mailbox_id},${j.thread_id}) AS active, EXISTS(SELECT 1 FROM conversation_tags WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND tag_id=${j.tag_id} AND source='manual') AS manual`;
+			await db`SELECT classifier_thread_active(${j.mailbox_id},${j.thread_id}) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
 		const [size] =
 			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent')`;
 		if (!eligibility.active || eligibility.manual) result.status = "skipped";
@@ -329,7 +329,7 @@ async function processSingleJob(
 			}
 			if (failure) result = { ...result, status: "error", error: failure.code };
 			const [manual] =
-				await tx`SELECT 1 FROM conversation_tags WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND tag_id=${classifier.tag_id} AND source='manual'`;
+				await tx`SELECT 1 WHERE tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id})`;
 			if (manual) result.status = "skipped";
 			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id}`;
 			await tx`UPDATE conversation_classifications SET status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;

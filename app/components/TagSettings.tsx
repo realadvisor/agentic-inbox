@@ -1,16 +1,18 @@
-import { Button, Dialog, Input } from "@cloudflare/kumo";
 import {
-	TagIcon,
-	PlusIcon,
-	PencilSimpleIcon,
-	TrashIcon,
-	CheckIcon,
-} from "@phosphor-icons/react";
-import { useState } from "react";
+	AutomationFields,
+	ExistingConversations,
+	automationDraft,
+	useTagClassifiers,
+} from "./TagAutomation";
+import { classifierRequest, type Classifier } from "~/services/classifiers";
+import { Button, Dialog, Input } from "@cloudflare/kumo";
+import { TrashIcon, CheckIcon } from "@phosphor-icons/react";
+import { useState, useRef } from "react";
 import { useTags, useTagMutation } from "~/queries/tags";
 import api from "~/services/api";
 import type { Tag } from "~/types";
 import { TagChips } from "./ConversationTags";
+import { TagGroups } from "./TagGroups";
 
 const COLORS = [
 	["Blue", "#2563eb"],
@@ -29,102 +31,122 @@ export function TagSettings() {
 	const [editing, setEditing] = useState<Tag | null | undefined>(undefined);
 	const [name, setName] = useState("");
 	const [color, setColor] = useState("#2563eb");
-	const save = useTagMutation(() =>
-		editing
-			? api.updateTag(editing.id, { name, color })
-			: api.createTag({ name, color }),
-	);
+	const classifiers = useTagClassifiers();
+	const [classifier, setClassifier] = useState<Classifier | undefined>();
+	const [automation, setAutomation] = useState(automationDraft());
+	const [automationValid, setAutomationValid] = useState(true);
+	const persistedTag = useRef<Tag | null>(null);
+	const save = useTagMutation(async () => {
+		if (!automationValid) throw new Error("Select at least one mailbox.");
+		if (classifiers.available && (classifiers.isPending || classifiers.error))
+			throw new Error("Wait for the saved Jev settings to load before saving.");
+		const target = persistedTag.current ?? editing;
+		const tag = target
+			? await api.updateTag(target.id, { name, color })
+			: await api.createTag({ name, color });
+		persistedTag.current = tag;
+		const changed =
+			JSON.stringify(automation) !==
+			JSON.stringify(automationDraft(classifier));
+		if (
+			classifiers.canManage &&
+			changed &&
+			(classifier || automation.enabled)
+		) {
+			try {
+				const saved = await classifierRequest<Classifier>(
+					"/classifiers" + (classifier ? "/" + classifier.id : ""),
+					classifier ? "PUT" : "POST",
+					{
+						...automation,
+						question: automation.question.trim() || classifier?.question,
+						tag_id: tag.id,
+						revision: classifier?.revision,
+					},
+				);
+				setClassifier(saved);
+			} catch (error) {
+				throw new Error(
+					`Tag details saved, but Jev settings could not be saved: ${error instanceof Error ? error.message : "Please retry."}`,
+				);
+			}
+		}
+	});
 	const remove = useTagMutation(api.deleteTag);
 	const open = (tag: Tag | null) => {
 		setEditing(tag);
+		persistedTag.current = null;
+		const current = classifiers.data?.find((c) => c.tag_id === tag?.id);
+		setClassifier(current);
+		setAutomation(automationDraft(current));
 		setName(tag?.name ?? "");
 		setColor(tag?.color ?? "#2563eb");
 		save.reset();
 	};
 	return (
-		<section className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-			<div className="flex items-center justify-between gap-4 p-5">
-				<div className="flex items-center gap-3">
-					<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
-						<TagIcon size={21} />
-					</div>
-					<div>
-						<h2 className="text-sm font-semibold">
-							Tags{" "}
-							<span className="ml-1.5 text-xs font-normal text-kumo-subtle">
-								{catalog.data?.length ?? 0}
-							</span>
-						</h2>
-						<p className="mt-0.5 text-xs text-kumo-subtle">
-							Organize your team’s conversations.
-						</p>
-					</div>
-				</div>
-				<Button
-					size="sm"
-					variant="primary"
-					icon={<PlusIcon size={14} />}
-					onClick={() => open(null)}
-				>
-					New tag
-				</Button>
-			</div>
-			<div className="border-t border-kumo-line px-5 py-2.5 text-xs text-kumo-subtle bg-kumo-tint">
-				Shared across all mailboxes
-			</div>
-
-			{catalog.isPending && <p>Loading tags…</p>}
-			{catalog.data?.length === 0 && (
-				<p className="p-5 text-sm text-kumo-subtle">
-					Create your first tag to organize conversations.
-				</p>
-			)}
-			{catalog.data?.map((tag) => (
-				<div
-					key={tag.id}
-					className="group flex items-center justify-between gap-3 border-t border-kumo-line px-5 py-3.5 transition-colors hover:bg-kumo-tint"
-				>
-					<TagChips tags={[tag]} />
-					<div className="flex shrink-0 gap-1">
-						<Button
-							size="sm"
-							variant="ghost"
-							aria-label={`Edit tag ${tag.name}`}
-							onClick={() => open(tag)}
+		<>
+			<TagGroups onNewTag={() => open(null)}>
+				{catalog.isPending && <p>Loading tags…</p>}
+				{catalog.data
+					?.filter((tag) => !tag.group_id)
+					.map((tag) => (
+						<div
+							key={tag.id}
+							className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-kumo-tint"
 						>
-							<PencilSimpleIcon size={15} />
-						</Button>
-						<Button
-							size="sm"
-							variant="ghost"
-							disabled={remove.isPending}
-							aria-label={`Delete tag ${tag.name}`}
-							onClick={() => {
-								if (
-									window.confirm(
-										`Delete “${tag.name}” from all mailboxes and conversations? This cannot be undone.`,
-									)
-								)
-									remove.mutate(tag.id);
-							}}
-						>
-							<TrashIcon size={15} />
-						</Button>
-					</div>
-				</div>
-			))}
-			{(catalog.error || remove.error) && (
-				<p role="alert" className="text-sm text-kumo-danger">
-					{(catalog.error || remove.error)?.message}
-				</p>
-			)}
+							<button
+								type="button"
+								className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+								aria-label={`Edit tag ${tag.name}`}
+								disabled={
+									classifiers.available &&
+									(classifiers.isPending || classifiers.isError)
+								}
+								onClick={() => open(tag)}
+							>
+								<TagChips tags={[tag]} />
+								<span className="text-xs text-kumo-subtle">
+									{classifiers.available && !classifiers.data
+										? "…"
+										: classifiers.data?.find((c) => c.tag_id === tag.id)
+													?.enabled
+											? "Jev"
+											: "Manual"}
+								</span>
+							</button>
+							<div className="flex shrink-0 gap-1">
+								<Button
+									size="sm"
+									variant="ghost"
+									disabled={remove.isPending}
+									aria-label={`Delete tag ${tag.name}`}
+									onClick={() => {
+										if (
+											window.confirm(
+												`Delete “${tag.name}” from all mailboxes and conversations? This cannot be undone.`,
+											)
+										)
+											remove.mutate(tag.id);
+									}}
+								>
+									<TrashIcon size={15} />
+								</Button>
+							</div>
+						</div>
+					))}
+				{(catalog.error || remove.error || classifiers.error) && (
+					<p role="alert" className="text-sm text-kumo-danger">
+						{(catalog.error || remove.error || classifiers.error)?.message}
+					</p>
+				)}
+			</TagGroups>
 			<Dialog.Root
 				open={editing !== undefined}
 				onOpenChange={(isOpen) => {
 					if (!isOpen && !save.isPending) setEditing(undefined);
 				}}
 			>
-				<Dialog size="sm" className="p-6">
+				<Dialog size="base" className="max-h-[90dvh] overflow-y-auto p-6">
 					<Dialog.Title className="text-base font-semibold mb-4">
 						{editing ? "Edit tag" : "New tag"}
 					</Dialog.Title>
@@ -194,6 +216,37 @@ export function TagSettings() {
 							/>
 						</div>
 
+						{classifiers.available && (
+							<AutomationFields
+								key={editing?.id ?? "new"}
+								value={automation}
+								onChange={setAutomation}
+								onValidityChange={setAutomationValid}
+								disabled={save.isPending || !classifiers.canManage}
+							/>
+						)}
+						{classifiers.error && (
+							<p role="alert" className="text-sm text-kumo-danger">
+								Unable to load Jev settings: {classifiers.error.message}
+							</p>
+						)}
+						{classifier && classifiers.canManage && (
+							<ExistingConversations
+								classifiers={
+									classifiers.data?.filter((c) => c.id === classifier.id) ?? [
+										classifier,
+									]
+								}
+								disabled={
+									save.isPending ||
+									name !== editing?.name ||
+									color !== editing?.color ||
+									JSON.stringify(automation) !==
+										JSON.stringify(automationDraft(classifier))
+								}
+							/>
+						)}
+
 						{save.error && (
 							<p role="alert" className="text-sm text-kumo-danger">
 								{save.error.message}
@@ -211,7 +264,7 @@ export function TagSettings() {
 							<Button
 								type="submit"
 								variant="primary"
-								disabled={!name.trim() || save.isPending}
+								disabled={!name.trim() || save.isPending || !automationValid}
 							>
 								Save tag
 							</Button>
@@ -219,6 +272,6 @@ export function TagSettings() {
 					</form>
 				</Dialog>
 			</Dialog.Root>
-		</section>
+		</>
 	);
 }

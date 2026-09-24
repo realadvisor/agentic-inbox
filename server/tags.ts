@@ -13,10 +13,10 @@ export async function setConversationTags(
 	const ids = [...new Set(threads)].sort();
 	await db.begin(async (tx) => {
 		const [tag] =
-			await tx`SELECT id FROM tags WHERE id = ${tagId} FOR KEY SHARE`;
+			await tx`SELECT id FROM tags WHERE id = ${tagId} AND archived_at IS NULL FOR KEY SHARE`;
 		if (!tag) throw new HTTPException(404, { message: "Tag not found" });
 		const found =
-			await tx`SELECT thread_id FROM conversations c WHERE mailbox_id = ${mailbox} AND thread_id IN ${tx(ids)} AND EXISTS (SELECT 1 FROM emails e WHERE e.mailbox_id=c.mailbox_id AND e.thread_id=c.thread_id) ORDER BY thread_id FOR KEY SHARE`;
+			await tx`SELECT thread_id FROM conversations c WHERE mailbox_id = ${mailbox} AND thread_id IN ${tx(ids)} AND EXISTS (SELECT 1 FROM emails e WHERE e.mailbox_id=c.mailbox_id AND e.thread_id=c.thread_id) ORDER BY thread_id FOR UPDATE`;
 		if (found.length !== ids.length)
 			throw new HTTPException(404, {
 				message: "Conversation not found in this mailbox",

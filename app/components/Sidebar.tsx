@@ -300,7 +300,7 @@ export default function Sidebar() {
 									style={{ color: tag.color }}
 								/>
 								<span className="truncate" title={tag.name}>
-									{tag.name}
+									{tag.group_name ? `${tag.group_name}: ${tag.name}` : tag.name}
 								</span>
 							</Link>
 						);

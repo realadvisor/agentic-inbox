@@ -4,6 +4,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import type { Email, Folder, Mailbox, Tag } from "~/types";
+import type { TagGroup, TagGroupInput } from "../../shared/tag-groups";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -102,6 +103,11 @@ interface EmailListResponse {
 
 const api = {
 	listTags: () => get<Tag[]>("/api/v1/tags"),
+	listTagGroups: () => get<TagGroup[]>("/api/v1/tag-groups"),
+	createTagGroup: (group: TagGroupInput) =>
+		post<TagGroup>("/api/v1/tag-groups", group),
+	updateTagGroup: (id: string, group: TagGroupInput) =>
+		put<TagGroup>(`/api/v1/tag-groups/${id}`, group),
 	createTag: (tag: Omit<Tag, "id">) => post<Tag>("/api/v1/tags", tag),
 	updateTag: (id: string, tag: Omit<Tag, "id">) =>
 		put<Tag>(`/api/v1/tags/${id}`, tag),

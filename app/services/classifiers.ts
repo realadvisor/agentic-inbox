@@ -10,6 +10,7 @@ export interface ClassifierRun {
 	failed?: number;
 }
 export interface Classifier {
+	group_id?: string | null;
 	id: string;
 	tag_id: string;
 	name: string;

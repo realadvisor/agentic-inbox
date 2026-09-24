@@ -34,8 +34,16 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			subject: "Synthetic viewing enquiry",
 			body: "<p>Can we arrange a synthetic viewing?</p>",
 		});
-		await page.goto(`/mailbox/${mailbox}/settings`);
-		await page.getByRole("button", { name: "New tag", exact: true }).click();
+		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
+		await page
+			.getByRole("button", { name: "Add tag or group", exact: true })
+			.click();
+		await page
+			.getByRole("button", {
+				name: "Tag A label you can use on its own",
+				exact: true,
+			})
+			.click();
 		await page.getByRole("textbox", { name: "Tag name" }).fill(name);
 		await page.getByLabel("Tag color").fill("#16a34a");
 		await page.getByRole("button", { name: "Save tag" }).click();
@@ -151,7 +159,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			page.getByText("Synthetic follow-up", { exact: true }),
 		).toHaveCount(0);
 		await db`UPDATE emails SET folder_id='inbox' WHERE mailbox_id=${mailbox} AND thread_id=${first!.thread_id!}`;
-		await page.goto(`/mailbox/${mailbox}/settings`);
+		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
 		await page
 			.getByRole("button", { name: `Edit tag ${name}`, exact: true })
 			.click();
@@ -189,7 +197,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			fullPage: true,
 		});
 		await page.setViewportSize({ width: 1440, height: 1000 });
-		await page.goto(`/mailbox/${mailbox}/settings`);
+		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
 		page.once("dialog", (dialog) => dialog.dismiss());
 		await page
 			.getByRole("button", { name: `Delete tag ${renamed}`, exact: true })

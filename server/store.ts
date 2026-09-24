@@ -61,9 +61,10 @@ export class InboxStore {
 		if (!threads.length) return [];
 		return this.db<
 			(ConversationTag & { thread_id: string })[]
-		>`SELECT t.id, t.name, t.color, ct.thread_id, ct.source, ct.actor, ct.created_at, ct.updated_at
+		>`SELECT t.id, t.name, t.color,t.group_id,g.name AS group_name,g.selection AS group_selection, ct.thread_id, ct.source, ct.actor, ct.created_at, ct.updated_at
 		FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id
-		WHERE ct.mailbox_id=${mailbox} AND ct.thread_id IN ${this.db([...new Set(threads)])} AND ct.removed_at IS NULL ORDER BY lower(t.name), t.id`;
+		LEFT JOIN tag_groups g ON g.id=t.group_id
+		WHERE ct.mailbox_id=${mailbox} AND ct.thread_id IN ${this.db([...new Set(threads)])} AND ct.removed_at IS NULL AND t.archived_at IS NULL ORDER BY g.name,t.position,lower(t.name), t.id`;
 	}
 
 	async listMailboxes() {
@@ -161,11 +162,9 @@ export class InboxStore {
 				SELECT 1 FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
 				JOIN ${this.db(preview ? "preview_classifiers" : "classifiers")} c ON c.id=r.classifier_id
 				WHERE r.mailbox_id=e.mailbox_id AND r.thread_id=e.thread_id
-				AND c.enabled AND r.answer IS NULL
+				AND c.enabled ${preview ? this.db`AND r.answer IS NULL` : this.db`AND (r.answer IS NULL OR r.error='group_conflict')`}
 				${preview ? this.db`` : this.db`AND r.revision=c.revision AND r.status IN ('review','error')`}
-				AND NOT EXISTS (SELECT 1 FROM conversation_tags ct
-					WHERE ct.mailbox_id=r.mailbox_id AND ct.thread_id=r.thread_id
-					AND ct.tag_id=c.tag_id AND ct.source='manual')
+				AND NOT tag_manually_overridden(r.mailbox_id,r.thread_id,c.tag_id)
 			)`);
 		}
 		if (params.folder) conditions.push(this.db`e.folder_id = ${params.folder}`);

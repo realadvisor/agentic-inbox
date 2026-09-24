@@ -19,7 +19,7 @@ before(async () => {
 	await migrate(db);
 	await store.createMailbox(mailbox, "Logs");
 	classifierIds = (
-		await db`SELECT id FROM classifiers ORDER BY id LIMIT 2`
+		await db`SELECT c.id FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.group_id IS NULL ORDER BY c.id LIMIT 2`
 	).map((c) => c.id);
 });
 after(async () => {
