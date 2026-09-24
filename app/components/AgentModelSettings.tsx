@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@cloudflare/kumo";
+import { Button, Input, Loader } from "@cloudflare/kumo";
+import {
+	ArrowClockwiseIcon,
+	CpuIcon,
+	SparkleIcon,
+} from "@phosphor-icons/react";
 import type { AgentSettings, AgentState } from "../../shared/agent";
 
 async function request<T>(
@@ -59,10 +64,21 @@ export default function AgentModelSettings({
 			...patch,
 		});
 	};
-	if (state.isLoading) return <p>Loading models…</p>;
+	if (state.isLoading)
+		return (
+			<div
+				role="status"
+				className="flex items-center justify-center gap-3 rounded-xl border border-kumo-line bg-kumo-base p-10 text-sm text-kumo-subtle"
+			>
+				<Loader size="sm" /> Loading models…
+			</div>
+		);
 	if (!state.data)
 		return (
-			<p role="alert">
+			<p
+				role="alert"
+				className="rounded-xl border border-kumo-line bg-kumo-base p-5 text-sm text-kumo-danger"
+			>
 				Could not load models.{" "}
 				<button className="underline" onClick={() => void state.refetch()}>
 					Retry
@@ -84,11 +100,31 @@ export default function AgentModelSettings({
 	const defaultModel = catalog.models.find((m) => m.id === settings.model);
 	return (
 		<div className="space-y-6 text-kumo-default">
-			<section className="space-y-3">
-				<div className="flex flex-wrap items-center justify-between gap-3">
-					<h2 className="font-medium">Models</h2>
+			<section
+				className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden"
+				aria-labelledby="models-heading"
+			>
+				<div className="flex flex-wrap items-center justify-between gap-3 p-5">
+					<div className="flex items-center gap-3">
+						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+							<CpuIcon size={21} />
+						</div>
+						<div>
+							<h2 id="models-heading" className="text-sm font-semibold">
+								Models{" "}
+								<span className="ml-1.5 text-xs font-normal text-kumo-subtle">
+									{catalog.models.length}
+								</span>
+							</h2>
+							<p className="mt-0.5 text-xs text-kumo-subtle">
+								Choose the default model for this mailbox.
+							</p>
+						</div>
+					</div>
 					<Button
 						variant="secondary"
+						size="sm"
+						icon={<ArrowClockwiseIcon size={14} />}
 						disabled={busy}
 						onClick={() =>
 							void update(
@@ -100,45 +136,50 @@ export default function AgentModelSettings({
 						{busy ? "Updating…" : "Refresh model list"}
 					</Button>
 				</div>
-				<p className="text-sm text-kumo-subtle">
-					Default for this mailbox:{" "}
-					<strong>{defaultModel?.name ?? settings.model}</strong>. Used for new
-					chats and automatic drafts. You can choose a different model in chat.
-				</p>
-				<p className="text-xs text-kumo-subtle">
-					{catalog.refreshed_at
-						? `Catalog refreshed ${new Date(catalog.refreshed_at).toLocaleString()}`
-						: "Refresh to load Anthropic, OpenAI, and other supported gateway models."}
-				</p>
-				{!catalog.gatewayConfigured && (
-					<p className="text-sm text-kumo-subtle">
-						AI Gateway is not configured. Gateway models can be browsed after
-						refreshing, but require an administrator to enable the provider
-						before use.
+				<div className="space-y-2 border-y border-kumo-line bg-kumo-tint px-5 py-3">
+					<p className="text-xs text-kumo-subtle">
+						Default for this mailbox:{" "}
+						<strong>{defaultModel?.name ?? settings.model}</strong>. Used for
+						new chats and automatic drafts. You can choose a different model in
+						chat.
 					</p>
-				)}
-				{!defaultModel?.selectable && (
-					<p role="alert" className="text-sm">
-						The saved default is unavailable. Select an available model below.
+					<p className="text-xs text-kumo-subtle">
+						{catalog.refreshed_at
+							? `Catalog refreshed ${new Date(catalog.refreshed_at).toLocaleString()}`
+							: "Refresh to load Anthropic, OpenAI, and other supported gateway models."}
 					</p>
-				)}
-				<input
-					aria-label="Search models"
-					placeholder="Search models or providers…"
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					className="w-full rounded border border-kumo-line bg-kumo-base p-2 text-sm"
-				/>
+					{!catalog.gatewayConfigured && (
+						<p className="text-sm text-kumo-subtle">
+							AI Gateway is not configured. Gateway models can be browsed after
+							refreshing, but require an administrator to enable the provider
+							before use.
+						</p>
+					)}
+					{!defaultModel?.selectable && (
+						<p role="alert" className="text-sm">
+							The saved default is unavailable. Select an available model below.
+						</p>
+					)}
+				</div>
+				<div className="p-5">
+					<Input
+						aria-label="Search models"
+						placeholder="Search models or providers…"
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						className="w-full"
+					/>
+				</div>
 				<div
-					className="max-h-96 overflow-y-auto rounded-lg border border-kumo-line divide-y divide-kumo-line"
+					className="max-h-96 overflow-y-auto border-t border-kumo-line divide-y divide-kumo-line"
 					aria-label="Available models"
 				>
 					{models.map((model) => (
 						<div
 							key={model.id}
-							className="flex items-center justify-between gap-3 p-3"
+							className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-kumo-tint ${model.id === settings.model ? "bg-kumo-tint" : ""}`}
 						>
-							<div className="min-w-0">
+							<div className="min-w-0 flex-1">
 								<p className="text-sm font-medium break-words">{model.name}</p>
 								<p className="text-xs text-kumo-subtle break-all">
 									{model.id} ·{" "}
@@ -154,6 +195,7 @@ export default function AgentModelSettings({
 							</div>
 							<Button
 								size="sm"
+								className="shrink-0"
 								variant={model.id === settings.model ? "primary" : "secondary"}
 								disabled={
 									busy || !model.selectable || model.id === settings.model
@@ -171,12 +213,12 @@ export default function AgentModelSettings({
 						</div>
 					))}
 					{!models.length && (
-						<p className="p-3 text-sm text-kumo-subtle">No matching models.</p>
+						<p className="p-5 text-sm text-kumo-subtle">No matching models.</p>
 					)}
 				</div>
 			</section>
 			<form
-				className="space-y-3 border-t border-kumo-line pt-5"
+				className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void update(async () => {
@@ -189,43 +231,60 @@ export default function AgentModelSettings({
 					}, "Agent settings saved");
 				}}
 			>
-				<h2 className="font-medium">Email agent</h2>
-				<label className="block text-sm">
-					Writing instructions
-					<textarea
-						aria-label="Agent writing instructions"
-						rows={4}
-						maxLength={8000}
-						className="mt-1 w-full rounded border border-kumo-line bg-kumo-base p-2"
-						placeholder="Tone, business context, and how to handle requests…"
-						value={instructions ?? settings.system_prompt}
-						onChange={(event) => setInstructions(event.target.value)}
-					/>
-				</label>
-				<label className="flex items-start gap-2 text-sm">
-					<input
-						type="checkbox"
-						className="mt-1"
-						checked={automatic ?? settings.auto_draft}
-						disabled={
-							busy ||
-							(!(automatic ?? settings.auto_draft) &&
-								(!state.data.autoDraftAvailable || !defaultModel?.selectable))
-						}
-						onChange={(event) => setAutomatic(event.target.checked)}
-					/>
-					Automatically draft replies to new emails
-				</label>
-				<p className="text-xs text-kumo-subtle">
-					Applies to future incoming mail. Drafts wait for your review and are
-					never sent automatically.
-				</p>
-				<Button type="submit" disabled={busy}>
-					Save agent settings
-				</Button>
+				<div className="flex items-center gap-3 p-5 border-b border-kumo-line">
+					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+						<SparkleIcon size={21} />
+					</div>
+					<div>
+						<h2 className="text-sm font-semibold">Email agent</h2>
+						<p className="mt-0.5 text-xs text-kumo-subtle">
+							Customize how the agent writes and prepares replies.
+						</p>
+					</div>
+				</div>
+				<div className="space-y-4 p-5">
+					<label className="block text-sm font-medium">
+						Writing instructions
+						<textarea
+							aria-label="Agent writing instructions"
+							rows={4}
+							maxLength={8000}
+							className="mt-2 w-full rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kumo-brand"
+							placeholder="Tone, business context, and how to handle requests…"
+							value={instructions ?? settings.system_prompt}
+							onChange={(event) => setInstructions(event.target.value)}
+						/>
+					</label>
+					<label className="flex items-start gap-2 text-sm">
+						<input
+							type="checkbox"
+							className="mt-1"
+							checked={automatic ?? settings.auto_draft}
+							disabled={
+								busy ||
+								(!(automatic ?? settings.auto_draft) &&
+									(!state.data.autoDraftAvailable || !defaultModel?.selectable))
+							}
+							onChange={(event) => setAutomatic(event.target.checked)}
+						/>
+						Automatically draft replies to new emails
+					</label>
+					<p className="text-xs text-kumo-subtle">
+						Applies to future incoming mail. Drafts wait for your review and are
+						never sent automatically.
+					</p>
+				</div>
+				<div className="flex justify-end border-t border-kumo-line bg-kumo-tint px-5 py-3">
+					<Button type="submit" variant="primary" size="sm" disabled={busy}>
+						Save agent settings
+					</Button>
+				</div>
 			</form>
 			{error && (
-				<p role="alert" className="text-sm text-red-600">
+				<p
+					role="alert"
+					className="rounded-lg border border-kumo-line bg-kumo-base p-3 text-sm text-kumo-danger"
+				>
 					{error}
 				</p>
 			)}
