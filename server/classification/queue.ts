@@ -1,3 +1,7 @@
+import {
+	CLASSIFICATION_YES_THRESHOLD,
+	CLASSIFICATION_NO_THRESHOLD,
+} from "../../shared/classification";
 import { batchRequests } from "./batch";
 import { recentExamples, type HumanExample } from "./examples";
 import { liveSender } from "../mailboxes";
@@ -110,7 +114,12 @@ export async function askJev(
 		throw new JevError("invalid_provider_answer", true);
 	return {
 		probability,
-		answer: probability >= 0.85 ? true : probability <= 0.15 ? false : null,
+		answer:
+			probability >= CLASSIFICATION_YES_THRESHOLD
+				? true
+				: probability <= CLASSIFICATION_NO_THRESHOLD
+					? false
+					: null,
 		model: value.model ?? "jev-latest",
 	};
 }
