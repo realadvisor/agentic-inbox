@@ -80,7 +80,7 @@ export default function ClassifierRuns() {
 			</p>
 		);
 	return (
-		<div className="rounded-lg border border-kumo-line bg-kumo-base text-kumo-default overflow-hidden">
+		<div className="rounded-xl border border-kumo-line bg-kumo-base text-kumo-default overflow-hidden">
 			<header className="p-5 border-b border-kumo-line">
 				<div className="flex justify-between gap-3">
 					<div>
