@@ -1,4 +1,6 @@
 import { pruneProviderRuns } from "./classification/provider-runs";
+import { workersModels, type AiBinding } from "./agent/service";
+import { AGENT_QUEUE, publishAgentJobs, consumeAgentJobs } from "./agent/queue";
 import {
 	publishOutbox,
 	parkBatch,
@@ -16,6 +18,8 @@ import { ingest, type InboundMessage, type ObjectStore } from "./inbound";
 import type { MailSender } from "./outbound";
 
 export interface WorkerEnv {
+	AI?: AiBinding;
+	AGENT_JOBS?: QueueBinding;
 	PUBLIC_ORIGIN: string;
 	CLASSIFIERS_ENABLED?: string;
 	CLASSIFIER_LOG_RETENTION_DAYS?: string;
@@ -79,9 +83,18 @@ worker.all("/api/*", async (c) => {
 		max: 5,
 		fetch_types: false,
 	});
+	const agentTasks: Promise<unknown>[] = [];
 	try {
 		const response = await createApi(db, {
 			origin: c.env.PUBLIC_ORIGIN,
+			agent: {
+				model: c.env.AI ? workersModels(c.env.AI) : undefined,
+				autoDraftAvailable: !!c.env.AGENT_JOBS,
+				waitUntil: (task) => {
+					agentTasks.push(task);
+					c.executionCtx.waitUntil(task);
+				},
+			},
 			classifiersEnabled: queuesEnabled(c.env),
 
 			mode: c.env.MAIL_MODE ?? "synthetic",
@@ -103,7 +116,9 @@ worker.all("/api/*", async (c) => {
 			c.executionCtx.waitUntil(dispatchClassifiers(c.env, 10));
 		return response;
 	} finally {
-		c.executionCtx.waitUntil(db.end({ timeout: 5 }));
+		c.executionCtx.waitUntil(
+			Promise.allSettled(agentTasks).then(() => db.end({ timeout: 5 })),
+		);
 	}
 });
 worker.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
@@ -139,6 +154,19 @@ async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
 	}
 }
 
+async function dispatchAgentJobs(env: WorkerEnv) {
+	if (!env.AI || !env.AGENT_JOBS) return;
+	const db = postgres(env.HYPERDRIVE.connectionString, {
+		max: 2,
+		fetch_types: false,
+	});
+	try {
+		await publishAgentJobs(db, env.AGENT_JOBS);
+	} finally {
+		await db.end({ timeout: 5 });
+	}
+}
+
 export default {
 	async scheduled(_event: unknown, env: WorkerEnv) {
 		// Recovery only: normal ingestion/API writes publish immediately.
@@ -155,8 +183,26 @@ export default {
 		} finally {
 			await db.end({ timeout: 5 });
 		}
+		await dispatchAgentJobs(env);
 	},
 	async queue(batch: QueueBatch, env: WorkerEnv) {
+		if (batch.queue === AGENT_QUEUE) {
+			if (!env.AI) {
+				for (const message of batch.messages)
+					message.retry({ delaySeconds: 300 });
+				return;
+			}
+			const db = postgres(env.HYPERDRIVE.connectionString, {
+				max: 2,
+				fetch_types: false,
+			});
+			try {
+				await consumeAgentJobs(db, batch, workersModels(env.AI));
+			} finally {
+				await db.end({ timeout: 5 });
+			}
+			return;
+		}
 		if (!queuesEnabled(env)) {
 			// Leave dispatch intent recoverable while paused; do not exhaust retries.
 			const db = postgres(env.HYPERDRIVE.connectionString, {
@@ -202,8 +248,13 @@ export default {
 				get: (key) => env.ATTACHMENTS.get(key),
 				put: (key, value) => env.ATTACHMENTS.put!(key, value),
 			});
-			if (ctx) ctx.waitUntil(dispatchClassifiers(env, 10));
-			else await dispatchClassifiers(env, 10);
+			if (ctx) {
+				ctx.waitUntil(dispatchClassifiers(env, 10));
+				ctx.waitUntil(dispatchAgentJobs(env));
+			} else {
+				await dispatchClassifiers(env, 10);
+				await dispatchAgentJobs(env);
+			}
 		} finally {
 			await db.end({ timeout: 5 });
 		}

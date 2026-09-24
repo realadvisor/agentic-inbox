@@ -46,6 +46,9 @@
 		},
 		{
 			"name": "Classifiers"
+		},
+		{
+			"name": "Agent"
 		}
 	],
 	"paths": {
@@ -4134,6 +4137,217 @@
 					},
 					"503": {
 						"description": "Classifiers disabled"
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent": {
+			"get": {
+				"operationId": "getAgentState",
+				"tags": ["Agent"],
+				"summary": "Read mailbox agent settings and recent chat history",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Availability, settings, and 30 most recent turns with model, status and saved tool actions",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"available": {
+											"type": "boolean"
+										},
+										"autoDraftAvailable": {
+											"type": "boolean"
+										},
+										"settings": {
+											"type": "object",
+											"required": ["model", "system_prompt", "auto_draft"],
+											"additionalProperties": false,
+											"properties": {
+												"model": {
+													"type": "string",
+													"enum": [
+														"@cf/moonshotai/kimi-k2.6",
+														"@cf/zai-org/glm-4.7-flash",
+														"@cf/qwen/qwen3-30b-a3b-fp8"
+													]
+												},
+												"system_prompt": {
+													"type": "string",
+													"maxLength": 8000
+												},
+												"auto_draft": {
+													"type": "boolean"
+												}
+											}
+										},
+										"turns": {
+											"type": "array",
+											"items": {
+												"type": "object"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/settings": {
+			"put": {
+				"operationId": "putAgentSettings",
+				"tags": ["Agent"],
+				"summary": "Choose the Workers AI model, writing instructions, and automatic drafting for this mailbox",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["model", "system_prompt", "auto_draft"],
+								"additionalProperties": false,
+								"properties": {
+									"model": {
+										"type": "string",
+										"enum": [
+											"@cf/moonshotai/kimi-k2.6",
+											"@cf/zai-org/glm-4.7-flash",
+											"@cf/qwen/qwen3-30b-a3b-fp8"
+										]
+									},
+									"system_prompt": {
+										"type": "string",
+										"maxLength": 8000
+									},
+									"auto_draft": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Saved settings",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["model", "system_prompt", "auto_draft"],
+									"additionalProperties": false,
+									"properties": {
+										"model": {
+											"type": "string",
+											"enum": [
+												"@cf/moonshotai/kimi-k2.6",
+												"@cf/zai-org/glm-4.7-flash",
+												"@cf/qwen/qwen3-30b-a3b-fp8"
+											]
+										},
+										"system_prompt": {
+											"type": "string",
+											"maxLength": 8000
+										},
+										"auto_draft": {
+											"type": "boolean"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid model or settings"
+					},
+					"503": {
+						"description": "Automatic drafting requires Workers AI and the agent queue"
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/chat": {
+			"post": {
+				"operationId": "postAgentChat",
+				"tags": ["Agent"],
+				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
+				"description": "Never sends email. Reuse a request ID only to detect duplicates; duplicate requests return 409 and are never replayed. Read history after interruption before submitting another request. Newline-delimited JSON events: text, action, done, error. An error may follow successful actions; saved drafts remain available.",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["id", "prompt"],
+								"properties": {
+									"id": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"prompt": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 8000
+									},
+									"emailId": {
+										"type": "string",
+										"format": "uuid"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Newline-delimited JSON stream",
+						"content": {
+							"application/x-ndjson": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Mailbox is busy or request ID was already used"
+					},
+					"503": {
+						"description": "Workers AI is not configured"
 					}
 				}
 			}

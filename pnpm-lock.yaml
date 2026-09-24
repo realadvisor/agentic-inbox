@@ -83,6 +83,9 @@ importers:
       '@tiptap/starter-kit':
         specifier: 3.20.2
         version: 3.20.2
+      ai:
+        specifier: ^6.0.33
+        version: 6.0.33(zod@3.25.76)
       dompurify:
         specifier: ^3.3.3
         version: 3.4.15
@@ -110,6 +113,9 @@ importers:
       react-router:
         specifier: ^7.5.3
         version: 7.18.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      workers-ai-provider:
+        specifier: ^3.3.1
+        version: 3.3.1(@ai-sdk/provider@3.0.2)(ai@6.0.33(zod@3.25.76))
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -3608,6 +3614,22 @@ packages:
     resolution: {integrity: sha512-4HyG7G1W4ksa6tUZ8bV2jxDRWuL5PXnHm9+Z1sjFPb9OZNoYtXz4y7QQRh4ibi0BF/lOmlAVjbhkUqsAVZuUKA==}
     engines: {node: '>=16'}
     hasBin: true
+
+  workers-ai-provider@3.3.1:
+    resolution: {integrity: sha512-vArwnmiAxQQF1clsXJd9ADn1xK9YUZVxE4umaMhrdsxM2kucxP430LfaoH4rn0AfoqtnuH3bfRhW1ak0r1x/8A==}
+    peerDependencies:
+      '@ai-sdk/anthropic': ^3.0.0
+      '@ai-sdk/google': ^3.0.0
+      '@ai-sdk/openai': ^3.0.0
+      '@ai-sdk/provider': ^3.0.0
+      ai: ^6.0.0
+    peerDependenciesMeta:
+      '@ai-sdk/anthropic':
+        optional: true
+      '@ai-sdk/google':
+        optional: true
+      '@ai-sdk/openai':
+        optional: true
 
   wrangler@4.136.3:
     resolution: {integrity: sha512-L1bS8BI9xoEk3RRr5XoZn5q5k1jCRo8+37ZEEab/jsUFzE1Ea2sIBAbmP1CdwSeD6mZYmnUtR6xpi9esHIl6GA==}
@@ -7554,6 +7576,11 @@ snapshots:
       '@cloudflare/workerd-linux-64': 1.20260921.1
       '@cloudflare/workerd-linux-arm64': 1.20260921.1
       '@cloudflare/workerd-windows-64': 1.20260921.1
+
+  workers-ai-provider@3.3.1(@ai-sdk/provider@3.0.2)(ai@6.0.33(zod@3.25.76)):
+    dependencies:
+      '@ai-sdk/provider': 3.0.2
+      ai: 6.0.33(zod@3.25.76)
 
   wrangler@4.136.3(@types/node@20.19.43):
     dependencies:

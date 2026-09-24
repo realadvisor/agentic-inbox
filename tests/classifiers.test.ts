@@ -700,7 +700,8 @@ test("queue config bounds provider concurrency and routes exhausted deliveries t
 	);
 	const config = JSON.parse(text.replace(/,\s*([}\]])/g, "$1"));
 	const consumers = config.queues.consumers.filter(
-		(c: { queue: string }) => c.queue !== queueNames.dead,
+		(c: { queue: string }) =>
+			c.queue === queueNames.live || c.queue === queueNames.backfill,
 	);
 	assert.equal(consumers.length, 2);
 	assert.equal(

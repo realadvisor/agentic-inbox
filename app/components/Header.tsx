@@ -26,7 +26,7 @@ export default function Header() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [searchParams] = useSearchParams();
-	const { toggleSidebar } = useUIStore();
+	const { toggleSidebar, toggleAgent, isAgentOpen } = useUIStore();
 
 	// Sync search input with URL query param so it stays populated
 	const urlQuery = searchParams.get("q") || "";
@@ -130,6 +130,14 @@ export default function Header() {
 			)}
 
 			<div className="flex items-center gap-1 ml-auto shrink-0">
+				<Button
+					variant={isAgentOpen ? "secondary" : "ghost"}
+					size="sm"
+					onClick={toggleAgent}
+					aria-pressed={isAgentOpen}
+				>
+					Agent
+				</Button>
 				<Tooltip content="Settings" side="bottom" asChild>
 					<Button
 						variant={isSettingsActive ? "secondary" : "ghost"}
@@ -139,7 +147,7 @@ export default function Header() {
 							navigate(
 								isSettingsActive
 									? `/mailbox/${mailboxId}/emails/inbox`
-									: `/mailbox/${mailboxId}/settings`
+									: `/mailbox/${mailboxId}/settings`,
 							)
 						}
 						aria-label="Settings"

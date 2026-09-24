@@ -12,7 +12,7 @@ This is an intentionally standalone pnpm workspace with its own lockfile: the up
 - The UI supports browsing, search operators, reading, starring, folders, composing, drafts, replies and manual conversation tags.
 - Local **Simulate send** stores a simulated message. Hosted live mode sends through Cloudflare Email Sending using approved public From addresses. The app contains no SMTP or Google credentials.
 - Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Live raw MIME is retained privately in R2.
-- Probo, historical imports, and the upstream AI/MCP features are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
+- Probo, historical imports, and the upstream MCP server are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
 
 ## Run locally
 
@@ -190,3 +190,13 @@ Inbox administrators can open **Settings → Runs** or use the **Classification*
 The provider-call tables are separate from backfill `classifier_runs`. Requests snapshot questions, revisions, conversation content and any reviewed examples. Authorization headers are never stored. Both list and detail APIs require classifier-management permissions and return `Cache-Control: no-store`. Payloads remain private email data.
 
 The scheduled Worker removes logs after 30 days; `CLASSIFIER_LOG_RETENTION_DAYS` accepts an integer from 1 to 365. Conversation deletion cascades to its logs. Calls still running after five minutes are marked interrupted, and unfinished application outcomes are marked failed. Apply the database migration before deploying the Worker and UI.
+
+## Email agent
+
+Open **Agent** in a mailbox to chat, search mail, organize incoming messages, or save a draft reply to the selected email. The model selector is persisted per mailbox and applies to both chat and automatic drafts. Available tool-capable Workers AI models are Kimi K2.6 (default), GLM 4.7 Flash, and Qwen3 30B; the shared allowlist lives in `shared/agent.ts`. Unsupported model IDs are rejected. All inference uses the `AI` Workers binding through `workers-ai-provider` and AI SDK 6; no external model gateway or provider API keys are used. Account model access and Workers AI billing still apply.
+
+**Agent settings** provides additional writing instructions and an opt-in **Automatically draft replies to new emails** toggle. It starts disabled and only enqueues future received inbox messages. Existing drafts and superseded conversations are skipped. Automatic tools can only read the triggering conversation and draft a reply to its original sender/Reply-To; interactive tools can also search, compose a new draft, mark read/unread, archive, move to spam/trash, and discard drafts. Neither mode has a send tool. Review draft links open the existing composer for editing and manual sending.
+
+The UI streams text and saved actions. Postgres stores chat history, the selected model for each turn, actor, and tool results. The panel displays the 30 most recent turns. The model sees up to three completed prior turns and bounded email text; attachments are listed but not submitted. Email content is treated as untrusted. Only one agent turn can write per mailbox at a time. Runs time out after two minutes with a three-minute mutation lease; disconnected or interrupted runs are not automatically replayed. Check history and saved drafts before retrying. Automatic jobs are deduplicated by incoming email and never replay a model run that might already have created a draft. Turning automatic drafting off prevents further writes by active automatic runs.
+
+Deployment requires migration **009**, the Workers AI `AI` binding, and a dedicated queue created with `pnpm exec wrangler queues create inbox-agent-drafts` before deploying the checked-in Wrangler configuration. The ingestion event dispatches its durable Postgres outbox; the existing 15-minute cron recovers unpublished or exhausted deliveries. Chat does not depend on the automatic queue. The local Node server shows an unavailable state without an injected model; integration tests exercise model selection, streaming, draft tools and queue processing using a deterministic model and isolated local Postgres schemas, with no external email delivery.

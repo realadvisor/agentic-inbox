@@ -17,6 +17,7 @@
 	"triggers": { "crons": ["*/15 * * * *"] },
 	"queues": {
 		"producers": [
+			{ "binding": "AGENT_JOBS", "queue": "inbox-agent-drafts" },
 			{ "binding": "CLASSIFICATIONS", "queue": "inbox-classifications" },
 			{
 				"binding": "CLASSIFIER_BACKFILLS",
@@ -24,6 +25,14 @@
 			},
 		],
 		"consumers": [
+			{
+				"queue": "inbox-agent-drafts",
+				"max_batch_size": 1,
+				"max_batch_timeout": 1,
+				"max_concurrency": 2,
+				"max_retries": 3,
+				"retry_delay": 60,
+			},
 			{
 				"queue": "inbox-classifications",
 				"max_batch_size": 1,
@@ -52,6 +61,7 @@
 			},
 		],
 	},
+	"ai": { "binding": "AI" },
 	"send_email": [{ "name": "EMAIL" }],
 	"vars": {
 		"MAIL_MODE": "live",
