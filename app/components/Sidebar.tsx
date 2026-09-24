@@ -193,18 +193,6 @@ export default function Sidebar() {
 					/>
 				))}
 
-				{(mode.data?.classifiersEnabled || mode.data?.classifierPreview) && (
-					<Link
-						to={`/mailbox/${mailboxId}/emails/all?needs_review=true`}
-						aria-current={reviewActive ? "page" : undefined}
-						onClick={handleNavClick}
-						className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${reviewActive ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
-					>
-						<ClipboardTextIcon size={18} className="shrink-0" />
-						<span>Needs review</span>
-					</Link>
-				)}
-
 				{/* Custom folders */}
 				{customFolders.length > 0 && (
 					<div className="pt-5">
@@ -261,6 +249,22 @@ export default function Sidebar() {
 							</Tooltip>
 						</div>
 					</div>
+				)}
+				{(mode.data?.classifiersEnabled || mode.data?.classifierPreview) && (
+					<section aria-label="Filters" className="pt-5">
+						<h2 className="px-3 mb-1.5 text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							Filters
+						</h2>
+						<Link
+							to={`/mailbox/${mailboxId}/emails/all?needs_review=true`}
+							aria-current={reviewActive ? "page" : undefined}
+							onClick={handleNavClick}
+							className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${reviewActive ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
+						>
+							<ClipboardTextIcon size={18} className="shrink-0" />
+							<span>Needs review</span>
+						</Link>
+					</section>
 				)}
 				<section aria-label="Tags" className="pt-5 pb-4">
 					<div className="flex items-center justify-between px-3 mb-1.5">
