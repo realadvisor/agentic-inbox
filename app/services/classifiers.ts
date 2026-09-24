@@ -28,9 +28,10 @@ export interface Classification {
 	classifier_id: string;
 	revision: number;
 	answer: boolean | null;
+	probability?: number | null;
 	token?: string;
 	status?: string;
-	error?: string;
+	error?: string | null;
 	source: string;
 	question: string;
 	name: string;

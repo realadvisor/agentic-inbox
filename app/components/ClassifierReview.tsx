@@ -1,3 +1,7 @@
+import {
+	CLASSIFICATION_YES_THRESHOLD,
+	CLASSIFICATION_NO_THRESHOLD,
+} from "shared/classification";
 import { useState } from "react";
 import { Button, Dialog } from "@cloudflare/kumo";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,7 +43,7 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 						Review classification
 					</Dialog.Title>
 					<p className="text-xs text-kumo-subtle mt-2 mb-4">
-						Your correction is preserved on reruns, until new mail arrives.
+						Choose an answer for each question below. Nothing is selected yet.
 					</p>
 					{pending.map((row) => (
 						<div
@@ -48,15 +52,22 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 						>
 							<p className="font-medium text-sm">{row.name}</p>
 							<p className="text-sm mt-1">{row.question}</p>
-							{row.status === "error" && (
-								<p className="text-xs text-kumo-subtle mt-2">
-									Classification failed. Answer manually here, or retry from
-									Classifiers.
+							<div className="rounded-md bg-kumo-recessed p-3 mt-3 text-sm">
+								<p className="font-medium">Why this needs review</p>
+								<p className="text-kumo-subtle mt-1">
+									{row.status === "error"
+										? "Classification failed, so there is no reliable automatic answer. Answer below or retry from Classifiers."
+										: row.error === "conversation_too_large"
+											? "This conversation exceeds 30 messages or 100,000 characters. It needs a human review because it was not sent to the classifier."
+											: row.probability != null
+												? `The model estimated a ${new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 2 }).format(row.probability)} probability of Yes, which is in the review range.`
+												: "No probability is available for this result. A human answer is needed."}
 								</p>
-							)}
+							</div>
 							<div className="flex gap-2 justify-end mt-3">
 								<Button
 									size="sm"
+									variant="secondary"
 									disabled={review.isPending}
 									onClick={() => review.mutate({ row, answer: false })}
 								>
@@ -64,7 +75,7 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 								</Button>
 								<Button
 									size="sm"
-									variant="primary"
+									variant="secondary"
 									disabled={review.isPending}
 									onClick={() => review.mutate({ row, answer: true })}
 								>
@@ -73,6 +84,17 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 							</div>
 						</div>
 					))}
+					<div className="text-xs text-kumo-subtle border-t border-kumo-line pt-4 space-y-2">
+						<p>
+							Automatic decisions: Yes at {CLASSIFICATION_YES_THRESHOLD * 100}%
+							or above; No at {CLASSIFICATION_NO_THRESHOLD * 100}% or below.
+							Probabilities between these thresholds need review.
+						</p>
+						<p>
+							Your answer saves immediately: Yes applies the tag; No removes it.
+							New messages may trigger classification again.
+						</p>
+					</div>
 					{review.error && (
 						<p role="alert" className="text-sm text-kumo-danger">
 							{review.error.message}
