@@ -1,3 +1,4 @@
+import { providerRunsApi } from "./provider-runs-api";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -41,6 +42,7 @@ export function classifierApi(
 			);
 		await next();
 	});
+	app.route("/provider-runs", providerRunsApi(db, options.admin));
 	app.get("/classifiers", async (c) => {
 		await finishRuns(db);
 		return c.json(

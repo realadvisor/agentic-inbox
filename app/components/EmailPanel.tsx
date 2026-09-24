@@ -1,3 +1,4 @@
+import { useMailMode } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -6,7 +7,7 @@
 import { TagActions } from "~/components/ConversationTags";
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { Folders } from "shared/folders";
 import EmailPanelDialogs from "~/components/email-panel/EmailPanelDialogs";
 import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
@@ -51,6 +52,7 @@ function EmailPanelSkeleton() {
 }
 
 export default function EmailPanel({ emailId }: { emailId: string }) {
+	const mode = useMailMode();
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
 		folder: string;
@@ -299,6 +301,14 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 						threadIds={[email.thread_id ?? email.id]}
 						tags={email.tags}
 					/>
+					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
+						<Link
+							className="text-xs underline inline-block mt-2"
+							to={`/mailbox/${encodeURIComponent(mailboxId)}/classifier-runs?thread=${email.thread_id ?? email.id}`}
+						>
+							Classifier runs
+						</Link>
+					)}
 				</div>
 			)}
 

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { Scalar } from "@scalar/hono-api-reference";
-import spec from "../openapi.json";
+import spec from "../openapi.json" with { type: "json" };
 
 export function documentation() {
 	const app = new Hono();

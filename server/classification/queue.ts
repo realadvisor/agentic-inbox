@@ -1,3 +1,4 @@
+import { captureProviderRequest, type CaptureJob } from "./provider-runs";
 import {
 	CLASSIFICATION_YES_THRESHOLD,
 	CLASSIFICATION_NO_THRESHOLD,
@@ -141,25 +142,40 @@ export async function processJob(
 	const [anchor] = await db<Job[]>`SELECT * FROM conversation_classifications
 	 WHERE token=${token} AND status='pending' AND available_at<=now()
 	 AND (lease_until IS NULL OR lease_until<=now())`;
-	if (!anchor) return processSingleJob(db, key, token, request);
+
 	// Collect all ready questions; the batch transport bounds elapsed time so
 	// payload splits cannot outlive the job leases.
-	const siblings = await db<{ token: string }[]>`SELECT j.token
+	const siblings = anchor
+		? await db<{ token: string }[]>`SELECT j.token
 	 FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id
 	 WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id}
 	 AND j.generation=${anchor.generation} AND j.token<>${token}
 	 AND j.status='pending' AND j.available_at<=now()
 	 AND (j.lease_until IS NULL OR j.lease_until<=now())
 	 AND c.enabled AND c.revision=j.revision
-	 ORDER BY j.classifier_id`;
-	if (!siblings.length) return processSingleJob(db, key, token, request);
+	 ORDER BY j.classifier_id`
+		: [];
+
 	const tokens = [token, ...siblings.map((j) => j.token)];
-	const batch = batchRequests(request, tokens.length);
+	const contexts = new Map<number, CaptureJob>();
+	const batch = batchRequests(request, tokens.length, (url, init, indexes) =>
+		captureProviderRequest(
+			db,
+			request,
+			url,
+			init,
+			indexes.map((index) => {
+				const job = contexts.get(index);
+				if (!job) throw new Error("Missing classifier log context");
+				return job;
+			}),
+		),
+	);
 	const results = await Promise.allSettled(
 		tokens.map((jobToken, index) =>
-			processSingleJob(db, key, jobToken, batch.forJob(index)).finally(() =>
-				batch.done(index),
-			),
+			processSingleJob(db, key, jobToken, batch.forJob(index), (job) =>
+				contexts.set(index, job),
+			).finally(() => batch.done(index)),
 		),
 	);
 	for (const result of results)
@@ -175,7 +191,8 @@ async function processSingleJob(
 	db: Database,
 	key: string,
 	token: string,
-	request: typeof fetch = fetch,
+	request: typeof fetch,
+	onClaim: (job: CaptureJob) => void,
 ): Promise<DeliveryResult> {
 	const claimed = await db.begin(async (tx) => {
 		const [candidate] = await tx<
@@ -213,6 +230,8 @@ async function processSingleJob(
 	if (claimed.ack === true) return { ack: true };
 	if (claimed.retry !== undefined) return { retry: claimed.retry };
 	const j = claimed;
+	const [tag] = await db`SELECT name FROM tags WHERE id=${j.tag_id}`;
+	onClaim({ ...j, classifier_name: tag.name });
 	let delivery: DeliveryResult = { ack: true };
 
 	let result: {
@@ -291,8 +310,10 @@ async function processSingleJob(
 				!classifier?.enabled ||
 				classifier.revision !== j.revision ||
 				conversation?.generation !== j.generation
-			)
+			) {
+				await tx`UPDATE classifier_provider_run_items SET disposition='discarded' WHERE lease_id=${j.lease_id}`;
 				return;
+			}
 			if (failure?.retryable) {
 				const delay = Math.max(
 					failure.delay,
@@ -302,6 +323,7 @@ async function processSingleJob(
 				await tx`UPDATE conversation_classifications SET lease_until=NULL,available_at=now()+${delay}*interval '1 second',error=${failure.code},updated_at=now() WHERE token=${j.token}`;
 				if (failure.code === "provider_http_429")
 					await tx`UPDATE classifier_provider_state SET cooldown_until=greatest(cooldown_until,now()+${delay}*interval '1 second') WHERE singleton`;
+				await tx`UPDATE classifier_provider_run_items SET disposition='retry',error=${failure.code} WHERE lease_id=${j.lease_id}`;
 				delivery = { retry: Math.ceil(delay) };
 				return;
 			}
@@ -309,6 +331,7 @@ async function processSingleJob(
 			const [manual] =
 				await tx`SELECT 1 FROM conversation_tags WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND tag_id=${classifier.tag_id} AND source='manual'`;
 			if (manual) result.status = "skipped";
+			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id}`;
 			await tx`UPDATE conversation_classifications SET status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;
 			if (result.status !== "skipped")
 				await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${j.mailbox_id},${j.thread_id},${classifier.tag_id},'classifier','jev',${result.answer === true ? null : tx`now()`}) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET actor='jev',removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;

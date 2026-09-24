@@ -1,7 +1,16 @@
 /** Coalesce prepared requests while leaving each job's lease, validation and retry
  * handling independent. Every participant must call done, including skipped jobs. */
-export function batchRequests(request: typeof fetch, participants: number) {
+export function batchRequests(
+	request: typeof fetch,
+	participants: number,
+	transport?: (
+		url: Parameters<typeof fetch>[0],
+		init: RequestInit,
+		indexes: number[],
+	) => Promise<Response>,
+) {
 	type Pending = {
+		index: number;
 		url: Parameters<typeof fetch>[0];
 		init: RequestInit;
 		body: { model: string; state: unknown; questions: { match: unknown } };
@@ -18,17 +27,28 @@ export function batchRequests(request: typeof fetch, participants: number) {
 			const remaining = deadline - Date.now();
 			if (remaining <= 0)
 				throw new Error("Batch delivery time budget exhausted");
+			const sendRequest = (
+				url: Parameters<typeof fetch>[0],
+				init: RequestInit,
+			) =>
+				transport
+					? transport(
+							url,
+							init,
+							group.map((item) => item.index),
+						)
+					: request(url, init);
 			const signal = AbortSignal.timeout(Math.min(20_000, remaining));
 			if (group.length === 1) {
 				group[0].resolve(
-					await request(group[0].url, {
+					await sendRequest(group[0].url, {
 						...group[0].init,
 						signal,
 					}),
 				);
 				return;
 			}
-			const response = await request(group[0].url, {
+			const response = await sendRequest(group[0].url, {
 				...group[0].init,
 				body: JSON.stringify(payload(group)),
 				signal,
@@ -98,7 +118,7 @@ export function batchRequests(request: typeof fetch, participants: number) {
 			async (url, init) => {
 				const body = JSON.parse(init?.body as string) as Pending["body"];
 				return new Promise<Response>((resolve, reject) => {
-					pending.push({ url, init: init ?? {}, body, resolve, reject });
+					pending.push({ index, url, init: init ?? {}, body, resolve, reject });
 					done(index);
 				});
 			},
