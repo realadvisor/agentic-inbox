@@ -16,6 +16,11 @@ export interface ComposeOptions {
 }
 
 interface UIState {
+	agentModels: Record<string, string>;
+	setAgentModel: (mailbox: string, model: string) => void;
+	isAgentOpen: boolean;
+	toggleAgent: () => void;
+	closeAgent: () => void;
 	// Side panel state
 	selectedEmailId: string | null;
 	isComposing: boolean;
@@ -41,6 +46,14 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
+	agentModels: {},
+	setAgentModel: (mailbox, model) =>
+		set((state) => ({
+			agentModels: { ...state.agentModels, [mailbox]: model },
+		})),
+	isAgentOpen: false,
+	toggleAgent: () => set({ isAgentOpen: !get().isAgentOpen }),
+	closeAgent: () => set({ isAgentOpen: false }),
 	selectedEmailId: null,
 	isComposing: false,
 	_previousEmailId: null,

@@ -4,6 +4,7 @@ import ClassifierRuns from "~/components/ClassifierRuns";
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import AgentModelSettings from "~/components/AgentModelSettings";
 import { Classifiers } from "~/components/Classifiers";
 import { useMailMode } from "~/components/MailMode";
 import { useSearchParams } from "react-router";
@@ -20,7 +21,7 @@ export default function SettingsRoute() {
 	const hasClassifiers =
 		mode.data?.classifierPreview || mode.data?.classifiersEnabled;
 	const [params, setParams] = useSearchParams();
-	const tab = params.get("tab") ?? "classifiers";
+	const tab = params.get("tab") ?? (hasClassifiers ? "classifiers" : "account");
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 
@@ -67,36 +68,35 @@ export default function SettingsRoute() {
 		>
 			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
 
-			{hasClassifiers && (
-				<div
-					className="flex flex-wrap gap-2 mb-6"
-					aria-label="Settings sections"
-				>
-					{[
-						"account",
-						"tags",
-						"classifiers",
-						...(mode.data?.canManageClassifiers ? ["runs"] : []),
-					].map((t) => (
-						<Button
-							key={t}
-							variant={tab === t ? "primary" : "ghost"}
-							onClick={() => setParams({ tab: t })}
-						>
-							{t[0].toUpperCase() + t.slice(1)}
-						</Button>
-					))}
-				</div>
-			)}
-			{hasClassifiers && tab === "runs" ? (
+			<div className="flex flex-wrap gap-2 mb-6" aria-label="Settings sections">
+				{[
+					...(hasClassifiers ? ["classifiers"] : []),
+					...(hasClassifiers && mode.data?.canManageClassifiers
+						? ["runs"]
+						: []),
+					"tags",
+					"models",
+					"account",
+				].map((t) => (
+					<Button
+						key={t}
+						variant={tab === t ? "primary" : "ghost"}
+						onClick={() => setParams({ tab: t })}
+					>
+						{t[0].toUpperCase() + t.slice(1)}
+					</Button>
+				))}
+			</div>
+			{tab === "models" ? (
+				<AgentModelSettings key={mailboxId} mailboxId={mailboxId!} />
+			) : hasClassifiers && tab === "runs" ? (
 				<ClassifierRuns />
 			) : hasClassifiers && tab === "classifiers" ? (
 				<Classifiers />
-			) : hasClassifiers && tab === "tags" ? (
+			) : tab === "tags" ? (
 				<TagSettings />
 			) : (
 				<div className="space-y-6">
-					<TagSettings />
 					{/* Account */}
 					<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
 						<div className="text-sm font-medium text-kumo-default mb-4">

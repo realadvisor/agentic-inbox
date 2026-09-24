@@ -1,0 +1,37 @@
+name: Inbox checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: inbox
+          POSTGRES_PASSWORD: inbox_test
+          POSTGRES_DB: inbox_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U inbox -d inbox_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://inbox:inbox_test@127.0.0.1:5432/inbox_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: node --import tsx --test tests/*.test.ts
+      - run: pnpm deploy:check

@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from "react";
 import { Outlet, useParams, useSearchParams } from "react-router";
+import AgentPanel from "~/components/AgentPanel";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
 import Sidebar from "~/components/Sidebar";
@@ -24,6 +25,8 @@ export default function MailboxRoute() {
 		closePanel,
 		closeComposeModal,
 		selectEmail,
+		isAgentOpen,
+		closeAgent,
 	} = useUIStore();
 
 	useEffect(() => {
@@ -80,6 +83,9 @@ export default function MailboxRoute() {
 				</main>
 			</div>
 
+			{isAgentOpen && mailboxId && (
+				<AgentPanel key={mailboxId} mailboxId={mailboxId} close={closeAgent} />
+			)}
 			<ComposeEmail />
 		</div>
 	);

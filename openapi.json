@@ -46,6 +46,9 @@
 		},
 		{
 			"name": "Classifiers"
+		},
+		{
+			"name": "Agent"
 		}
 	],
 	"paths": {
@@ -4137,6 +4140,336 @@
 					}
 				}
 			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent": {
+			"get": {
+				"operationId": "getAgentState",
+				"tags": ["Agent"],
+				"summary": "Read mailbox agent settings and recent chat history",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Availability, settings, and 30 most recent turns with model, status and saved tool actions",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"available": {
+											"type": "boolean"
+										},
+										"autoDraftAvailable": {
+											"type": "boolean"
+										},
+										"settings": {
+											"type": "object",
+											"required": ["model", "system_prompt", "auto_draft"],
+											"additionalProperties": false,
+											"properties": {
+												"model": {
+													"type": "string",
+													"maxLength": 200,
+													"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
+												},
+												"system_prompt": {
+													"type": "string",
+													"maxLength": 8000
+												},
+												"auto_draft": {
+													"type": "boolean"
+												}
+											}
+										},
+										"turns": {
+											"type": "array",
+											"items": {
+												"type": "object"
+											}
+										},
+										"catalog": {
+											"$ref": "#/components/schemas/AgentCatalog"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/settings": {
+			"put": {
+				"operationId": "putAgentSettings",
+				"tags": ["Agent"],
+				"summary": "Choose the default model, writing instructions, and automatic drafting for this mailbox",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["model", "system_prompt", "auto_draft"],
+								"additionalProperties": false,
+								"properties": {
+									"model": {
+										"type": "string",
+										"maxLength": 200,
+										"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
+									},
+									"system_prompt": {
+										"type": "string",
+										"maxLength": 8000
+									},
+									"auto_draft": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Saved settings",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["model", "system_prompt", "auto_draft"],
+									"additionalProperties": false,
+									"properties": {
+										"model": {
+											"type": "string",
+											"maxLength": 200,
+											"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
+										},
+										"system_prompt": {
+											"type": "string",
+											"maxLength": 8000
+										},
+										"auto_draft": {
+											"type": "boolean"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid model or settings"
+					},
+					"503": {
+						"description": "Selected provider is not configured, or automatic drafting queue is unavailable"
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/chat": {
+			"post": {
+				"operationId": "postAgentChat",
+				"tags": ["Agent"],
+				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
+				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs continue to persist their results; read history before retrying.",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["id", "prompt"],
+								"properties": {
+									"id": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"prompt": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 8000
+									},
+									"emailId": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"model": {
+										"type": "string",
+										"maxLength": 200,
+										"description": "Optional model override for this turn. Does not change the mailbox default."
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Native Vercel AI SDK UI message stream",
+						"headers": {
+							"x-vercel-ai-ui-message-stream": {
+								"schema": {
+									"type": "string",
+									"enum": ["v1"]
+								}
+							},
+							"x-chat-model": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						},
+						"content": {
+							"text/event-stream": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Mailbox is busy or request ID was already used"
+					},
+					"503": {
+						"description": "Selected AI provider is not configured"
+					},
+					"400": {
+						"description": "Unknown, retired or invalid model, or invalid request"
+					}
+				}
+			}
+		},
+		"/api/v1/agent/models": {
+			"get": {
+				"operationId": "getAgentModels",
+				"tags": ["Agent"],
+				"summary": "Read the persisted tool-capable model catalog",
+				"responses": {
+					"200": {
+						"description": "Model catalog and provider availability",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentCatalog"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/agent/models/refresh": {
+			"post": {
+				"operationId": "refreshAgentModels",
+				"tags": ["Agent"],
+				"summary": "Refresh gateway models without changing mailbox defaults",
+				"responses": {
+					"200": {
+						"description": "Model catalog and provider availability",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentCatalog"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Another refresh is in progress"
+					},
+					"502": {
+						"description": "Upstream catalog unavailable or invalid; existing snapshot is unchanged"
+					}
+				}
+			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/stop": {
+			"post": {
+				"operationId": "stopAgentRun",
+				"tags": ["Agent"],
+				"summary": "Stop a specific mailbox agent run",
+				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run.",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["id"],
+								"additionalProperties": false,
+								"properties": {
+									"id": {
+										"type": "string",
+										"format": "uuid"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Stop acknowledged; stopped is false if the run was already terminal",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["stopped"],
+									"properties": {
+										"stopped": {
+											"type": "boolean"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid run ID"
+					},
+					"404": {
+						"description": "Run not found in this mailbox"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -4753,6 +5086,73 @@
 					},
 					"color": {
 						"type": "string"
+					}
+				}
+			},
+			"AgentCatalog": {
+				"type": "object",
+				"required": ["models", "refreshed_at", "gatewayConfigured"],
+				"properties": {
+					"refreshed_at": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true
+					},
+					"gatewayConfigured": {
+						"type": "boolean"
+					},
+					"models": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"id",
+								"name",
+								"provider",
+								"source",
+								"available",
+								"selectable"
+							],
+							"properties": {
+								"id": {
+									"type": "string",
+									"maxLength": 200,
+									"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
+								},
+								"name": {
+									"type": "string"
+								},
+								"provider": {
+									"type": "string"
+								},
+								"source": {
+									"type": "string",
+									"enum": ["workers", "gateway"]
+								},
+								"available": {
+									"type": "boolean",
+									"description": "Present in the latest catalog"
+								},
+								"selectable": {
+									"type": "boolean",
+									"description": "Available and its provider is configured"
+								},
+								"context_window": {
+									"type": "integer",
+									"nullable": true
+								},
+								"input_price": {
+									"type": "number",
+									"nullable": true,
+									"description": "USD per million input tokens"
+								},
+								"output_price": {
+									"type": "number",
+									"nullable": true,
+									"description": "USD per million output tokens"
+								}
+							}
+						}
 					}
 				}
 			}

@@ -23,6 +23,7 @@
 		"preview:classifiers": "CLASSIFIER_PREVIEW=1 PORT=4313 tsx --env-file=.env server/index.ts"
 	},
 	"dependencies": {
+		"@ai-sdk/react": "3.0.35",
 		"@cloudflare/kumo": "^1.13.0",
 		"@hono/node-server": "^1.19.0",
 		"@phosphor-icons/react": "^2.1.10",
@@ -39,6 +40,7 @@
 		"@tiptap/extension-underline": "3.20.2",
 		"@tiptap/react": "3.20.2",
 		"@tiptap/starter-kit": "3.20.2",
+		"ai": "^6.0.33",
 		"dompurify": "^3.3.3",
 		"hono": "^4.7.11",
 		"isbot": "^5",
@@ -47,7 +49,10 @@
 		"postgres": "^3.4.7",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
+		"react-markdown": "^10.1.0",
 		"react-router": "^7.5.3",
+		"remark-gfm": "^4.0.1",
+		"workers-ai-provider": "^3.3.1",
 		"zod": "^3.25.76",
 		"zustand": "^5.0.12"
 	},

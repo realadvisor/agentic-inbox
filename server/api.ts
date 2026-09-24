@@ -1,3 +1,4 @@
+import { agentApi, type AgentOptions } from "./agent/api";
 import { classifierApi } from "./classification/api";
 import { setConversationTags } from "./tags";
 import { documentation } from "./docs";
@@ -56,6 +57,7 @@ const querySchema = z.object({
 });
 
 export interface ApiOptions {
+	agent?: AgentOptions;
 	classifierPreview?: boolean;
 	classifiersEnabled?: boolean;
 	kickClassifiers?: () => void;
@@ -219,6 +221,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		await store.mailbox(c.req.param("mailboxId"));
 		await next();
 	});
+	app.route("/", agentApi(db, { ...options.agent, actor: options.actor }));
 	const tagActor = () => {
 		if (isLive && !options.actor) throw new HTTPException(403);
 		return options.actor ?? "local-synthetic-user";

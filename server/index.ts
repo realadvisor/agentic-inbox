@@ -1,3 +1,4 @@
+import { agentProviders } from "./agent/providers";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { connect } from "./db";
@@ -26,6 +27,7 @@ if (preview) {
 await db`SELECT 1 FROM inbox_migrations LIMIT 1`;
 const previewModule = preview ? await import("./preview/api") : null;
 const app = createApi(db, {
+	agent: agentProviders(undefined, process.env.AI_GATEWAY_API_KEY),
 	previewRoutes: previewModule?.previewApi(db),
 	readAttachment: localAttachments(),
 	classifierPreview: preview,

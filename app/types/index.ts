@@ -37,6 +37,14 @@ export interface ConversationTag extends Tag {
 }
 
 export interface Email {
+	delivery_status?:
+		| "received"
+		| "draft"
+		| "simulated"
+		| "sending"
+		| "sent"
+		| "failed"
+		| "unknown";
 	tags?: ConversationTag[];
 	reply_to?: string | null;
 	id: string;
