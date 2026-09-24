@@ -37,6 +37,15 @@ test("existing settings edit groups and conversation badges replace single selec
 			name: /New tag group|Edit Response priority/,
 		});
 		await expect(dialog.getByLabel("Group name")).toBeFocused();
+		await expect
+			.poll(async () => {
+				const bounds = await dialog.boundingBox();
+				return Math.round(bounds!.x + bounds!.width);
+			})
+			.toBe(1440);
+		await expect
+			.poll(async () => Math.round((await dialog.boundingBox())!.y))
+			.toBe(0);
 		await dialog.getByLabel("Group name").fill("Response priority");
 		await dialog.getByLabel("New tag name").fill("Low");
 		await dialog.getByRole("button", { name: "Add", exact: true }).click();
@@ -60,6 +69,75 @@ test("existing settings edit groups and conversation badges replace single selec
 		);
 		await expect(dialog.getByLabel("Group name")).toBeFocused();
 		await dialog.getByLabel("Tag 1 name").fill("Normal");
+		await dialog
+			.getByLabel("Tag 1 description")
+			.fill("No time-sensitive action remains.");
+		await dialog
+			.getByLabel("Tag 1 color")
+			.evaluate((input: HTMLInputElement) => {
+				const setter = Object.getOwnPropertyDescriptor(
+					HTMLInputElement.prototype,
+					"value",
+				)!.set!;
+				setter.call(input, "#16a34a");
+				input.dispatchEvent(new Event("input", { bubbles: true }));
+				input.dispatchEvent(new Event("change", { bubbles: true }));
+			});
+		await expect(dialog.getByLabel("Tag 1 color")).toHaveValue("#16a34a");
+		await dialog.getByText("Request template", { exact: true }).click();
+		const preview = JSON.parse(
+			await dialog.getByLabel("Jev request JSON").innerText(),
+		);
+		expect(Object.values(preview.questions.match.criteria).join(" ")).toContain(
+			"Normal",
+		);
+		expect(preview.questions.match.instructions).toContain(
+			"High for action today",
+		);
+		expect(preview.questions.match.type).toBe("choice");
+
+		await dialog.getByLabel("Search test emails").fill("Review my request");
+		await dialog.getByRole("checkbox", { name: /Review my request/ }).check();
+		await dialog
+			.getByRole("button", { name: "Preview requests", exact: true })
+			.click();
+		await dialog.getByText("View requests (1)", { exact: true }).click();
+		await expect(
+			dialog.getByLabel("Jev requests for Review my request"),
+		).toContainText("Please reply today.");
+		await page.route("**/api/v1/classification/test", async (route) => {
+			const body = route.request().postDataJSON();
+			expect(body.execute).toBe(true);
+			expect(body.thread_id).toBe(message!.thread_id);
+			await route.fulfill({
+				json: {
+					available: true,
+					results: body.questions.map((q: { name: string }) => ({
+						name: q.name,
+						request: { state: { messages: [] } },
+						result: { answer: true, probability: 0.95 },
+					})),
+				},
+			});
+		});
+		await dialog
+			.getByRole("button", { name: "Test with Jev", exact: true })
+			.click();
+		await expect(
+			dialog.getByText("Needs review — uncertain or conflicting predictions"),
+		).toBeVisible();
+		await dialog
+			.getByLabel("Instructions for Jev")
+			.fill("New unsaved criteria");
+		await expect(
+			dialog.getByText(
+				"Configuration or selection changed. Run again to update these results.",
+			),
+		).toBeVisible();
+		await dialog
+			.getByLabel("Instructions for Jev")
+			.fill("High for action today, otherwise Low.");
+		await page.unroute("**/api/v1/classification/test");
 		await expect(dialog.getByLabel("Tag 1 name")).toHaveValue("Normal");
 		await dialog.getByRole("button", { name: "Save group" }).click();
 		await expect(dialog).not.toBeVisible();
@@ -106,7 +184,8 @@ test("existing settings edit groups and conversation badges replace single selec
 			.toBe(0);
 		await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
 		const tags =
-			await db`SELECT id,name FROM tags WHERE group_id=${groupId} ORDER BY position`;
+			await db`SELECT id,name,color FROM tags WHERE group_id=${groupId} ORDER BY position`;
+		expect(tags[0].color).toBe("#16a34a");
 		await setConversationTags(
 			db,
 			mailbox,

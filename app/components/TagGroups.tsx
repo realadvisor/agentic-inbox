@@ -1,6 +1,9 @@
+import { JevRequestPreview } from "./JevRequestPreview";
+import { groupQuestion } from "../../shared/tag-groups";
 import { ExistingConversations, useTagClassifiers } from "./TagAutomation";
 import { Button, Dialog, Input, Popover } from "@cloudflare/kumo";
 import {
+	TrashIcon,
 	PlusIcon,
 	XIcon,
 	CaretDownIcon,
@@ -114,7 +117,7 @@ export function TagGroups({
 					<button
 						type="button"
 						key={group.id}
-						className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-kumo-tint disabled:cursor-default"
+						className="grid w-full grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-kumo-tint disabled:cursor-default"
 						disabled={!canEdit}
 						aria-label={`Edit ${group.name} group`}
 						onClick={() => setEditing(group)}
@@ -128,7 +131,7 @@ export function TagGroups({
 							</div>
 							<TagChips tags={group.tags} />
 						</div>
-						<span className="text-xs text-kumo-subtle">
+						<span className="text-right text-xs text-kumo-subtle">
 							{group.enabled ? "Jev" : "Manual"}
 						</span>
 						<CaretRightIcon size={16} className="shrink-0 text-kumo-subtle" />
@@ -155,7 +158,24 @@ export function TagGroups({
 					if (!open && !saving) setEditing(undefined);
 				}}
 			>
-				<Dialog size="base" className="max-h-[90dvh] overflow-y-auto p-6">
+				<Dialog
+					size="base"
+					style={{
+						top: 0,
+						left: "auto",
+						right: 0,
+						bottom: 0,
+						margin: 0,
+						transform: "none",
+						translate: "none",
+						scale: "none",
+						borderRadius: 0,
+						height: "100dvh",
+						maxWidth: "none",
+						zIndex: 100,
+					}}
+					className="flex w-full flex-col overflow-hidden border-l border-kumo-line p-5 shadow-2xl md:w-[90vw] md:p-8"
+				>
 					{editing !== undefined && (
 						<Editor
 							key={editing?.id ?? "new"}
@@ -187,10 +207,11 @@ function Editor({
 					instructions: current.instructions,
 					enabled: current.enabled,
 					revision: current.revision,
-					tags: current.tags.map(({ id, name, color }) => ({
+					tags: current.tags.map(({ id, name, color, description }) => ({
 						id,
 						name,
 						color,
+						description: description ?? "",
 					})),
 				}
 			: {
@@ -202,6 +223,7 @@ function Editor({
 				},
 	);
 	const classifiers = useTagClassifiers();
+	const remove = useTagMutation(api.deleteTagGroup);
 	const [newTag, setNewTag] = useState("");
 	const [error, setError] = useState("");
 	const save = useTagMutation((data: TagGroupInput) =>
@@ -220,7 +242,7 @@ function Editor({
 			...draft,
 			tags: [
 				...draft.tags,
-				{ id: crypto.randomUUID(), name, color: "#2563eb" },
+				{ id: crypto.randomUUID(), name, color: "#2563eb", description: "" },
 			],
 		});
 		setNewTag("");
@@ -228,9 +250,10 @@ function Editor({
 	}
 	return (
 		<form
+			className="flex min-h-0 flex-1 flex-col"
 			onSubmit={(e) => {
 				e.preventDefault();
-				if (save.isPending) return;
+				if (save.isPending || remove.isPending) return;
 				if (newTag.trim()) {
 					setError("Add the new tag before saving.");
 					return;
@@ -248,165 +271,254 @@ function Editor({
 				});
 			}}
 		>
-			<Dialog.Title className="mb-5 text-base font-semibold">
+			<Dialog.Title className="mb-6 shrink-0 text-xl font-semibold">
 				{current ? `Edit ${current.name}` : "New tag group"}
 			</Dialog.Title>
-			<fieldset disabled={save.isPending} className="space-y-5">
-				<Input
-					label="Group name"
-					required
-					maxLength={80}
-					value={draft.name}
-					onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-				/>
-				<label className="block text-sm font-medium">
-					Selection
-					<select
-						aria-label="Selection"
-						value={draft.selection}
-						onChange={(e) =>
-							setDraft({
-								...draft,
-								selection: e.target.value === "single" ? "single" : "multiple",
-							})
-						}
-						className="mt-2 block w-full rounded-md border border-kumo-line bg-kumo-base p-2"
+			<div className="-mx-1 grid min-h-0 flex-1 grid-cols-1 items-start gap-6 overflow-y-auto px-1 py-1 lg:grid-cols-2">
+				<section aria-label="Configure" className="min-w-0 space-y-5">
+					<h3 className="text-sm font-semibold">Configure</h3>
+					<fieldset
+						disabled={save.isPending || remove.isPending}
+						className="min-w-0 space-y-5"
 					>
-						<option value="single">One tag</option>
-						<option value="multiple">Multiple tags</option>
-					</select>
-				</label>
-				<div>
-					<div className="mb-2 text-sm font-medium">Tags</div>
-					<div className="flex flex-wrap gap-2">
-						{draft.tags.map((tag, index) => (
-							<div
-								key={tag.id}
-								className="flex max-w-full items-center gap-1 rounded-md bg-kumo-fill px-2 py-1"
-							>
-								<input
-									aria-label={`Tag ${index + 1} name`}
-									required
-									maxLength={80}
-									value={tag.name}
+						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<Input
+								label="Group name"
+								autoFocus
+								required
+								maxLength={80}
+								value={draft.name}
+								onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+							/>
+							<label className="block text-sm font-medium">
+								Selection
+								<select
+									aria-label="Selection"
+									value={draft.selection}
 									onChange={(e) =>
 										setDraft({
 											...draft,
-											tags: draft.tags.map((t) =>
-												t.id === tag.id ? { ...t, name: e.target.value } : t,
-											),
+											selection:
+												e.target.value === "single" ? "single" : "multiple",
 										})
 									}
-									style={{
-										width: `${Math.min(22, Math.max(5, tag.name.length + 1))}ch`,
-									}}
-									className="min-w-0 bg-transparent text-sm"
-								/>
-								<button
-									type="button"
-									aria-label={`Remove ${tag.name} tag`}
-									className="rounded p-1 text-kumo-subtle"
-									onClick={() =>
-										setDraft({
-											...draft,
-											tags: draft.tags.filter((t) => t.id !== tag.id),
-										})
-									}
+									className="mt-2 block w-full rounded-md border border-kumo-line bg-kumo-base p-2"
 								>
-									<XIcon size={14} />
-								</button>
+									<option value="single">One tag</option>
+									<option value="multiple">Multiple tags</option>
+								</select>
+							</label>
+						</div>
+						<div>
+							<div className="mb-2 text-sm font-medium">Tags</div>
+							<div className="space-y-2">
+								{draft.tags.map((tag, index) => (
+									<div
+										key={tag.id}
+										className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-kumo-line bg-kumo-base p-2"
+									>
+										<label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-kumo-subtle">
+											<input
+												type="color"
+												aria-label={`Tag ${index + 1} color`}
+												value={tag.color}
+												onChange={(e) =>
+													setDraft({
+														...draft,
+														tags: draft.tags.map((t) =>
+															t.id === tag.id
+																? { ...t, color: e.target.value }
+																: t,
+														),
+													})
+												}
+												className="h-8 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+											/>
+											<span className="sr-only">Color</span>
+										</label>
+										<input
+											aria-label={`Tag ${index + 1} name`}
+											required
+											maxLength={80}
+											value={tag.name}
+											onChange={(e) =>
+												setDraft({
+													...draft,
+													tags: draft.tags.map((t) =>
+														t.id === tag.id
+															? { ...t, name: e.target.value }
+															: t,
+													),
+												})
+											}
+											style={{
+												width: `${Math.min(22, Math.max(5, tag.name.length + 1))}ch`,
+											}}
+											className="min-w-0 flex-1 bg-transparent text-sm"
+										/>
+										<button
+											type="button"
+											aria-label={`Remove ${tag.name} tag`}
+											className="rounded p-1 text-kumo-subtle"
+											onClick={() =>
+												setDraft({
+													...draft,
+													tags: draft.tags.filter((t) => t.id !== tag.id),
+												})
+											}
+										>
+											<XIcon size={16} />
+										</button>
+										<textarea
+											aria-label={`Tag ${index + 1} description`}
+											placeholder="When should this tag apply? Include important exceptions."
+											value={tag.description}
+											maxLength={1000}
+											rows={2}
+											onChange={(e) =>
+												setDraft({
+													...draft,
+													tags: draft.tags.map((t) =>
+														t.id === tag.id
+															? { ...t, description: e.target.value }
+															: t,
+													),
+												})
+											}
+											className="w-full resize-y rounded border border-kumo-line bg-kumo-base p-2 text-xs leading-relaxed"
+										/>
+									</div>
+								))}
 							</div>
-						))}
-					</div>
-					<div className="mt-3 flex gap-2">
-						<input
-							aria-label="New tag name"
-							placeholder="Add a tag…"
-							maxLength={80}
-							value={newTag}
-							disabled={draft.tags.length >= 10}
-							onChange={(e) => setNewTag(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") {
-									e.preventDefault();
-									if (draft.tags.length < 10) add();
-								}
-							}}
-							className="min-w-0 flex-1 rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
-						/>
-						<Button
-							type="button"
-							variant="secondary"
-							disabled={!newTag.trim() || draft.tags.length >= 10}
-							onClick={add}
-						>
-							Add
-						</Button>
-					</div>
-				</div>
-				<div className="space-y-4 border-t border-kumo-line pt-4">
-					<label className="flex items-center gap-2 text-sm font-medium">
-						<input
-							type="checkbox"
-							checked={draft.enabled}
-							onChange={(e) =>
-								setDraft({ ...draft, enabled: e.target.checked })
+							<div className="mt-3 flex gap-2">
+								<input
+									aria-label="New tag name"
+									placeholder="Add a tag…"
+									maxLength={80}
+									value={newTag}
+									disabled={draft.tags.length >= 10}
+									onChange={(e) => setNewTag(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") {
+											e.preventDefault();
+											if (draft.tags.length < 10) add();
+										}
+									}}
+									className="min-w-0 flex-1 rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
+								/>
+								<Button
+									type="button"
+									variant="secondary"
+									disabled={!newTag.trim() || draft.tags.length >= 10}
+									onClick={add}
+								>
+									Add
+								</Button>
+							</div>
+						</div>
+						<div className="space-y-4 border-t border-kumo-line pt-4">
+							<label className="flex items-center gap-2 text-sm font-medium">
+								<input
+									type="checkbox"
+									checked={draft.enabled}
+									onChange={(e) =>
+										setDraft({ ...draft, enabled: e.target.checked })
+									}
+								/>
+								Assign automatically with Jev
+							</label>
+							{
+								<label className="block text-sm font-medium">
+									Instructions for Jev
+									<textarea
+										required={draft.enabled}
+										maxLength={2000}
+										rows={10}
+										value={draft.instructions}
+										onChange={(e) =>
+											setDraft({ ...draft, instructions: e.target.value })
+										}
+										className="mt-2 block min-h-60 w-full resize-y rounded-lg border border-kumo-line bg-kumo-base p-4 text-sm font-normal leading-relaxed"
+									/>
+									<span className="mt-2 block text-xs font-normal text-kumo-subtle">
+										Define each tag and when it applies. The request preview
+										shows the full instructions sent for each tag.
+									</span>
+								</label>
 							}
-						/>
-						Assign automatically with Jev
-					</label>
-					{draft.enabled && (
-						<label className="block text-sm font-medium">
-							Instructions for Jev
-							<textarea
-								required
-								maxLength={2000}
-								rows={4}
-								value={draft.instructions}
-								onChange={(e) =>
-									setDraft({ ...draft, instructions: e.target.value })
+							<p className="text-xs text-kumo-subtle">
+								Saving does not process existing conversations. Manual choices
+								stay.
+							</p>
+						</div>
+					</fieldset>
+
+					{current && classifiers.canManage && (
+						<div className="min-w-0">
+							<ExistingConversations
+								classifiers={
+									classifiers.data?.filter((c) => c.group_id === current.id) ??
+									[]
 								}
-								className="mt-2 block w-full resize-y rounded-md border border-kumo-line bg-kumo-base p-3 text-sm font-normal"
+								disabled={
+									save.isPending ||
+									newTag.trim().length > 0 ||
+									draft.name !== current.name ||
+									draft.selection !== current.selection ||
+									draft.instructions !== current.instructions ||
+									draft.enabled !== current.enabled ||
+									JSON.stringify(draft.tags) !== JSON.stringify(current.tags)
+								}
 							/>
-							<span className="mt-2 block text-xs font-normal text-kumo-subtle">
-								Explain how Jev should choose between this group’s tags.
-							</span>
-						</label>
+						</div>
 					)}
-					<p className="text-xs text-kumo-subtle">
-						Saving does not process existing conversations. Manual choices stay.
-					</p>
-				</div>
-			</fieldset>
-			{current && classifiers.canManage && (
-				<div className="mt-4">
-					<ExistingConversations
-						classifiers={
-							classifiers.data?.filter((c) => c.group_id === current.id) ?? []
-						}
-						disabled={
-							save.isPending ||
-							newTag.trim().length > 0 ||
-							draft.name !== current.name ||
-							draft.selection !== current.selection ||
-							draft.instructions !== current.instructions ||
-							draft.enabled !== current.enabled ||
-							JSON.stringify(draft.tags) !== JSON.stringify(current.tags)
-						}
+				</section>
+				<div className="min-w-0 space-y-4" aria-label="Test">
+					<h3 className="text-sm font-semibold">Test</h3>
+					<JevRequestPreview
+						group={draft}
+						selection={draft.selection}
+						questions={draft.tags.map((tag) => ({
+							name: tag.name,
+							question: groupQuestion(draft, tag),
+						}))}
 					/>
 				</div>
-			)}
-
-			{(error || save.error) && (
-				<p role="alert" className="mt-4 text-sm text-kumo-danger">
-					{error || save.error?.message}
-				</p>
-			)}
-			<div className="mt-6 flex justify-end gap-2">
+				{(error || save.error || remove.error) && (
+					<p role="alert" className="text-sm text-kumo-danger lg:col-span-2">
+						{error || save.error?.message || remove.error?.message}
+					</p>
+				)}
+			</div>
+			<div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-kumo-line bg-kumo-base pt-4">
+				{current && (
+					<Button
+						type="button"
+						variant="ghost"
+						className="mr-auto text-kumo-danger"
+						disabled={save.isPending || remove.isPending}
+						onClick={() => {
+							if (
+								!window.confirm(
+									`Delete “${current.name}” and all its tags from every mailbox and conversation? Automatic assignment will stop. Past run records will be retained.`,
+								)
+							)
+								return;
+							onSaving(true);
+							remove.mutate(current, {
+								onSuccess: close,
+								onSettled: () => onSaving(false),
+							});
+						}}
+					>
+						<TrashIcon size={16} />
+						Delete group
+					</Button>
+				)}
 				<Button
 					type="button"
 					variant="secondary"
-					disabled={save.isPending}
+					disabled={save.isPending || remove.isPending}
 					onClick={close}
 				>
 					Cancel
@@ -415,7 +527,7 @@ function Editor({
 					type="submit"
 					variant="primary"
 					loading={save.isPending}
-					disabled={save.isPending}
+					disabled={save.isPending || remove.isPending}
 				>
 					Save group
 				</Button>

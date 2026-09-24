@@ -1,3 +1,4 @@
+import { classifierTestApi } from "./test-api";
 import { providerRunsApi } from "./provider-runs-api";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -25,6 +26,8 @@ export function classifierApi(
 		admin: boolean;
 		actor: string;
 		kick?: () => void;
+		key?: string;
+		transport?: typeof fetch;
 	},
 ) {
 	const app = new Hono();
@@ -42,6 +45,7 @@ export function classifierApi(
 			);
 		await next();
 	});
+	app.route("/", classifierTestApi(db, options.key, options.transport));
 	app.route("/provider-runs", providerRunsApi(db, options.admin));
 	app.get("/classifiers", async (c) => {
 		await finishRuns(db);

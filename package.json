@@ -20,7 +20,8 @@
 		"setup:local": "node scripts/setup.mjs",
 		"deploy:check": "pnpm build && wrangler deploy --dry-run",
 		"deploy": "node scripts/deploy-preflight.mjs && pnpm check && pnpm build && wrangler deploy",
-		"preview:classifiers": "CLASSIFIER_PREVIEW=1 PORT=4313 tsx --env-file=.env server/index.ts"
+		"preview:classifiers": "CLASSIFIER_PREVIEW=1 PORT=4313 tsx --env-file=.env server/index.ts",
+		"eval:jev": "tsx --env-file=.env scripts/evaluate-jev.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/react": "3.0.35",
@@ -45,6 +46,7 @@
 		"hono": "^4.7.11",
 		"isbot": "^5",
 		"jose": "^6.2.12",
+		"parse5": "7.3.0",
 		"postal-mime": "^3.0.0",
 		"postgres": "^3.4.7",
 		"react": "^19.1.0",

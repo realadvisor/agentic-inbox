@@ -15,7 +15,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 	});
 	app.get("/", async (c) =>
 		c.json(
-			await db`SELECT g.*,coalesce((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL),'[]'::json) AS tags FROM tag_groups g ORDER BY lower(g.name),g.id`,
+			await db`SELECT g.*,coalesce((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL),'[]'::json) AS tags FROM tag_groups g ORDER BY lower(g.name),g.id`,
 		),
 	);
 	async function save(groupId: string, body: unknown, creating: boolean) {
@@ -80,7 +80,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 			// Allow two existing option labels to be swapped in the same save.
 			await tx`UPDATE tags SET name=id::text WHERE group_id=${groupId} AND archived_at IS NULL`;
 			for (const [position, tag] of input.tags.entries()) {
-				await tx`INSERT INTO tags(id,name,color,group_id,position) VALUES(${tag.id},${tag.name},${tag.color},${groupId},${position}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color,position=excluded.position,archived_at=NULL,updated_at=now()`;
+				await tx`INSERT INTO tags(id,name,color,group_id,position,description) VALUES(${tag.id},${tag.name},${tag.color},${groupId},${position},${tag.description}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color,description=excluded.description,position=excluded.position,archived_at=NULL,updated_at=now()`;
 				await tx`INSERT INTO classifiers(tag_id,question,enabled) VALUES(${tag.id},${groupQuestion(input, tag)},${input.enabled}) ON CONFLICT(tag_id) DO UPDATE SET question=excluded.question,enabled=excluded.enabled,revision=classifiers.revision+1,updated_at=now()`;
 			}
 			const [group] =
@@ -100,5 +100,44 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 			),
 		),
 	);
+	app.delete("/:id", async (c) => {
+		const groupId = z.string().uuid().parse(c.req.param("id"));
+		const revision = z.coerce
+			.number()
+			.int()
+			.positive()
+			.parse(c.req.query("revision"));
+		if (c.req.query("confirm") !== "true")
+			throw new HTTPException(400, {
+				message: "Deleting a shared group requires confirm=true",
+			});
+		await db.begin(async (tx) => {
+			await tx`SELECT pg_advisory_xact_lock(7342211)`;
+			const [group] =
+				await tx`SELECT revision FROM tag_groups WHERE id=${groupId} FOR UPDATE`;
+			if (!group) throw new HTTPException(404, { message: "Group not found" });
+			if (group.revision !== revision)
+				throw new HTTPException(409, {
+					message:
+						"This group changed. Close the editor and reload before deleting.",
+				});
+			const classifiers =
+				await tx`SELECT c.id FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.group_id=${groupId} ORDER BY c.id FOR UPDATE OF c`;
+			if (classifiers.length) {
+				const ids = classifiers.map((c) => c.id);
+				await tx`UPDATE classifiers SET enabled=false,revision=revision+1,updated_at=now() WHERE id IN ${tx(ids)}`;
+				await tx`UPDATE classifier_runs SET status='cancelled' WHERE classifier_id IN ${tx(ids)} AND status='running'`;
+				await tx`UPDATE classifier_run_items i SET status='skipped' FROM classifier_runs r WHERE r.id=i.run_id AND r.classifier_id IN ${tx(ids)} AND i.status='pending'`;
+				await tx`DELETE FROM conversation_classifications WHERE classifier_id IN ${tx(ids)}`;
+				await tx`DELETE FROM classifier_examples WHERE classifier_id IN ${tx(ids)}`;
+			}
+			await tx`DELETE FROM conversation_tags ct USING tags t WHERE ct.tag_id=t.id AND t.group_id=${groupId}`;
+			// Retain tags and classifiers referenced by historical runs, but retire them
+			// before detaching the group so they never become standalone catalogue entries.
+			await tx`UPDATE tags SET archived_at=coalesce(archived_at,now()),group_id=NULL,updated_at=now() WHERE group_id=${groupId}`;
+			await tx`DELETE FROM tag_groups WHERE id=${groupId}`;
+		});
+		return c.body(null, 204);
+	});
 	return app;
 }

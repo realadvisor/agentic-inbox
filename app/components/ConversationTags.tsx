@@ -16,10 +16,12 @@ import type { ConversationTag, Tag } from "~/types";
 export function TagChips({
 	tags = [],
 	onRemove,
+	removeLabel = "Remove tag",
 	disabled,
 }: {
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	onRemove?: (id: string) => void;
+	removeLabel?: string;
 	disabled?: boolean;
 }) {
 	return (
@@ -57,7 +59,7 @@ export function TagChips({
 						<button
 							type="button"
 							disabled={disabled}
-							aria-label={`Remove tag ${tag.name}`}
+							aria-label={`${removeLabel} ${tag.name}`}
 							className="-mr-1 shrink-0 rounded p-0.5 text-kumo-subtle transition-colors hover:bg-kumo-fill hover:text-kumo-default focus-visible:outline-2 disabled:opacity-50"
 							onClick={() => onRemove(tag.id)}
 						>
@@ -78,6 +80,7 @@ export function TagPicker({
 	placeholder,
 	disabled,
 	allowAll = false,
+	multiple = false,
 }: {
 	tags: Tag[];
 	value?: string;
@@ -86,16 +89,27 @@ export function TagPicker({
 	placeholder: string;
 	disabled?: boolean;
 	allowAll?: boolean;
+	multiple?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
+	const selectedIds = value?.split(",").filter(Boolean) ?? [];
 	const selected = tags.find((tag) => tag.id === value);
 	const filtered = tags.filter((tag) =>
-		tag.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+		`${tag.group_name ?? ""} ${tag.name}`
+			.toLocaleLowerCase()
+			.includes(search.trim().toLocaleLowerCase()),
 	);
 	const choose = (id: string) => {
-		onChange(id);
-		setOpen(false);
+		onChange(
+			multiple && id
+				? (selectedIds.includes(id)
+						? selectedIds.filter((v) => v !== id)
+						: [...selectedIds, id]
+					).join(",")
+				: id,
+		);
+		if (!multiple || !id) setOpen(false);
 	};
 	return (
 		<Popover
@@ -126,13 +140,15 @@ export function TagPicker({
 					<PlusIcon size={14} />
 				)}
 				<span className="max-w-40 truncate">
-					{selected
-						? selected.group_name
-							? `${selected.group_name}: ${selected.name}`
-							: selected.name
-						: allowAll && value
-							? "Deleted tag"
-							: placeholder}
+					{multiple && selectedIds.length > 1
+						? `${selectedIds.length} tags`
+						: selected
+							? selected.group_name
+								? `${selected.group_name}: ${selected.name}`
+								: selected.name
+							: allowAll && value
+								? "Deleted tag"
+								: placeholder}
 				</span>
 				<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
 			</Popover.Trigger>
@@ -169,11 +185,12 @@ export function TagPicker({
 							type="button"
 							key={tag.id}
 							aria-label={`Choose tag ${tag.name}`}
+							aria-pressed={multiple ? selectedIds.includes(tag.id) : undefined}
 							className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-kumo-tint focus-visible:bg-kumo-tint"
 							onClick={() => choose(tag.id)}
 						>
 							<TagChips tags={[tag]} />
-							{value === tag.id && (
+							{(multiple ? selectedIds.includes(tag.id) : value === tag.id) && (
 								<CheckIcon size={15} className="shrink-0 text-kumo-subtle" />
 							)}
 						</button>
@@ -185,6 +202,18 @@ export function TagPicker({
 						</div>
 					)}
 				</div>
+				{multiple && (
+					<div className="border-t border-kumo-line p-2">
+						<Button
+							type="button"
+							size="sm"
+							variant="secondary"
+							onClick={() => setOpen(false)}
+						>
+							Done
+						</Button>
+					</div>
+				)}
 			</Popover.Content>
 		</Popover>
 	);

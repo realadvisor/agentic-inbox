@@ -78,8 +78,8 @@ export function AutomationFields({
 						<textarea
 							required
 							maxLength={4000}
-							rows={4}
-							className={field + " mt-2 font-normal"}
+							rows={10}
+							className={field + " mt-2 min-h-60 font-normal leading-relaxed"}
 							value={value.question}
 							onChange={(e) => onChange({ ...value, question: e.target.value })}
 							placeholder="Should this conversation receive this tag? Describe when it applies."
@@ -282,7 +282,11 @@ function RunDialog({
 				if (!open && !run.isPending) close();
 			}}
 		>
-			<Dialog className="max-h-[90dvh] overflow-y-auto p-6" size="sm">
+			<Dialog
+				style={{ zIndex: 110 }}
+				className="max-h-[90dvh] overflow-y-auto p-6"
+				size="sm"
+			>
 				<Dialog.Title className="text-base font-semibold">
 					Run on existing conversations
 				</Dialog.Title>

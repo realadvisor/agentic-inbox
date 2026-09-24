@@ -88,6 +88,7 @@ worker.all("/api/*", async (c) => {
 	const agentTasks: Promise<unknown>[] = [];
 	try {
 		const response = await createApi(db, {
+			jevKey: c.env.TYPESAFE_API_KEY,
 			origin: c.env.PUBLIC_ORIGIN,
 			agent: {
 				...agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY),

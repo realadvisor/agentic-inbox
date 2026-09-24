@@ -47,6 +47,13 @@ const tagSchema = z
 	.strict();
 const querySchema = z.object({
 	tag_id: id.optional(),
+	tag_ids: z
+		.string()
+		.max(1849)
+		.transform((v) => v.split(","))
+		.pipe(z.array(id).min(1).max(50))
+		.optional(),
+	tag_match: z.enum(["all", "any"]).optional(),
 	needs_review: z.enum(["true", "false"]).optional(),
 	page: z.coerce.number().int().min(1).max(100000).optional(),
 	limit: z.coerce.number().int().min(1).max(100).optional(),
@@ -59,6 +66,8 @@ const querySchema = z.object({
 
 export interface ApiOptions {
 	agent?: AgentOptions;
+	jevKey?: string;
+	jevTransport?: typeof fetch;
 	classifierPreview?: boolean;
 	classifiersEnabled?: boolean;
 	kickClassifiers?: () => void;
@@ -519,6 +528,8 @@ export function createApi(db: Database, options: ApiOptions) {
 				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
 			actor: options.actor ?? "local",
 			kick: options.kickClassifiers,
+			key: options.jevKey,
+			transport: options.jevTransport,
 		}),
 	);
 	if (!isLive && options.classifierPreview && options.previewRoutes)

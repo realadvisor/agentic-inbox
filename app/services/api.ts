@@ -111,6 +111,10 @@ const api = {
 	createTag: (tag: Omit<Tag, "id">) => post<Tag>("/api/v1/tags", tag),
 	updateTag: (id: string, tag: Omit<Tag, "id">) =>
 		put<Tag>(`/api/v1/tags/${id}`, tag),
+	deleteTagGroup: (group: { id: string; revision: number }) =>
+		del<void>(
+			`/api/v1/tag-groups/${group.id}?confirm=true&revision=${group.revision}`,
+		),
 	deleteTag: (id: string) => del<void>(`/api/v1/tags/${id}?confirm=true`),
 	setConversationTags: (
 		mailboxId: string,
@@ -123,6 +127,23 @@ const api = {
 			tag_id,
 			action,
 		}),
+
+	testClassifier: (data: unknown) =>
+		post<{
+			available: boolean;
+			results: {
+				name: string;
+				request: unknown;
+				result?: {
+					probability: number;
+					answer: boolean | null;
+					confidence?: number;
+					choice?: string;
+					probabilities?: Record<string, number>;
+				};
+				error?: string;
+			}[];
+		}>("/api/v1/classification/test", data),
 
 	// Config
 	getConfig: () =>

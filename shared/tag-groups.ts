@@ -13,6 +13,7 @@ export const tagGroupInput = z
 					.object({
 						id: z.string().uuid(),
 						name: z.string().trim().min(1).max(80),
+						description: z.string().trim().max(1000).default(""),
 						color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
 					})
 					.strict(),
@@ -46,5 +47,5 @@ export function groupQuestion(
 	group: TagGroupInput,
 	tag: TagGroupInput["tags"][number],
 ) {
-	return `Classify the conversation in the ${JSON.stringify(group.name)} group.\n${group.instructions}\nAvailable tags: ${JSON.stringify(group.tags.map((option) => option.name))}.\n${group.selection === "single" ? "Choose exactly one best-fitting tag; if the evidence is insufficient, return uncertainty." : "Several tags may apply independently."}\nShould ${JSON.stringify(tag.name)} be selected in this group?`;
+	return `Classify the conversation in the ${JSON.stringify(group.name)} group.\n${group.instructions}\nAvailable tags: ${JSON.stringify(group.tags.map((option) => ({ name: option.name, description: option.description })))}.\n${group.selection === "single" ? "Choose exactly one best-fitting tag; if the evidence is insufficient, return uncertainty." : "Several tags may apply independently."}\nShould ${JSON.stringify(tag.name)} be selected in this group?`;
 }

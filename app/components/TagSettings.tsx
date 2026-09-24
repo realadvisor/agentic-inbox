@@ -1,3 +1,4 @@
+import { JevRequestPreview } from "./JevRequestPreview";
 import {
 	AutomationFields,
 	ExistingConversations,
@@ -6,7 +7,7 @@ import {
 } from "./TagAutomation";
 import { classifierRequest, type Classifier } from "~/services/classifiers";
 import { Button, Dialog, Input } from "@cloudflare/kumo";
-import { TrashIcon, CheckIcon } from "@phosphor-icons/react";
+import { TrashIcon, CheckIcon, CaretRightIcon } from "@phosphor-icons/react";
 import { useState, useRef } from "react";
 import { useTags, useTagMutation } from "~/queries/tags";
 import api from "~/services/api";
@@ -74,6 +75,7 @@ export function TagSettings() {
 	});
 	const remove = useTagMutation(api.deleteTag);
 	const open = (tag: Tag | null) => {
+		remove.reset();
 		setEditing(tag);
 		persistedTag.current = null;
 		const current = classifiers.data?.find((c) => c.tag_id === tag?.id);
@@ -96,7 +98,7 @@ export function TagSettings() {
 						>
 							<button
 								type="button"
-								className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+								className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_3rem_1rem] items-center gap-4 text-left"
 								aria-label={`Edit tag ${tag.name}`}
 								disabled={
 									classifiers.available &&
@@ -105,7 +107,7 @@ export function TagSettings() {
 								onClick={() => open(tag)}
 							>
 								<TagChips tags={[tag]} />
-								<span className="text-xs text-kumo-subtle">
+								<span className="text-right text-xs text-kumo-subtle">
 									{classifiers.available && !classifiers.data
 										? "…"
 										: classifiers.data?.find((c) => c.tag_id === tag.id)
@@ -113,25 +115,11 @@ export function TagSettings() {
 											? "Jev"
 											: "Manual"}
 								</span>
+								<CaretRightIcon
+									size={16}
+									className="shrink-0 text-kumo-subtle"
+								/>
 							</button>
-							<div className="flex shrink-0 gap-1">
-								<Button
-									size="sm"
-									variant="ghost"
-									disabled={remove.isPending}
-									aria-label={`Delete tag ${tag.name}`}
-									onClick={() => {
-										if (
-											window.confirm(
-												`Delete “${tag.name}” from all mailboxes and conversations? This cannot be undone.`,
-											)
-										)
-											remove.mutate(tag.id);
-									}}
-								>
-									<TrashIcon size={15} />
-								</Button>
-							</div>
 						</div>
 					))}
 				{(catalog.error || remove.error || classifiers.error) && (
@@ -143,120 +131,188 @@ export function TagSettings() {
 			<Dialog.Root
 				open={editing !== undefined}
 				onOpenChange={(isOpen) => {
-					if (!isOpen && !save.isPending) setEditing(undefined);
+					if (!isOpen && !save.isPending && !remove.isPending)
+						setEditing(undefined);
 				}}
 			>
-				<Dialog size="base" className="max-h-[90dvh] overflow-y-auto p-6">
+				<Dialog
+					size="base"
+					style={{
+						top: 0,
+						left: "auto",
+						right: 0,
+						bottom: 0,
+						margin: 0,
+						transform: "none",
+						translate: "none",
+						scale: "none",
+						borderRadius: 0,
+						height: "100dvh",
+						maxWidth: "none",
+						zIndex: 100,
+					}}
+					className="flex w-full flex-col overflow-hidden border-l border-kumo-line p-5 shadow-2xl md:w-[90vw] md:p-8"
+				>
 					<Dialog.Title className="text-base font-semibold mb-4">
 						{editing ? "Edit tag" : "New tag"}
 					</Dialog.Title>
 					<form
-						className="space-y-4"
+						className="flex min-h-0 flex-1 flex-col"
 						onSubmit={(e) => {
 							e.preventDefault();
-							if (name.trim() && !save.isPending)
+							if (name.trim() && !save.isPending && !remove.isPending)
 								save.mutate(undefined, {
 									onSuccess: () => setEditing(undefined),
 								});
 						}}
 					>
-						<Input
-							label="Tag name"
-							required
-							autoFocus
-							maxLength={80}
-							value={name}
-							disabled={save.isPending}
-							onChange={(e) => setName(e.target.value)}
-						/>
-						<fieldset disabled={save.isPending} className="space-y-3">
-							<legend className="mb-2 text-sm font-medium">Color</legend>
-							<div className="flex flex-wrap gap-2">
-								{COLORS.map(([label, hex]) => (
-									<button
-										key={hex}
-										type="button"
-										aria-label={`${label} color`}
-										aria-pressed={color.toLowerCase() === hex}
-										onClick={() => setColor(hex)}
-										className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-transparent text-white transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2"
-										style={{
-											backgroundColor: hex,
-											outline:
-												color.toLowerCase() === hex
-													? `2px solid ${hex}`
-													: undefined,
-											outlineOffset: 2,
-										}}
-									>
-										{color.toLowerCase() === hex && (
-											<CheckIcon size={14} weight="bold" />
-										)}
-									</button>
-								))}
-							</div>
-							<label className="flex items-center gap-2 text-xs text-kumo-subtle">
-								<input
-									aria-label="Tag color"
-									type="color"
-									value={color}
-									onChange={(e) => setColor(e.target.value)}
-									className="h-6 w-6 cursor-pointer overflow-hidden rounded border-0 bg-transparent p-0"
+						<div className="-mx-1 grid min-h-0 flex-1 grid-cols-1 items-start gap-6 overflow-y-auto px-1 py-1 lg:grid-cols-2">
+							<div className="min-w-0 space-y-5">
+								<Input
+									label="Tag name"
+									required
+									autoFocus
+									maxLength={80}
+									value={name}
+									disabled={save.isPending || remove.isPending}
+									onChange={(e) => setName(e.target.value)}
 								/>
-								Custom color
-								<span className="ml-auto font-mono">{color.toUpperCase()}</span>
-							</label>
-						</fieldset>
-						<div className="rounded-lg border border-dashed border-kumo-line bg-kumo-tint px-4 py-4">
-							<p className="mb-2.5 text-xs text-kumo-subtle">Preview</p>
-							<TagChips
-								tags={[
-									{ id: "preview", name: name.trim() || "Your tag", color },
-								]}
-							/>
+								<fieldset
+									disabled={save.isPending || remove.isPending}
+									className="space-y-3"
+								>
+									<legend className="mb-2 text-sm font-medium">Color</legend>
+									<div className="flex flex-wrap gap-2">
+										{COLORS.map(([label, hex]) => (
+											<button
+												key={hex}
+												type="button"
+												aria-label={`${label} color`}
+												aria-pressed={color.toLowerCase() === hex}
+												onClick={() => setColor(hex)}
+												className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-transparent text-white transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2"
+												style={{
+													backgroundColor: hex,
+													outline:
+														color.toLowerCase() === hex
+															? `2px solid ${hex}`
+															: undefined,
+													outlineOffset: 2,
+												}}
+											>
+												{color.toLowerCase() === hex && (
+													<CheckIcon size={14} weight="bold" />
+												)}
+											</button>
+										))}
+									</div>
+									<label className="flex items-center gap-2 text-xs text-kumo-subtle">
+										<input
+											aria-label="Tag color"
+											type="color"
+											value={color}
+											onChange={(e) => setColor(e.target.value)}
+											className="h-6 w-6 cursor-pointer overflow-hidden rounded border-0 bg-transparent p-0"
+										/>
+										Custom color
+										<span className="ml-auto font-mono">
+											{color.toUpperCase()}
+										</span>
+									</label>
+								</fieldset>
+								<div className="rounded-lg border border-dashed border-kumo-line bg-kumo-tint px-4 py-4">
+									<p className="mb-2.5 text-xs text-kumo-subtle">Preview</p>
+									<TagChips
+										tags={[
+											{ id: "preview", name: name.trim() || "Your tag", color },
+										]}
+									/>
+								</div>
+
+								{classifiers.available && (
+									<AutomationFields
+										key={editing?.id ?? "new"}
+										value={automation}
+										onChange={setAutomation}
+										onValidityChange={setAutomationValid}
+										disabled={save.isPending || !classifiers.canManage}
+									/>
+								)}
+								{classifiers.error && (
+									<p role="alert" className="text-sm text-kumo-danger">
+										Unable to load Jev settings: {classifiers.error.message}
+									</p>
+								)}
+								{classifier && classifiers.canManage && (
+									<ExistingConversations
+										classifiers={
+											classifiers.data?.filter(
+												(c) => c.id === classifier.id,
+											) ?? [classifier]
+										}
+										disabled={
+											save.isPending ||
+											name !== editing?.name ||
+											color !== editing?.color ||
+											JSON.stringify(automation) !==
+												JSON.stringify(automationDraft(classifier))
+										}
+									/>
+								)}
+
+								{save.error && (
+									<p role="alert" className="text-sm text-kumo-danger">
+										{save.error.message}
+									</p>
+								)}
+							</div>
+							<div aria-label="Test" className="min-w-0 space-y-4">
+								<h3 className="text-sm font-semibold">Test</h3>
+								<JevRequestPreview
+									questions={[
+										{
+											name,
+											question: automation.question,
+											classifier_id: classifier?.id,
+										},
+									]}
+									examples={automation.include_reviewed_examples}
+								/>
+							</div>
 						</div>
-
-						{classifiers.available && (
-							<AutomationFields
-								key={editing?.id ?? "new"}
-								value={automation}
-								onChange={setAutomation}
-								onValidityChange={setAutomationValid}
-								disabled={save.isPending || !classifiers.canManage}
-							/>
-						)}
-						{classifiers.error && (
-							<p role="alert" className="text-sm text-kumo-danger">
-								Unable to load Jev settings: {classifiers.error.message}
+						{remove.error && (
+							<p role="alert" className="mt-3 text-sm text-kumo-danger">
+								{remove.error.message}
 							</p>
 						)}
-						{classifier && classifiers.canManage && (
-							<ExistingConversations
-								classifiers={
-									classifiers.data?.filter((c) => c.id === classifier.id) ?? [
-										classifier,
-									]
-								}
-								disabled={
-									save.isPending ||
-									name !== editing?.name ||
-									color !== editing?.color ||
-									JSON.stringify(automation) !==
-										JSON.stringify(automationDraft(classifier))
-								}
-							/>
-						)}
+						<div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-kumo-line bg-kumo-base pt-4">
+							{editing && (
+								<Button
+									type="button"
+									variant="ghost"
+									className="mr-auto text-kumo-danger"
+									disabled={save.isPending || remove.isPending}
+									aria-label={`Delete tag ${editing.name}`}
+									onClick={() => {
+										if (
+											window.confirm(
+												`Delete “${editing.name}” from all mailboxes and conversations? This cannot be undone.`,
+											)
+										)
+											remove.mutate(editing.id, {
+												onSuccess: () => setEditing(undefined),
+											});
+									}}
+								>
+									<TrashIcon size={16} />
+									Delete tag
+								</Button>
+							)}
 
-						{save.error && (
-							<p role="alert" className="text-sm text-kumo-danger">
-								{save.error.message}
-							</p>
-						)}
-						<div className="flex justify-end gap-2">
 							<Button
 								type="button"
 								variant="secondary"
-								disabled={save.isPending}
+								disabled={save.isPending || remove.isPending}
 								onClick={() => setEditing(undefined)}
 							>
 								Cancel
@@ -264,7 +320,12 @@ export function TagSettings() {
 							<Button
 								type="submit"
 								variant="primary"
-								disabled={!name.trim() || save.isPending || !automationValid}
+								disabled={
+									!name.trim() ||
+									save.isPending ||
+									remove.isPending ||
+									!automationValid
+								}
 							>
 								Save tag
 							</Button>

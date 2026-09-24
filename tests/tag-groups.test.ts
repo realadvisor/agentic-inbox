@@ -73,13 +73,41 @@ async function classifyThread(
 		calls++;
 		const body = JSON.parse(String(init?.body));
 		const answers = Object.fromEntries(
-			Object.entries(body.questions).map(([key, value]) => [
-				key,
-				{
-					type: "noul",
-					noul: probability((value as { instructions: string }).instructions),
-				},
-			]),
+			Object.entries(body.questions).map(([key, value]) => {
+				const q = value as {
+					type: string;
+					instructions: string;
+					criteria: Record<string, string>;
+				};
+				if (q.type !== "choice")
+					return [key, { type: "noul", noul: probability(q.instructions) }];
+				const weights = Object.fromEntries(
+					Object.entries(q.criteria).map(([id, description]) => [
+						id,
+						id === "insufficient_evidence"
+							? 0
+							: probability(
+									`Should ${JSON.stringify(description.split(":")[0])}`,
+								),
+					]),
+				);
+				const total = Object.values(weights).reduce((a, b) => a + b, 0);
+				const probabilities = Object.fromEntries(
+					Object.entries(weights).map(([id, v]) => [id, v / total]),
+				);
+				const ranked = Object.entries(probabilities).sort(
+					(a, b) => b[1] - a[1],
+				);
+				return [
+					key,
+					{
+						type: "choice",
+						choice: ranked[0][0],
+						confidence: ranked[0][1] > 0.75 ? 0.9 : 0.1,
+						probabilities,
+					},
+				];
+			}),
 		);
 		return Response.json({ model: "jev-test", answers });
 	});
@@ -184,17 +212,13 @@ test("Jev uses group criteria in the existing batch pipeline and manual reassign
 	assert.equal((await store.tagsForThreads(mailbox, [thread])).length, 1);
 });
 
-test("contradictory single-select Jev results go to review instead of picking the last response", async () => {
+test("ambiguous Choice probabilities send every group option to review", async () => {
 	const thread = await message();
 	await classifyThread(thread, () => 0.99);
 	assert.equal((await store.tagsForThreads(mailbox, [thread])).length, 0);
 	const rows =
 		await db`SELECT status,error FROM conversation_classifications WHERE thread_id=${thread}`;
-	assert.ok(
-		rows.every(
-			(row) => row.status === "review" && row.error === "group_conflict",
-		),
-	);
+	assert.ok(rows.every((row) => row.status === "review" && row.error === null));
 	assert.equal(
 		(await store.list(mailbox, { needs_review: "true" })).emails.some(
 			(email) => email.thread_id === thread,
@@ -268,5 +292,283 @@ test("manual groups do not need instructions but Jev groups do", async () => {
 			})
 		).status,
 		400,
+	);
+});
+
+test("unsaved Jev tests preview exact evidence and leave classification state untouched", async () => {
+	const thread = await message();
+	await db`INSERT INTO emails(id,folder_id,message_id,mailbox_id,thread_id,sender,recipient,subject,body,delivery_status) VALUES(${crypto.randomUUID()},'inbox',${crypto.randomUUID()},${mailbox},${thread},${mailbox},'customer@example.test','Draft','DRAFT MUST NOT LEAK','draft')`;
+	const before =
+		await db`SELECT * FROM conversation_tags WHERE mailbox_id=${mailbox} AND thread_id=${thread}`;
+	const jobsBefore =
+		await db`SELECT * FROM conversation_classifications WHERE mailbox_id=${mailbox} AND thread_id=${thread} ORDER BY classifier_id`;
+	let calls = 0;
+	const target = createApi(db, {
+		readAttachment: async () => null,
+		classifiersEnabled: true,
+		jevKey: "test",
+		jevTransport: async (_url, init) => {
+			calls++;
+			const body = JSON.parse(String(init?.body));
+			assert.equal(body.state.messages.length, 1);
+			assert.ok(!JSON.stringify(body).includes("DRAFT MUST NOT LEAK"));
+			assert.ok(
+				body.questions.match.instructions.includes("Unsaved instruction"),
+			);
+			return Response.json({
+				answers: { match: { type: "noul", noul: 0.93 } },
+			});
+		},
+	});
+	const body = {
+		mailbox_id: mailbox,
+		thread_id: thread,
+		questions: [{ name: "Urgent", question: "Unsaved instruction" }],
+	};
+	const preview = await call("/classification/test", "POST", body, target);
+	assert.equal(preview.status, 200);
+	assert.equal(calls, 0);
+	const snapshot = await preview.json();
+	assert.equal(snapshot.results[0].request.state.messages.length, 1);
+	const run = await call(
+		"/classification/test",
+		"POST",
+		{ ...body, execute: true },
+		target,
+	);
+	assert.equal(run.status, 200);
+	const result = await run.json();
+	assert.equal(calls, 1);
+	assert.equal(result.results[0].result.answer, true);
+	assert.ok(result.results[0].request.state.evaluated_at);
+	result.results[0].request.state.evaluated_at =
+		snapshot.results[0].request.state.evaluated_at;
+	assert.deepEqual(result.results[0].request, snapshot.results[0].request);
+	assert.deepEqual(
+		await db`SELECT * FROM conversation_tags WHERE mailbox_id=${mailbox} AND thread_id=${thread}`,
+		before,
+	);
+	const jobs =
+		await db`SELECT * FROM conversation_classifications WHERE mailbox_id=${mailbox} AND thread_id=${thread} ORDER BY classifier_id`;
+	assert.deepEqual(jobs, jobsBefore);
+	assert.equal(
+		(await call("/classification/test", "POST", body, member)).status,
+		403,
+	);
+	assert.equal(
+		(await call("/classification/test", "POST", { ...body, execute: true }))
+			.status,
+		503,
+	);
+	assert.equal(
+		(
+			await call(
+				"/classification/test",
+				"POST",
+				{ ...body, mailbox_id: "missing@example.test" },
+				target,
+			)
+		).status,
+		404,
+	);
+	const failed = createApi(db, {
+		readAttachment: async () => null,
+		classifiersEnabled: true,
+		jevKey: "test",
+		jevTransport: async () => Response.json({}, { status: 429 }),
+	});
+	const failure = await (
+		await call(
+			"/classification/test",
+			"POST",
+			{ ...body, execute: true },
+			failed,
+		)
+	).json();
+	assert.equal(failure.results[0].error, "provider_http_429");
+});
+
+test("deleting a group retires tags and cancels work while keeping run history", async () => {
+	const body = {
+		...input(await group()),
+		name: "Delete test",
+		tags: [
+			{ id: crypto.randomUUID(), name: "Delete option", color: "#2563eb" },
+		],
+		enabled: true,
+		instructions: "Choose this tag",
+	};
+	const created = await (await call("/tag-groups", "POST", body)).json();
+	const thread = await message();
+	await setConversationTags(
+		db,
+		mailbox,
+		[thread],
+		created.tags[0].id,
+		"add",
+		"human",
+	);
+	const [classifier] =
+		await db`SELECT id,revision FROM classifiers WHERE tag_id=${created.tags[0].id}`;
+	const [run] =
+		await db`INSERT INTO classifier_runs(classifier_id,revision,actor) VALUES(${classifier.id},${classifier.revision},'tester') RETURNING id`;
+	await db`INSERT INTO classifier_run_items(run_id,mailbox_id,thread_id) VALUES(${run.id},${mailbox},${thread})`;
+	const path = `/tag-groups/${created.id}?confirm=true&revision=${created.revision}`;
+	assert.equal((await call(path, "DELETE", undefined, member)).status, 403);
+	assert.equal(
+		(
+			await call(
+				`/tag-groups/${created.id}?revision=${created.revision}`,
+				"DELETE",
+			)
+		).status,
+		400,
+	);
+	assert.equal(
+		(
+			await call(
+				`/tag-groups/${created.id}?confirm=true&revision=999`,
+				"DELETE",
+			)
+		).status,
+		409,
+	);
+	assert.equal((await call(path, "DELETE")).status, 204);
+	assert.equal(
+		(await db`SELECT id FROM tag_groups WHERE id=${created.id}`).length,
+		0,
+	);
+	const [retired] =
+		await db`SELECT t.archived_at,t.group_id,c.enabled FROM tags t JOIN classifiers c ON c.tag_id=t.id WHERE t.id=${created.tags[0].id}`;
+	assert.ok(retired.archived_at);
+	assert.equal(retired.group_id, null);
+	assert.equal(retired.enabled, false);
+	assert.equal(
+		(
+			await db`SELECT * FROM conversation_tags WHERE tag_id=${created.tags[0].id}`
+		).length,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT * FROM conversation_classifications WHERE classifier_id=${classifier.id}`
+		).length,
+		0,
+	);
+	assert.equal(
+		(await db`SELECT status FROM classifier_runs WHERE id=${run.id}`)[0].status,
+		"cancelled",
+	);
+	assert.equal(
+		(
+			await db`SELECT status FROM classifier_run_items WHERE run_id=${run.id}`
+		)[0].status,
+		"skipped",
+	);
+	assert.equal((await call(path, "DELETE")).status, 404);
+});
+
+test("unsaved group tests send one Choice and preserve descriptions without saving", async () => {
+	const thread = await message();
+	const draft = {
+		name: "Unsaved routing",
+		selection: "single" as const,
+		enabled: false,
+		instructions: "Select the outstanding request's urgency.",
+		tags: [
+			{
+				id: crypto.randomUUID(),
+				name: "Routine",
+				description: "No time-sensitive action.",
+				color: "#2563eb",
+			},
+			{
+				id: crypto.randomUUID(),
+				name: "Immediate",
+				description: "Reply today to avoid missing a commitment.",
+				color: "#dc2626",
+			},
+		],
+	};
+	let count = 0;
+	const target = createApi(db, {
+		readAttachment: async () => null,
+		classifiersEnabled: true,
+		jevKey: "test",
+		jevTransport: async (_url, init) => {
+			count++;
+			const payload = JSON.parse(String(init?.body));
+			assert.equal(Object.keys(payload.questions).length, 1);
+			const [key, q] = Object.entries(payload.questions)[0] as [
+				string,
+				{ type: string; criteria: Record<string, string> },
+			];
+			assert.equal(q.type, "choice");
+			assert.equal(
+				q.criteria[draft.tags[1].id],
+				"Immediate: Reply today to avoid missing a commitment.",
+			);
+			assert.equal(payload.state.messages[0].text, "Please respond today.");
+			return Response.json({
+				model: "test",
+				answers: {
+					[key]: {
+						type: "choice",
+						choice: draft.tags[1].id,
+						confidence: 0.95,
+						probabilities: {
+							[draft.tags[0].id]: 0.01,
+							[draft.tags[1].id]: 0.98,
+							insufficient_evidence: 0.01,
+						},
+					},
+				},
+			});
+		},
+	});
+	const body = {
+		mailbox_id: mailbox,
+		thread_id: thread,
+		group: draft,
+		questions: [
+			{ name: "ignored", question: "ignored; server compiles group" },
+		],
+	};
+	const preview = await (
+		await call("/classification/test", "POST", body, target)
+	).json();
+	assert.equal(count, 0);
+	assert.equal(
+		new Set(
+			preview.results.map((r: { request: unknown }) =>
+				JSON.stringify(r.request),
+			),
+		).size,
+		1,
+	);
+	const result = await (
+		await call(
+			"/classification/test",
+			"POST",
+			{ ...body, execute: true },
+			target,
+		)
+	).json();
+	assert.equal(count, 1);
+	assert.equal(result.results[0].result.answer, false);
+	assert.equal(result.results[1].result.answer, true);
+	assert.deepEqual(
+		result.results[0].request.questions,
+		preview.results[0].request.questions,
+	);
+	assert.equal(
+		(await db`SELECT id FROM tag_groups WHERE name=${draft.name}`).length,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT tag_id FROM conversation_tags WHERE tag_id IN ${db(draft.tags.map((t) => t.id))}`
+		).length,
+		0,
 	);
 });

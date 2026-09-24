@@ -28,6 +28,7 @@ import {
 } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
+import type { Tag } from "~/types";
 import { useTags } from "~/queries/tags";
 import { useMailbox } from "~/queries/mailboxes";
 import { useMailMode } from "./MailMode";
@@ -93,6 +94,19 @@ export default function Sidebar() {
 	}>();
 	const [searchParams] = useSearchParams();
 	const catalog = useTags();
+	const tagGroups = useMemo(() => {
+		const groups = new Map<string, { name: string; tags: Tag[] }>();
+		for (const tag of catalog.data ?? []) {
+			if (!tag.group_id) continue;
+			const group = groups.get(tag.group_id) ?? {
+				name: tag.group_name ?? "Group",
+				tags: [],
+			};
+			group.tags.push(tag);
+			groups.set(tag.group_id, group);
+		}
+		return [...groups.entries()];
+	}, [catalog.data]);
 	const mode = useMailMode();
 	const reviewActive =
 		folder === "all" && searchParams.get("needs_review") === "true";
@@ -141,6 +155,46 @@ export default function Sidebar() {
 	const handleNavClick = () => {
 		// Close mobile sidebar on navigation
 		closeSidebar();
+	};
+
+	const selectedTagIds = [
+		...new Set([
+			...(searchParams.get("tag_ids")?.split(",").filter(Boolean) ?? []),
+			...(searchParams.get("tag_id") ? [searchParams.get("tag_id")!] : []),
+		]),
+	];
+	const renderTag = (tag: Tag) => {
+		const nextIds = selectedTagIds.includes(tag.id)
+			? selectedTagIds.filter((id) => id !== tag.id)
+			: [...selectedTagIds, tag.id];
+		const nextParams = new URLSearchParams();
+		if (nextIds.length) nextParams.set("tag_ids", nextIds.join(","));
+		if (searchParams.get("tag_match") === "any")
+			nextParams.set("tag_match", "any");
+		const active =
+			folder === "all" && !reviewActive && selectedTagIds.includes(tag.id);
+		return (
+			<Link
+				key={tag.id}
+				to={`/mailbox/${mailboxId}/emails/all?${nextParams}`}
+				aria-current={active ? "page" : undefined}
+				aria-label={
+					tag.group_name ? `${tag.group_name}: ${tag.name}` : tag.name
+				}
+				onClick={handleNavClick}
+				className={`flex items-center gap-2 py-1 px-2 rounded-md text-[13px] leading-5 transition-colors ${active ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
+			>
+				<TagIcon
+					size={14}
+					weight="duotone"
+					className="shrink-0"
+					style={{ color: tag.color }}
+				/>
+				<span className="truncate" title={tag.name}>
+					{tag.name}
+				</span>
+			</Link>
+		);
 	};
 
 	return (
@@ -250,8 +304,8 @@ export default function Sidebar() {
 						</div>
 					</div>
 				)}
-				<section aria-label="Tags" className="pt-5 pb-4">
-					<div className="flex items-center justify-between px-3 mb-1.5">
+				<section aria-label="Tags" className="pt-3 pb-3">
+					<div className="flex items-center justify-between px-3 mb-1">
 						<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
 							Tags
 						</span>
@@ -263,7 +317,7 @@ export default function Sidebar() {
 								icon={<GearSixIcon size={16} />}
 								aria-label="Manage tags"
 								onClick={() => {
-									navigate(`/mailbox/${mailboxId}/settings`);
+									navigate(`/mailbox/${mailboxId}/settings?tab=tags`);
 									closeSidebar();
 								}}
 							/>
@@ -274,37 +328,29 @@ export default function Sidebar() {
 							to={`/mailbox/${mailboxId}/emails/all?needs_review=true`}
 							aria-current={reviewActive ? "page" : undefined}
 							onClick={handleNavClick}
-							className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${reviewActive ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
+							className={`flex items-center gap-2 py-1 px-3 rounded-md text-[13px] leading-5 transition-colors ${reviewActive ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
 						>
-							<ClipboardTextIcon size={18} className="shrink-0" />
+							<ClipboardTextIcon size={14} className="shrink-0" />
 							<span>Needs review</span>
 						</Link>
 					)}
-					{catalog.data?.map((tag) => {
-						const active =
-							folder === "all" &&
-							!reviewActive &&
-							searchParams.get("tag_id") === tag.id;
-						return (
-							<Link
-								key={tag.id}
-								to={`/mailbox/${mailboxId}/emails/all?tag_id=${tag.id}`}
-								aria-current={active ? "page" : undefined}
-								onClick={handleNavClick}
-								className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${active ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
-							>
-								<TagIcon
-									size={18}
-									weight="duotone"
-									className="shrink-0"
-									style={{ color: tag.color }}
-								/>
-								<span className="truncate" title={tag.name}>
-									{tag.group_name ? `${tag.group_name}: ${tag.name}` : tag.name}
-								</span>
-							</Link>
-						);
-					})}
+					{tagGroups.map(([id, group]) => (
+						<section
+							key={id}
+							aria-label={`${group.name} tags`}
+							className="mt-2"
+						>
+							<h3 className="px-3 py-1 text-xs font-semibold text-kumo-subtle">
+								{group.name}
+							</h3>
+							<div className="ml-3 border-l border-kumo-line pl-1">
+								{group.tags.map(renderTag)}
+							</div>
+						</section>
+					))}
+					<div className={tagGroups.length ? "mt-2" : ""}>
+						{catalog.data?.filter((tag) => !tag.group_id).map(renderTag)}
+					</div>
 					{catalog.isPending && (
 						<p className="px-3 py-2 text-xs text-kumo-subtle">Loading tags…</p>
 					)}

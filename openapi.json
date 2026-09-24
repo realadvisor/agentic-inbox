@@ -958,6 +958,25 @@
 							"enum": ["true", "false"]
 						},
 						"description": "When true, only conversations with unresolved classifier reviews or errors are returned. Excludes disabled classifiers and manual tag decisions. Applied before grouping, counting and pagination."
+					},
+					{
+						"in": "query",
+						"name": "tag_ids",
+						"description": "Comma-separated tag UUIDs (up to 50); combined with legacy tag_id.",
+						"schema": {
+							"type": "string",
+							"maxLength": 1849
+						}
+					},
+					{
+						"in": "query",
+						"name": "tag_match",
+						"description": "Require all selected tags, or at least one.",
+						"schema": {
+							"type": "string",
+							"enum": ["all", "any"],
+							"default": "all"
+						}
 					}
 				],
 				"responses": {
@@ -1344,6 +1363,25 @@
 							"enum": ["true", "false"]
 						},
 						"description": "When true, only conversations with unresolved classifier reviews or errors are returned. Excludes disabled classifiers and manual tag decisions. Applied before grouping, counting and pagination."
+					},
+					{
+						"in": "query",
+						"name": "tag_ids",
+						"description": "Comma-separated tag UUIDs (up to 50); combined with legacy tag_id.",
+						"schema": {
+							"type": "string",
+							"maxLength": 1849
+						}
+					},
+					{
+						"in": "query",
+						"name": "tag_match",
+						"description": "Require all selected tags, or at least one.",
+						"schema": {
+							"type": "string",
+							"enum": ["all", "any"],
+							"default": "all"
+						}
 					}
 				],
 				"responses": {
@@ -4561,6 +4599,140 @@
 						"description": "Administrator access required"
 					}
 				}
+			},
+			"delete": {
+				"summary": "Delete a tag group and retire its tags and classifiers, preserving historical runs",
+				"operationId": "deleteTagGroup",
+				"tags": ["Tags"],
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"in": "query",
+						"name": "confirm",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"enum": ["true"]
+						}
+					},
+					{
+						"in": "query",
+						"name": "revision",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Group deleted; tags retired and assignments removed"
+					},
+					"400": {
+						"description": "Invalid or unconfirmed request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"404": {
+						"description": "Group not found"
+					},
+					"409": {
+						"description": "Group revision changed"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/test": {
+			"post": {
+				"summary": "Preview or test unsaved Jev questions on one conversation without changing tags",
+				"operationId": "testClassifier",
+				"tags": ["Classification"],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["mailbox_id", "thread_id", "questions"],
+								"additionalProperties": false,
+								"properties": {
+									"mailbox_id": {
+										"type": "string",
+										"format": "email"
+									},
+									"thread_id": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"execute": {
+										"type": "boolean",
+										"default": false
+									},
+									"include_examples": {
+										"type": "boolean",
+										"default": false
+									},
+									"questions": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 10,
+										"items": {
+											"type": "object",
+											"required": ["name", "question"],
+											"additionalProperties": false,
+											"properties": {
+												"name": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 80
+												},
+												"question": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 8000
+												},
+												"classifier_id": {
+													"type": "string",
+													"format": "uuid"
+												}
+											}
+										}
+									},
+									"group": {
+										"$ref": "#/components/schemas/TagGroupInput"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Request snapshots and optional per-question predictions or provider errors. No tags or jobs are changed."
+					},
+					"400": {
+						"description": "Invalid or oversized request"
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"404": {
+						"description": "Conversation not found"
+					},
+					"503": {
+						"description": "Classifiers disabled or Jev key unavailable"
+					}
+				}
 			}
 		}
 	},
@@ -5308,6 +5480,11 @@
 								"color": {
 									"type": "string",
 									"pattern": "^#[0-9a-fA-F]{6}$"
+								},
+								"description": {
+									"type": "string",
+									"maxLength": 1000,
+									"default": ""
 								}
 							}
 						}
@@ -5368,6 +5545,11 @@
 								"color": {
 									"type": "string",
 									"pattern": "^#[0-9a-fA-F]{6}$"
+								},
+								"description": {
+									"type": "string",
+									"maxLength": 1000,
+									"default": ""
 								}
 							}
 						}
