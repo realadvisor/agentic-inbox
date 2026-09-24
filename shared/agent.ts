@@ -58,7 +58,15 @@ export interface AgentTurn {
 	ui_message?: InboxChatMessage | null;
 	usage?: AgentUsage | null;
 }
+export interface AgentConversation {
+	id: string;
+	title: string;
+	created_at: string;
+	updated_at: string;
+}
 export interface AgentState {
+	conversation: AgentConversation;
+	hasMore: boolean;
 	available: boolean;
 	autoDraftAvailable: boolean;
 	settings: AgentSettings;

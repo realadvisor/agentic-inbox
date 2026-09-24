@@ -82,6 +82,7 @@ export interface Run {
 	mailbox: string;
 	prompt: string;
 	actor: string;
+	conversationId?: string;
 	emailId?: string;
 	model?: string;
 	automatic?: boolean;
@@ -116,7 +117,23 @@ export async function claimRun(db: Database, run: Run) {
 			});
 		await tx`UPDATE agent_turns SET status='failed',answer='The previous run was interrupted. Check its drafts before trying again.' WHERE mailbox_id=${run.mailbox} AND status='running'`;
 		await tx`UPDATE agent_settings SET active_run=${run.id},lease_until=now()+interval '3 minutes' WHERE mailbox_id=${run.mailbox}`;
-		await tx`INSERT INTO agent_turns(id,mailbox_id,model,actor,prompt,status) VALUES(${run.id},${run.mailbox},${parsed.model},${run.actor},${run.prompt},'running')`;
+		let conversationId = run.conversationId;
+		if (conversationId) {
+			const [conversation] =
+				await tx`SELECT id FROM agent_conversations WHERE id=${conversationId} AND mailbox_id=${run.mailbox} FOR UPDATE`;
+			if (!conversation)
+				throw new HTTPException(404, { message: "Conversation not found" });
+		} else if (run.automatic) {
+			const [conversation] =
+				await tx`INSERT INTO agent_conversations(mailbox_id,title) VALUES(${run.mailbox},'Automatic draft') RETURNING id`;
+			conversationId = conversation.id;
+		} else {
+			const [conversation] =
+				await tx`INSERT INTO agent_conversations(mailbox_id,legacy) VALUES(${run.mailbox},true) ON CONFLICT(mailbox_id) WHERE legacy DO UPDATE SET legacy=true RETURNING id`;
+			conversationId = conversation.id;
+		}
+		await tx`UPDATE agent_conversations SET title=CASE WHEN title='New conversation' THEN ${run.prompt.slice(0, 100)} ELSE title END,updated_at=clock_timestamp() WHERE id=${conversationId!} AND mailbox_id=${run.mailbox}`;
+		await tx`INSERT INTO agent_turns(id,mailbox_id,conversation_id,model,actor,prompt,status) VALUES(${run.id},${run.mailbox},${conversationId!},${parsed.model},${run.actor},${run.prompt},'running')`;
 		return parsed;
 	});
 }
@@ -458,7 +475,7 @@ export async function startRun(
 		? []
 		: await db<
 				AgentTurn[]
-			>`SELECT id,model,prompt,answer,actions,ui_message,status,created_at FROM agent_turns WHERE mailbox_id=${run.mailbox} AND status<>'running' AND id<>${run.id} ORDER BY created_at DESC LIMIT 30`;
+			>`SELECT id,model,prompt,answer,actions,ui_message,status,created_at FROM agent_turns WHERE mailbox_id=${run.mailbox} AND conversation_id=(SELECT conversation_id FROM agent_turns WHERE id=${run.id} AND mailbox_id=${run.mailbox}) AND status<>'running' AND id<>${run.id} ORDER BY created_at DESC,id DESC LIMIT 30`;
 	const [catalogModel] =
 		await db`SELECT context_window,input_price,output_price FROM agent_models WHERE id=${settings.model}`;
 	const system = `${SYSTEM}\nMailbox: ${run.mailbox}\nAdditional operator preferences:\n${settings.system_prompt}`;

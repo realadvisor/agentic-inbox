@@ -7,6 +7,7 @@ import {
 	type CatalogFetch,
 } from "./catalog";
 import type { ModelSource } from "../../shared/agent";
+import { InboxStore } from "../store";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -43,18 +44,66 @@ export function agentApi(db: Database, options: AgentOptions) {
 		await refreshCatalog(db, options.fetchCatalog);
 		return c.json(await getCatalog(db, sources));
 	});
+	app.get("/api/v1/mailboxes/:mailboxId/agent/conversations", async (c) => {
+		const mailbox = c.req.param("mailboxId");
+		await new InboxStore(db).mailbox(mailbox);
+		const offset = z.coerce
+			.number()
+			.int()
+			.min(0)
+			.max(100000)
+			.parse(c.req.query("offset") ?? 0);
+		const search = (c.req.query("search") ?? "").slice(0, 200);
+		const rows =
+			await db`SELECT id,title,created_at,updated_at FROM agent_conversations WHERE mailbox_id=${mailbox} AND position(lower(${search}) in lower(title))>0 ORDER BY updated_at DESC,id DESC LIMIT 51 OFFSET ${offset}`;
+		return c.json({
+			conversations: rows.slice(0, 50),
+			hasMore: rows.length > 50,
+		});
+	});
+	app.post("/api/v1/mailboxes/:mailboxId/agent/conversations", async (c) => {
+		const mailbox = c.req.param("mailboxId");
+		await new InboxStore(db).mailbox(mailbox);
+		const [conversation] =
+			await db`INSERT INTO agent_conversations(mailbox_id) VALUES(${mailbox}) RETURNING id,title,created_at,updated_at`;
+		return c.json(conversation, 201);
+	});
 	app.get("/api/v1/mailboxes/:mailboxId/agent", async (c) => {
 		const mailbox = c.req.param("mailboxId");
+		await new InboxStore(db).mailbox(mailbox);
+		const conversationId = z
+			.string()
+			.uuid()
+			.optional()
+			.parse(c.req.query("conversationId"));
+		let conversation;
+		if (conversationId) {
+			[conversation] =
+				await db`SELECT id,title,created_at,updated_at FROM agent_conversations WHERE mailbox_id=${mailbox} AND id=${conversationId}`;
+			if (!conversation)
+				throw new HTTPException(404, { message: "Conversation not found" });
+		} else {
+			[conversation] =
+				await db`SELECT id,title,created_at,updated_at FROM agent_conversations WHERE mailbox_id=${mailbox} ORDER BY updated_at DESC,id DESC LIMIT 1`;
+			if (!conversation)
+				[conversation] =
+					await db`INSERT INTO agent_conversations(mailbox_id,legacy) VALUES(${mailbox},true) ON CONFLICT(mailbox_id) WHERE legacy DO UPDATE SET legacy=true RETURNING id,title,created_at,updated_at`;
+		}
+		const before = z.string().uuid().optional().parse(c.req.query("before"));
 		const turns =
 			await db`SELECT id,model,prompt,answer,actions,ui_message,usage,
 		 CASE WHEN status='running' AND created_at<now()-interval '3 minutes' THEN 'failed' ELSE status END AS status,created_at
-		 FROM agent_turns WHERE mailbox_id=${mailbox} ORDER BY created_at DESC LIMIT 30`;
+		 FROM agent_turns WHERE mailbox_id=${mailbox} AND conversation_id=${conversation.id}
+		 AND (${before ?? null}::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM agent_turns WHERE id=${before ?? null} AND mailbox_id=${mailbox} AND conversation_id=${conversation.id}))
+		 ORDER BY created_at DESC,id DESC LIMIT 31`;
 		return c.json({
 			available: !!options.model,
 			autoDraftAvailable: !!options.autoDraftAvailable,
 			settings: await getSettings(db, mailbox),
 			catalog: await getCatalog(db, sources),
-			turns: turns.reverse(),
+			conversation,
+			hasMore: turns.length > 30,
+			turns: turns.slice(0, 30).reverse(),
 		});
 	});
 	app.put("/api/v1/mailboxes/:mailboxId/agent/settings", async (c) => {
@@ -83,6 +132,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 			.object({
 				id: z.string().uuid(),
 				prompt: z.string().trim().min(1).max(8000),
+				conversationId: z.string().uuid().optional(),
 				emailId: z.string().uuid().optional(),
 				model: modelIdSchema.optional(),
 			})

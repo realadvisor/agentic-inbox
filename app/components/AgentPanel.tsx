@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
 	ArrowUpIcon,
+	PlusIcon,
+	ClockCounterClockwiseIcon,
 	StopIcon,
 	ArrowUpRightIcon,
 	ArrowsOutSimpleIcon,
@@ -21,12 +27,24 @@ import "./agent-chat.css";
 import { Link } from "react-router";
 import { useUIStore } from "~/hooks/useUIStore";
 import api from "~/services/api";
-import type { AgentState, InboxChatMessage } from "../../shared/agent";
+import type {
+	AgentConversation,
+	AgentTurn,
+	AgentState,
+	InboxChatMessage,
+} from "../../shared/agent";
 import { turnsToMessages } from "../../shared/agent-messages";
 const endpoint = (mailbox: string) =>
 	`/api/v1/mailboxes/${encodeURIComponent(mailbox)}/agent`;
-async function getState(mailbox: string): Promise<AgentState> {
-	const response = await fetch(endpoint(mailbox));
+async function getState(
+	mailbox: string,
+	conversationId?: string,
+	before?: string,
+): Promise<AgentState> {
+	const params = new URLSearchParams();
+	if (conversationId) params.set("conversationId", conversationId);
+	if (before) params.set("before", before);
+	const response = await fetch(`${endpoint(mailbox)}?${params}`);
 	if (!response.ok) throw new Error("Could not load the inbox assistant");
 	return response.json();
 }
@@ -38,14 +56,74 @@ export default function AgentPanel({
 	close: () => void;
 }) {
 	const [expanded, setExpanded] = useState(false);
+	const [conversationId, setConversationId] = useState<string | undefined>(
+		() => {
+			try {
+				return (
+					localStorage.getItem(`agent-conversation:${mailboxId}`) ?? undefined
+				);
+			} catch {
+				return undefined;
+			}
+		},
+	);
+	const [historyOpen, setHistoryOpen] = useState(false);
+	const [busy, setBusy] = useState(false);
+	const [creating, setCreating] = useState(false);
+	const [navigationError, setNavigationError] = useState("");
+	const selectConversation = (id: string) => {
+		setConversationId(id);
+		try {
+			localStorage.setItem(`agent-conversation:${mailboxId}`, id);
+		} catch {
+			/* Storage may be disabled. */
+		}
+		setHistoryOpen(false);
+	};
+	const newConversation = async () => {
+		setCreating(true);
+		setNavigationError("");
+		try {
+			const response = await fetch(`${endpoint(mailboxId)}/conversations`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: "{}",
+			});
+			if (!response.ok)
+				throw new Error("Could not create a conversation. Try again.");
+			const conversation: AgentConversation = await response.json();
+			selectConversation(conversation.id);
+		} catch (error) {
+			setNavigationError(
+				error instanceof Error
+					? error.message
+					: "Could not create conversation",
+			);
+		} finally {
+			setCreating(false);
+		}
+	};
 	const state = useQuery({
-		queryKey: ["agent", mailboxId],
-		queryFn: () => getState(mailboxId),
+		queryKey: ["agent", mailboxId, conversationId],
+		queryFn: () => getState(mailboxId, conversationId),
 		refetchInterval: (query) =>
 			query.state.data?.turns.some((t) => t.status === "running")
 				? 2000
 				: 10000,
 	});
+	useEffect(() => {
+		if (!conversationId && state.data?.conversation.id) {
+			setConversationId(state.data.conversation.id);
+			try {
+				localStorage.setItem(
+					`agent-conversation:${mailboxId}`,
+					state.data.conversation.id,
+				);
+			} catch {
+				/* Optional persistence. */
+			}
+		}
+	}, [conversationId, mailboxId, state.data?.conversation.id]);
 	return (
 		<aside
 			aria-label="Email agent"
@@ -61,6 +139,24 @@ export default function AgentPanel({
 					<span className="agent-header-badge">Inbox</span>
 				</div>
 				<div className="agent-header-actions">
+					<button
+						className="agent-icon-button"
+						aria-label="New conversation"
+						title="New conversation"
+						disabled={busy || creating}
+						onClick={() => void newConversation()}
+					>
+						<PlusIcon size={17} />
+					</button>
+					<button
+						className="agent-icon-button"
+						aria-label="Conversation history"
+						title="Conversation history"
+						aria-expanded={historyOpen}
+						onClick={() => setHistoryOpen(!historyOpen)}
+					>
+						<ClockCounterClockwiseIcon size={17} />
+					</button>
 					<Link
 						className="agent-icon-button"
 						aria-label="Assistant settings"
@@ -94,6 +190,20 @@ export default function AgentPanel({
 					</button>
 				</div>
 			</header>
+			{navigationError && (
+				<p role="alert" className="agent-error">
+					{navigationError}
+				</p>
+			)}
+			{historyOpen && (
+				<ConversationHistory
+					mailboxId={mailboxId}
+					activeId={state.data?.conversation.id}
+					disabled={busy || creating}
+					onSelect={selectConversation}
+					onBack={() => setHistoryOpen(false)}
+				/>
+			)}
 			{state.isLoading && (
 				<p className="p-4 text-sm text-kumo-subtle">Loading conversation…</p>
 			)}
@@ -106,27 +216,174 @@ export default function AgentPanel({
 				</p>
 			)}
 			{state.data && (
-				<AgentChat key={mailboxId} mailboxId={mailboxId} state={state.data} />
+				<div
+					className="agent-chat-body"
+					style={{ display: historyOpen ? "none" : undefined }}
+				>
+					<AgentChat
+						key={`${mailboxId}:${state.data.conversation.id}`}
+						mailboxId={mailboxId}
+						state={state.data}
+						onBusy={setBusy}
+					/>
+				</div>
 			)}
 		</aside>
+	);
+}
+function ConversationHistory({
+	mailboxId,
+	activeId,
+	disabled,
+	onSelect,
+	onBack,
+}: {
+	mailboxId: string;
+	activeId?: string;
+	disabled: boolean;
+	onSelect: (id: string) => void;
+	onBack: () => void;
+}) {
+	const [search, setSearch] = useState("");
+	const history = useInfiniteQuery({
+		queryKey: ["agent-history", mailboxId, search],
+		initialPageParam: 0,
+		queryFn: async ({ pageParam, signal }) => {
+			const response = await fetch(
+				`${endpoint(mailboxId)}/conversations?${new URLSearchParams({ search, offset: String(pageParam) })}`,
+				{ signal },
+			);
+			if (!response.ok) throw new Error("Could not load conversation history");
+			return (await response.json()) as {
+				conversations: AgentConversation[];
+				hasMore: boolean;
+			};
+		},
+		getNextPageParam: (lastPage, pages) =>
+			lastPage.hasMore ? pages.length * 50 : undefined,
+	});
+	const conversations = [
+		...new Map(
+			history.data?.pages
+				.flatMap((page) => page.conversations)
+				.map((c) => [c.id, c]),
+		).values(),
+	];
+	return (
+		<section className="agent-history" aria-label="Conversation history">
+			<div className="agent-history-heading">
+				<h3>Conversations</h3>
+				<button
+					className="agent-icon-button"
+					aria-label="Back to conversation"
+					onClick={onBack}
+				>
+					<XIcon size={17} />
+				</button>
+			</div>
+			<input
+				aria-label="Search conversations"
+				placeholder="Search conversations…"
+				value={search}
+				onChange={(e) => {
+					setSearch(e.target.value);
+				}}
+			/>
+			{disabled && (
+				<p className="agent-history-note">
+					Finish or stop the current response before switching chats.
+				</p>
+			)}
+			{history.isLoading && <p>Loading conversations…</p>}
+			{history.error && (
+				<p role="alert">
+					{history.error.message}{" "}
+					<button onClick={() => void history.refetch()}>Retry</button>
+				</p>
+			)}
+			{history.data && conversations.length === 0 && (
+				<p>No conversations found.</p>
+			)}
+			<div className="agent-history-list">
+				{conversations.map((conversation) => (
+					<button
+						key={conversation.id}
+						disabled={disabled}
+						aria-current={conversation.id === activeId ? "true" : undefined}
+						onClick={() => onSelect(conversation.id)}
+					>
+						<strong>{conversation.title}</strong>
+						<span>
+							{new Date(conversation.updated_at).toLocaleDateString(undefined, {
+								month: "short",
+								day: "numeric",
+								year: "numeric",
+							})}
+						</span>
+					</button>
+				))}
+			</div>
+			{history.hasNextPage && (
+				<button
+					className="agent-history-more"
+					disabled={history.isFetchingNextPage}
+					onClick={() => void history.fetchNextPage()}
+				>
+					Load more conversations
+				</button>
+			)}
+		</section>
 	);
 }
 function AgentChat({
 	mailboxId,
 	state,
+	onBusy,
 }: {
 	mailboxId: string;
 	state: AgentState;
+	onBusy: (busy: boolean) => void;
 }) {
 	const client = useQueryClient();
 	const { selectedEmailId, openComposeModal, agentModels, setAgentModel } =
 		useUIStore();
-	const selectedModel = agentModels[mailboxId] ?? "";
+	const modelKey = `${mailboxId}:${state.conversation.id}`;
+	const selectedModel =
+		agentModels[modelKey] ?? state.turns.at(-1)?.model ?? "";
 	const effectiveModel = selectedModel || state.settings.model;
 	const models = state.catalog.models;
 	const modelAvailable = models.some(
 		(m) => m.id === effectiveModel && m.selectable,
 	);
+	const [olderTurns, setOlderTurns] = useState<AgentTurn[]>([]);
+	const [moreOlder, setMoreOlder] = useState<boolean | undefined>();
+	const [loadingOlder, setLoadingOlder] = useState(false);
+	const allTurns = useMemo(
+		() => [
+			...olderTurns.filter(
+				(t) => !state.turns.some((recent) => recent.id === t.id),
+			),
+			...state.turns,
+		],
+		[olderTurns, state.turns],
+	);
+	const loadOlder = async () => {
+		setLoadingOlder(true);
+		try {
+			const page = await getState(
+				mailboxId,
+				state.conversation.id,
+				allTurns[0]?.id,
+			);
+			follow.current = false;
+			setOlderTurns([...page.turns, ...allTurns]);
+			setMoreOlder(page.hasMore);
+		} catch {
+			setDraftError("Could not load earlier messages. Try again.");
+		} finally {
+			setLoadingOlder(false);
+		}
+	};
 	const [prompt, setPrompt] = useState("");
 	const [draftError, setDraftError] = useState("");
 	const [stopping, setStopping] = useState(false);
@@ -170,10 +427,10 @@ function AgentChat({
 		clearError,
 		stop,
 	} = useChat<InboxChatMessage>({
-		id: mailboxId,
+		id: `${mailboxId}:${state.conversation.id}`,
 		transport,
 		generateId: () => crypto.randomUUID(),
-		messages: turnsToMessages(state.turns),
+		messages: turnsToMessages(allTurns),
 		onFinish: refresh,
 		onError: () => {
 			void refresh();
@@ -182,8 +439,12 @@ function AgentChat({
 	const busy = status === "submitted" || status === "streaming";
 	const running = busy || state.turns.some((t) => t.status === "running");
 	useEffect(() => {
-		if (!busy) setMessages(turnsToMessages(state.turns));
-	}, [state.turns, busy, error, setMessages]);
+		onBusy(running);
+		return () => onBusy(false);
+	}, [running, onBusy]);
+	useEffect(() => {
+		if (!busy) setMessages(turnsToMessages(allTurns));
+	}, [allTurns, busy, error, setMessages]);
 	useEffect(() => {
 		if (follow.current) bottom.current?.scrollIntoView({ block: "nearest" });
 	}, [messages, status]);
@@ -197,6 +458,7 @@ function AgentChat({
 			{ text },
 			{
 				body: {
+					conversationId: state.conversation.id,
 					model: effectiveModel,
 					...(selectedEmailId ? { emailId: selectedEmailId } : {}),
 				},
@@ -257,6 +519,15 @@ function AgentChat({
 				className="agent-conversation"
 				aria-live="polite"
 			>
+				{(moreOlder ?? state.hasMore) && (
+					<button
+						className="agent-history-more"
+						disabled={loadingOlder || running}
+						onClick={() => void loadOlder()}
+					>
+						{loadingOlder ? "Loading…" : "Load earlier messages"}
+					</button>
+				)}
 				{!messages.length ? (
 					<div className="agent-welcome">
 						<div className="agent-welcome-mark">
@@ -317,7 +588,7 @@ function AgentChat({
 					<div className="agent-transcript">
 						<div className="agent-conversation-label">
 							<span />
-							Your inbox, in focus
+							{state.conversation.title}
 							<span />
 						</div>
 						{messages.map((message) => (
@@ -411,7 +682,7 @@ function AgentChat({
 							value={selectedModel}
 							defaultModel={state.settings.model}
 							disabled={running}
-							onChange={(value) => setAgentModel(mailboxId, value)}
+							onChange={(value) => setAgentModel(modelKey, value)}
 						/>
 						{running ? (
 							<button
