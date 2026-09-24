@@ -500,13 +500,6 @@
 	margin-left: auto;
 	color: var(--agent-ink);
 }
-.agent-compose-note {
-	text-align: center;
-	font-size: 9px;
-	color: var(--agent-secondary);
-	margin-top: 11px;
-	letter-spacing: 0.1px;
-}
 .agent-error {
 	padding: 9px 2px;
 	color: #b34c40;

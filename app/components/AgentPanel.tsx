@@ -383,9 +383,6 @@ function AgentChat({
 						</button>
 					</div>
 				</div>
-				<p className="agent-compose-note">
-					You’re in control. Review every draft before sending.
-				</p>
 			</form>
 		</>
 	);
