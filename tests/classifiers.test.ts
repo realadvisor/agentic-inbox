@@ -704,11 +704,14 @@ test("queue config bounds provider concurrency and routes exhausted deliveries t
 	);
 	assert.equal(consumers.length, 2);
 	assert.equal(
-		consumers.reduce(
-			(n: number, c: { max_concurrency: number }) => n + c.max_concurrency,
-			0,
-		),
-		2,
+		consumers.find((c: { queue: string }) => c.queue === queueNames.live)
+			.max_concurrency,
+		1,
+	);
+	assert.equal(
+		consumers.find((c: { queue: string }) => c.queue === queueNames.backfill)
+			.max_concurrency,
+		5,
 	);
 	for (const c of consumers) {
 		assert.equal(c.max_batch_size, 1);
