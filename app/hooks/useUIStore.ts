@@ -16,6 +16,8 @@ export interface ComposeOptions {
 }
 
 interface UIState {
+	agentModels: Record<string, string>;
+	setAgentModel: (mailbox: string, model: string) => void;
 	isAgentOpen: boolean;
 	toggleAgent: () => void;
 	closeAgent: () => void;
@@ -44,6 +46,11 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
+	agentModels: {},
+	setAgentModel: (mailbox, model) =>
+		set((state) => ({
+			agentModels: { ...state.agentModels, [mailbox]: model },
+		})),
 	isAgentOpen: false,
 	toggleAgent: () => set({ isAgentOpen: !get().isAgentOpen }),
 	closeAgent: () => set({ isAgentOpen: false }),

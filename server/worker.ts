@@ -1,5 +1,6 @@
 import { pruneProviderRuns } from "./classification/provider-runs";
-import { workersModels, type AiBinding } from "./agent/service";
+import { type AiBinding } from "./agent/service";
+import { agentProviders } from "./agent/providers";
 import { AGENT_QUEUE, publishAgentJobs, consumeAgentJobs } from "./agent/queue";
 import {
 	publishOutbox,
@@ -19,6 +20,7 @@ import type { MailSender } from "./outbound";
 
 export interface WorkerEnv {
 	AI?: AiBinding;
+	AI_GATEWAY_API_KEY?: string;
 	AGENT_JOBS?: QueueBinding;
 	PUBLIC_ORIGIN: string;
 	CLASSIFIERS_ENABLED?: string;
@@ -88,7 +90,7 @@ worker.all("/api/*", async (c) => {
 		const response = await createApi(db, {
 			origin: c.env.PUBLIC_ORIGIN,
 			agent: {
-				model: c.env.AI ? workersModels(c.env.AI) : undefined,
+				...agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY),
 				autoDraftAvailable: !!c.env.AGENT_JOBS,
 				waitUntil: (task) => {
 					agentTasks.push(task);
@@ -155,7 +157,7 @@ async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
 }
 
 async function dispatchAgentJobs(env: WorkerEnv) {
-	if (!env.AI || !env.AGENT_JOBS) return;
+	if ((!env.AI && !env.AI_GATEWAY_API_KEY?.trim()) || !env.AGENT_JOBS) return;
 	const db = postgres(env.HYPERDRIVE.connectionString, {
 		max: 2,
 		fetch_types: false,
@@ -187,7 +189,8 @@ export default {
 	},
 	async queue(batch: QueueBatch, env: WorkerEnv) {
 		if (batch.queue === AGENT_QUEUE) {
-			if (!env.AI) {
+			const provider = agentProviders(env.AI, env.AI_GATEWAY_API_KEY);
+			if (!provider.model) {
 				for (const message of batch.messages)
 					message.retry({ delaySeconds: 300 });
 				return;
@@ -197,7 +200,7 @@ export default {
 				fetch_types: false,
 			});
 			try {
-				await consumeAgentJobs(db, batch, workersModels(env.AI));
+				await consumeAgentJobs(db, batch, provider.model);
 			} finally {
 				await db.end({ timeout: 5 });
 			}

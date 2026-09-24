@@ -4177,11 +4177,8 @@
 											"properties": {
 												"model": {
 													"type": "string",
-													"enum": [
-														"@cf/moonshotai/kimi-k2.6",
-														"@cf/zai-org/glm-4.7-flash",
-														"@cf/qwen/qwen3-30b-a3b-fp8"
-													]
+													"maxLength": 200,
+													"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
 												},
 												"system_prompt": {
 													"type": "string",
@@ -4197,6 +4194,9 @@
 											"items": {
 												"type": "object"
 											}
+										},
+										"catalog": {
+											"$ref": "#/components/schemas/AgentCatalog"
 										}
 									}
 								}
@@ -4210,7 +4210,7 @@
 			"put": {
 				"operationId": "putAgentSettings",
 				"tags": ["Agent"],
-				"summary": "Choose the Workers AI model, writing instructions, and automatic drafting for this mailbox",
+				"summary": "Choose the default model, writing instructions, and automatic drafting for this mailbox",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4232,11 +4232,8 @@
 								"properties": {
 									"model": {
 										"type": "string",
-										"enum": [
-											"@cf/moonshotai/kimi-k2.6",
-											"@cf/zai-org/glm-4.7-flash",
-											"@cf/qwen/qwen3-30b-a3b-fp8"
-										]
+										"maxLength": 200,
+										"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
 									},
 									"system_prompt": {
 										"type": "string",
@@ -4262,11 +4259,8 @@
 									"properties": {
 										"model": {
 											"type": "string",
-											"enum": [
-												"@cf/moonshotai/kimi-k2.6",
-												"@cf/zai-org/glm-4.7-flash",
-												"@cf/qwen/qwen3-30b-a3b-fp8"
-											]
+											"maxLength": 200,
+											"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
 										},
 										"system_prompt": {
 											"type": "string",
@@ -4284,7 +4278,7 @@
 						"description": "Invalid model or settings"
 					},
 					"503": {
-						"description": "Automatic drafting requires Workers AI and the agent queue"
+						"description": "Selected provider is not configured, or automatic drafting queue is unavailable"
 					}
 				}
 			}
@@ -4326,6 +4320,11 @@
 									"emailId": {
 										"type": "string",
 										"format": "uuid"
+									},
+									"model": {
+										"type": "string",
+										"maxLength": 200,
+										"description": "Optional model override for this turn. Does not change the mailbox default."
 									}
 								}
 							}
@@ -4347,7 +4346,54 @@
 						"description": "Mailbox is busy or request ID was already used"
 					},
 					"503": {
-						"description": "Workers AI is not configured"
+						"description": "Selected AI provider is not configured"
+					},
+					"400": {
+						"description": "Unknown, retired or invalid model, or invalid request"
+					}
+				}
+			}
+		},
+		"/api/v1/agent/models": {
+			"get": {
+				"operationId": "getAgentModels",
+				"tags": ["Agent"],
+				"summary": "Read the persisted tool-capable model catalog",
+				"responses": {
+					"200": {
+						"description": "Model catalog and provider availability",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentCatalog"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/agent/models/refresh": {
+			"post": {
+				"operationId": "refreshAgentModels",
+				"tags": ["Agent"],
+				"summary": "Refresh gateway models without changing mailbox defaults",
+				"responses": {
+					"200": {
+						"description": "Model catalog and provider availability",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentCatalog"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Another refresh is in progress"
+					},
+					"502": {
+						"description": "Upstream catalog unavailable or invalid; existing snapshot is unchanged"
 					}
 				}
 			}
@@ -4967,6 +5013,73 @@
 					},
 					"color": {
 						"type": "string"
+					}
+				}
+			},
+			"AgentCatalog": {
+				"type": "object",
+				"required": ["models", "refreshed_at", "gatewayConfigured"],
+				"properties": {
+					"refreshed_at": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true
+					},
+					"gatewayConfigured": {
+						"type": "boolean"
+					},
+					"models": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"id",
+								"name",
+								"provider",
+								"source",
+								"available",
+								"selectable"
+							],
+							"properties": {
+								"id": {
+									"type": "string",
+									"maxLength": 200,
+									"description": "Available model ID from the model catalog. Workers AI IDs start with @cf/; gateway IDs use provider/model."
+								},
+								"name": {
+									"type": "string"
+								},
+								"provider": {
+									"type": "string"
+								},
+								"source": {
+									"type": "string",
+									"enum": ["workers", "gateway"]
+								},
+								"available": {
+									"type": "boolean",
+									"description": "Present in the latest catalog"
+								},
+								"selectable": {
+									"type": "boolean",
+									"description": "Available and its provider is configured"
+								},
+								"context_window": {
+									"type": "integer",
+									"nullable": true
+								},
+								"input_price": {
+									"type": "number",
+									"nullable": true,
+									"description": "USD per million input tokens"
+								},
+								"output_price": {
+									"type": "number",
+									"nullable": true,
+									"description": "USD per million output tokens"
+								}
+							}
+						}
 					}
 				}
 			}

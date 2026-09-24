@@ -1,3 +1,4 @@
+import { modelIdSchema, requireModel } from "./catalog";
 import {
 	streamText,
 	stepCountIs,
@@ -12,7 +13,6 @@ import type { Database } from "../db";
 import { InboxStore } from "../store";
 import { liveSender } from "../mailboxes";
 import {
-	AGENT_MODELS,
 	DEFAULT_AGENT_MODEL,
 	type AgentSettings,
 	type AgentAction,
@@ -31,13 +31,7 @@ export const workersModels = (binding: AiBinding): ModelFactory => {
 };
 export const settingsSchema = z
 	.object({
-		model: z
-			.string()
-			.refine(
-				(v) => AGENT_MODELS.some((m) => m.id === v),
-				"Choose a supported Workers AI model",
-			)
-			.transform((v) => v as AgentModel),
+		model: modelIdSchema,
 		system_prompt: z.string().max(8000),
 		auto_draft: z.boolean(),
 	})
@@ -78,6 +72,9 @@ export async function saveSettings(
 	input: AgentSettings,
 ) {
 	const settings = settingsSchema.parse(input);
+	const previous = await getSettings(db, mailbox);
+	if (settings.auto_draft || settings.model !== previous.model)
+		await requireModel(db, settings.model);
 	await db`INSERT INTO agent_settings(mailbox_id,model,system_prompt,auto_draft)
 	 VALUES(${mailbox},${settings.model},${settings.system_prompt},${settings.auto_draft})
 	 ON CONFLICT(mailbox_id) DO UPDATE SET model=excluded.model,system_prompt=excluded.system_prompt,auto_draft=excluded.auto_draft`;
@@ -89,6 +86,7 @@ export interface Run {
 	prompt: string;
 	actor: string;
 	emailId?: string;
+	model?: string;
 	automatic?: boolean;
 }
 // The lease fences all tool mutations. A lost/expired run can never write later.
@@ -110,10 +108,11 @@ export async function claimRun(db: Database, run: Run) {
 					"The agent is already working in this mailbox. Try again shortly.",
 			});
 		const parsed = settingsSchema.parse({
-			model: settings.model,
+			model: run.automatic ? settings.model : (run.model ?? settings.model),
 			system_prompt: settings.system_prompt,
 			auto_draft: settings.auto_draft,
 		});
+		await requireModel(tx as unknown as Database, parsed.model);
 		if (run.automatic && !parsed.auto_draft)
 			throw new HTTPException(409, {
 				message: "Automatic drafts are disabled",

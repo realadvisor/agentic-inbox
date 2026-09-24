@@ -19,6 +19,12 @@ import {
 	publishAgentJobs,
 	AGENT_QUEUE,
 } from "../server/agent/queue";
+import {
+	getCatalog,
+	parseGatewayCatalog,
+	refreshCatalog,
+} from "../server/agent/catalog";
+import { agentProviders } from "../server/agent/providers";
 import { AGENT_MODELS } from "../shared/agent";
 
 const schema = `test_agent_${randomUUID().replaceAll("-", "")}`;
@@ -89,7 +95,10 @@ after(async () => {
 });
 
 test("model settings persist per mailbox; invalid providers are rejected", async () => {
-	const api = createApi(db, { readAttachment: async () => null });
+	const api = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => textModel() },
+	});
 	const path = `http://127.0.0.1:4311/api/v1/mailboxes/${a}/agent/settings`;
 	const settings = {
 		model: AGENT_MODELS[1].id,
@@ -389,4 +398,193 @@ test("repeated model tool calls save only one draft per run", async () => {
 	} finally {
 		await finish(r);
 	}
+});
+
+const gatewayModels = {
+	data: [
+		{
+			id: "anthropic/test-claude",
+			name: "Test Claude",
+			type: "language",
+			tags: ["tool-use"],
+			supported_specifications: ["v3"],
+			context_window: 200000,
+			pricing: { input: "0.000003", output: "0.000015" },
+		},
+		{
+			id: "openai/test-gpt",
+			name: "Test GPT",
+			type: "language",
+			supported_parameters: ["tools"],
+		},
+	],
+};
+test("catalog only imports compatible language models and converts published pricing", () => {
+	const models = parseGatewayCatalog({
+		data: [
+			...gatewayModels.data,
+			{ id: "openai/embedding", type: "embedding", tags: ["tool-use"] },
+			{ id: "openai/no-tools", type: "language" },
+			{
+				id: "openai/future-spec",
+				type: "language",
+				tags: ["tool-use"],
+				supported_specifications: ["v4"],
+			},
+			{ id: "@cf/zai-org/fake", type: "language", tags: ["tool-use"] },
+			{ id: "https://malicious.test", type: "language", tags: ["tool-use"] },
+			null,
+		],
+	});
+	assert.deepEqual(
+		models.map((m) => m.id),
+		gatewayModels.data.map((m) => m.id),
+	);
+	assert.equal(models[0].input_price, 3);
+	assert.equal(models[0].output_price, 15);
+	assert.equal(models[1].input_price, null);
+});
+
+test("refresh persists catalog, retains defaults and Workers models, and preserves snapshot on failure", async () => {
+	const mailbox = "catalog@example.test";
+	await store.createMailbox(mailbox, "Catalog");
+	await refreshCatalog(db, async () => gatewayModels);
+	await saveSettings(db, mailbox, {
+		model: "anthropic/test-claude",
+		system_prompt: "Hello",
+		auto_draft: false,
+	});
+	const before = await getCatalog(db, ["workers", "gateway"]);
+	assert.ok(before.refreshed_at);
+	assert.ok(before.models.find((m) => m.id === "openai/test-gpt")?.selectable);
+	const disabled = await getCatalog(db, ["workers"]);
+	assert.equal(
+		disabled.models.find((m) => m.id === "openai/test-gpt")?.selectable,
+		false,
+	);
+	for (const load of [
+		async () => {
+			throw new Error("offline");
+		},
+		async () => ({ data: [] }),
+	]) {
+		await assert.rejects(
+			refreshCatalog(db, load),
+			/existing model list and default were kept/,
+		);
+		assert.deepEqual(await getCatalog(db, ["workers", "gateway"]), before);
+	}
+	await refreshCatalog(db, async () => ({ data: [gatewayModels.data[1]] }));
+	const after = await getCatalog(db, ["workers", "gateway"]);
+	assert.equal(
+		after.models.find((m) => m.id === "anthropic/test-claude")?.available,
+		false,
+	);
+	assert.equal(
+		after.models.filter((m) => m.source === "workers" && m.selectable).length,
+		3,
+	);
+	assert.equal((await getSettings(db, mailbox)).model, "anthropic/test-claude");
+	await assert.rejects(claimRun(db, run(mailbox)), /not available/);
+	// A retired default must not prevent disabling automatic drafting.
+	await db`UPDATE agent_settings SET auto_draft=true WHERE mailbox_id=${mailbox}`;
+	await saveSettings(db, mailbox, {
+		model: "anthropic/test-claude",
+		system_prompt: "Hello",
+		auto_draft: false,
+	});
+});
+
+test("chat overrides support Anthropic and OpenAI without changing the default; automatic runs use default", async () => {
+	const mailbox = "overrides@example.test";
+	await store.createMailbox(mailbox, "Overrides");
+	const chosen: string[] = [];
+	const api = createApi(db, {
+		readAttachment: async () => null,
+		agent: {
+			sources: ["workers", "gateway"],
+			fetchCatalog: async () => gatewayModels,
+			model: (id) => {
+				chosen.push(id);
+				return textModel();
+			},
+		},
+	});
+	const response = await api.request(
+		"http://127.0.0.1:4311/api/v1/agent/models/refresh",
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: "{}",
+		},
+	);
+	assert.equal(response.status, 200);
+	assert.ok(
+		(await response.json()).models.some(
+			(m: { id: string }) => m.id === "anthropic/test-claude",
+		),
+	);
+	for (const model of ["anthropic/test-claude", "openai/test-gpt"]) {
+		const id = randomUUID();
+		const response = await api.request(
+			`http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/chat`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ id, model, prompt: "Hello" }),
+			},
+		);
+		assert.equal(response.status, 200);
+		assert.match(await response.text(), /Hello from the selected model/);
+		const [turn] =
+			await db`SELECT model,status FROM agent_turns WHERE id=${id}`;
+		assert.equal(turn.model, model);
+		assert.equal(turn.status, "complete");
+		assert.equal((await getSettings(db, mailbox)).model, AGENT_MODELS[0].id);
+	}
+	assert.deepEqual(chosen, ["anthropic/test-claude", "openai/test-gpt"]);
+	await saveSettings(db, mailbox, {
+		model: "anthropic/test-claude",
+		system_prompt: "",
+		auto_draft: true,
+	});
+	const r = { ...run(mailbox), automatic: true, model: "openai/test-gpt" };
+	assert.equal((await claimRun(db, r)).model, "anthropic/test-claude");
+	await finish(r);
+	const workersOnly = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => textModel() },
+	});
+	for (const path of ["settings", "chat"]) {
+		const result = await workersOnly.request(
+			`http://127.0.0.1:4311/api/v1/mailboxes/${mailbox}/agent/${path}`,
+			{
+				method: path === "settings" ? "PUT" : "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(
+					path === "settings"
+						? { model: "openai/test-gpt", system_prompt: "", auto_draft: false }
+						: { id: randomUUID(), model: "openai/test-gpt", prompt: "Hello" },
+				),
+			},
+		);
+		assert.equal(result.status, 503);
+	}
+});
+
+test("provider routing keeps Workers AI local to the binding and external providers on the gateway", () => {
+	const empty = agentProviders();
+	assert.equal(empty.model, undefined);
+	assert.deepEqual(empty.sources, []);
+	const gateway = agentProviders(undefined, "synthetic-test-key");
+	assert.deepEqual(gateway.sources, ["gateway"]);
+	for (const model of ["anthropic/test-claude", "openai/test-gpt"]) {
+		const instance = gateway.model!(model);
+		assert.ok(typeof instance !== "string");
+		assert.equal(instance.modelId, model);
+	}
+	assert.throws(
+		() => gateway.model!(AGENT_MODELS[0].id),
+		/Workers AI is not configured/,
+	);
 });

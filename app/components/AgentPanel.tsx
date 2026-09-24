@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { Button } from "@cloudflare/kumo";
 import { useUIStore } from "~/hooks/useUIStore";
 import api from "~/services/api";
 import {
-	AGENT_MODELS,
-	type AgentSettings,
 	type AgentState,
 	type AgentEvent,
 	type AgentAction,
@@ -13,12 +12,8 @@ import {
 
 const endpoint = (mailbox: string) =>
 	`/api/v1/mailboxes/${encodeURIComponent(mailbox)}/agent`;
-async function jsonRequest<T>(url: string, body?: unknown): Promise<T> {
-	const response = await fetch(url, {
-		method: body ? "PUT" : "GET",
-		headers: { "Content-Type": "application/json" },
-		body: body ? JSON.stringify(body) : undefined,
-	});
+async function jsonRequest<T>(url: string): Promise<T> {
+	const response = await fetch(url);
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
 		throw new Error(error.error || "Could not load the agent");
@@ -34,15 +29,19 @@ export default function AgentPanel({
 	close: () => void;
 }) {
 	const client = useQueryClient();
-	const { selectedEmailId, openComposeModal } = useUIStore();
+	const { selectedEmailId, openComposeModal, agentModels, setAgentModel } =
+		useUIStore();
 	const state = useQuery({
 		queryKey: ["agent", mailboxId],
 		queryFn: () => jsonRequest<AgentState>(endpoint(mailboxId)),
 		refetchInterval: 10000,
 	});
-	const [settings, setSettings] = useState<AgentSettings>();
-	const [editing, setEditing] = useState(false);
-	const [saving, setSaving] = useState(false);
+	const selectedModel = agentModels[mailboxId] ?? "";
+	const effectiveModel = selectedModel || state.data?.settings.model;
+	const models = state.data?.catalog.models ?? [];
+	const modelAvailable = models.some(
+		(m) => m.id === effectiveModel && m.selectable,
+	);
 	const [prompt, setPrompt] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [activeTurn, setActiveTurn] = useState<{
@@ -58,21 +57,8 @@ export default function AgentPanel({
 	useEffect(() => {
 		bottom.current?.scrollIntoView({ block: "nearest" });
 	}, [answer, actions.length, state.data?.turns.length]);
-	const persistSettings = async (next: AgentSettings) => {
-		setSaving(true);
-		setError("");
-		try {
-			await jsonRequest(`${endpoint(mailboxId)}/settings`, next);
-			await state.refetch();
-			setEditing(false);
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Could not save settings");
-		} finally {
-			setSaving(false);
-		}
-	};
 	const send = async (text: string) => {
-		if (busy || !text.trim()) return;
+		if (busy || !text.trim() || !modelAvailable) return;
 		const turn = { id: crypto.randomUUID(), prompt: text };
 		setActiveTurn(turn);
 		setBusy(true);
@@ -89,6 +75,7 @@ export default function AgentPanel({
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					...turn,
+					model: effectiveModel,
 					...(selectedEmailId ? { emailId: selectedEmailId } : {}),
 				}),
 			});
@@ -197,85 +184,62 @@ export default function AgentPanel({
 					<select
 						aria-label="Agent model"
 						className="mt-1 block w-full rounded border border-kumo-line bg-kumo-base p-2"
-						value={current?.model ?? AGENT_MODELS[0].id}
-						disabled={!current || saving || !!running}
-						onChange={(event) =>
-							current &&
-							void persistSettings({
-								...current,
-								model: event.target.value as AgentSettings["model"],
-							})
-						}
+						value={selectedModel}
+						disabled={!current || !!running}
+						onChange={(event) => setAgentModel(mailboxId, event.target.value)}
 					>
-						{AGENT_MODELS.map((model) => (
-							<option key={model.id} value={model.id}>
-								{model.name}
+						<option value="">
+							Default:{" "}
+							{models.find((m) => m.id === current?.model)?.name ??
+								current?.model ??
+								"Loading…"}
+						</option>
+						{selectedModel && !models.some((m) => m.id === selectedModel) && (
+							<option value={selectedModel} disabled>
+								{selectedModel} (unavailable)
 							</option>
-						))}
+						)}
+						{Array.from(new Set(models.map((m) => m.provider))).map(
+							(provider) => (
+								<optgroup key={provider} label={provider}>
+									{models
+										.filter((m) => m.provider === provider)
+										.map((model) => (
+											<option
+												key={model.id}
+												value={model.id}
+												disabled={!model.selectable}
+											>
+												{model.name}
+												{!model.available
+													? " (retired)"
+													: !model.selectable
+														? " (not configured)"
+														: ""}
+											</option>
+										))}
+								</optgroup>
+							),
+						)}
 					</select>
 				</label>
 				<p className="text-xs text-kumo-subtle">
-					Saved for this mailbox. Used for chat and automatic drafts.
+					Choose a model for this chat. Automatic drafts use the default in
+					settings.
 				</p>
-				<Button
-					variant="ghost"
-					size="sm"
-					disabled={!current}
-					onClick={() => {
-						setSettings(current);
-						setEditing(!editing);
-					}}
-				>
-					Agent settings
-				</Button>
-				{editing && settings && (
-					<form
-						className="space-y-3"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void persistSettings(settings);
-						}}
-					>
-						<label className="block text-sm">
-							Writing instructions
-							<textarea
-								aria-label="Agent writing instructions"
-								rows={4}
-								maxLength={8000}
-								className="mt-1 w-full rounded border border-kumo-line bg-kumo-base p-2"
-								placeholder="Tone, business context, and how to handle requests…"
-								value={settings.system_prompt}
-								onChange={(event) =>
-									setSettings({
-										...settings,
-										system_prompt: event.target.value,
-									})
-								}
-							/>
-						</label>
-						<label className="flex items-start gap-2 text-sm">
-							<input
-								type="checkbox"
-								className="mt-1"
-								checked={settings.auto_draft}
-								disabled={
-									!state.data?.autoDraftAvailable || !state.data?.available
-								}
-								onChange={(event) =>
-									setSettings({ ...settings, auto_draft: event.target.checked })
-								}
-							/>
-							Automatically draft replies to new emails
-						</label>
-						<p className="text-xs text-kumo-subtle">
-							Applies to future incoming mail. Drafts wait for your review and
-							are never sent automatically.
-						</p>
-						<Button type="submit" disabled={saving}>
-							{saving ? "Saving…" : "Save settings"}
-						</Button>
-					</form>
+				{current && !modelAvailable && (
+					<p role="alert" className="text-sm text-kumo-subtle">
+						This model is unavailable. Choose another model or configure its
+						provider.
+					</p>
 				)}
+				<Link
+					className="text-sm underline text-kumo-link"
+					to={`/mailbox/${encodeURIComponent(mailboxId)}/settings?tab=models`}
+					onClick={close}
+				>
+					Model &amp; agent settings
+				</Link>
 			</div>
 			<div className="flex-1 overflow-y-auto p-4 space-y-4" aria-live="polite">
 				{state.isLoading && <p>Loading agent…</p>}
@@ -289,7 +253,7 @@ export default function AgentPanel({
 				)}
 				{state.data && !state.data.available && (
 					<p className="text-sm text-kumo-subtle">
-						Workers AI is not configured in this environment.
+						No AI provider is configured in this environment.
 					</p>
 				)}
 				{state.data?.turns.length === 0 && (
@@ -308,8 +272,7 @@ export default function AgentPanel({
 								{turn.prompt}
 							</div>
 							<p className="text-xs text-kumo-subtle">
-								{AGENT_MODELS.find((m) => m.id === turn.model)?.name ??
-									turn.model}
+								{models.find((m) => m.id === turn.model)?.name ?? turn.model}
 							</p>
 							<p className="whitespace-pre-wrap">
 								{turn.answer ||
@@ -350,7 +313,7 @@ export default function AgentPanel({
 					<Button
 						variant="secondary"
 						size="sm"
-						disabled={!!running || !state.data?.available}
+						disabled={!!running || !modelAvailable}
 						onClick={() =>
 							void send(
 								"Read the selected email and its conversation, then save a draft reply for my review.",
@@ -367,12 +330,12 @@ export default function AgentPanel({
 					className="block w-full rounded border border-kumo-line bg-kumo-base p-2 text-sm"
 					placeholder="Ask the agent…"
 					value={prompt}
-					disabled={!!running || !state.data?.available}
+					disabled={!!running || !modelAvailable}
 					onChange={(event) => setPrompt(event.target.value)}
 				/>
 				<Button
 					type="submit"
-					disabled={!prompt.trim() || !!running || !state.data?.available}
+					disabled={!prompt.trim() || !!running || !modelAvailable}
 				>
 					{running ? "Working…" : "Ask agent"}
 				</Button>

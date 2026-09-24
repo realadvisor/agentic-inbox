@@ -1,10 +1,27 @@
-// Only Workers AI models with tool calling; validated on both settings writes and runs.
+// Workers AI seed choices. Gateway choices come from the refreshed catalog.
 export const AGENT_MODELS = [
 	{ id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6" },
 	{ id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash" },
 	{ id: "@cf/qwen/qwen3-30b-a3b-fp8", name: "Qwen3 30B" },
 ] as const;
-export type AgentModel = (typeof AGENT_MODELS)[number]["id"];
+export type AgentModel = string;
+export type ModelSource = "workers" | "gateway";
+export interface AgentCatalogModel {
+	id: string;
+	name: string;
+	provider: string;
+	source: ModelSource;
+	available: boolean;
+	selectable: boolean;
+	context_window: number | null;
+	input_price: number | null;
+	output_price: number | null;
+}
+export interface AgentCatalog {
+	models: AgentCatalogModel[];
+	refreshed_at: string | null;
+	gatewayConfigured: boolean;
+}
 export const DEFAULT_AGENT_MODEL: AgentModel = AGENT_MODELS[0].id;
 export interface AgentSettings {
 	model: AgentModel;
@@ -29,6 +46,7 @@ export interface AgentState {
 	available: boolean;
 	autoDraftAvailable: boolean;
 	settings: AgentSettings;
+	catalog: AgentCatalog;
 	turns: AgentTurn[];
 }
 export type AgentEvent =
