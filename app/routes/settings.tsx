@@ -73,10 +73,10 @@ export default function SettingsRoute() {
 					aria-label="Settings sections"
 				>
 					{[
+						"account",
+						"tags",
 						"classifiers",
 						...(mode.data?.canManageClassifiers ? ["runs"] : []),
-						"tags",
-						"account",
 					].map((t) => (
 						<Button
 							key={t}
