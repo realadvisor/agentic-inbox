@@ -14,7 +14,7 @@
 		"db:seed": "tsx --env-file=.env scripts/seed.ts",
 		"check": "eslint app server shared scripts tests *.ts && react-router typegen && tsc --noEmit",
 		"test": "tsx --env-file=.env --test tests/*.test.ts",
-		"test:browser": "playwright test",
+		"test:browser": "pnpm build && playwright test",
 		"db:local": "node --env-file=.env scripts/local-db.mjs",
 		"db:stop": "node --env-file=.env scripts/local-db.mjs stop",
 		"setup:local": "node scripts/setup.mjs",

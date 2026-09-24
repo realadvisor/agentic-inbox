@@ -1,3 +1,4 @@
+import { pruneProviderRuns } from "./classification/provider-runs";
 import {
 	publishOutbox,
 	parkBatch,
@@ -17,6 +18,7 @@ import type { MailSender } from "./outbound";
 export interface WorkerEnv {
 	PUBLIC_ORIGIN: string;
 	CLASSIFIERS_ENABLED?: string;
+	CLASSIFIER_LOG_RETENTION_DAYS?: string;
 	CLASSIFICATIONS?: QueueBinding;
 	CLASSIFIER_BACKFILLS?: QueueBinding;
 	TYPESAFE_API_KEY?: string;
@@ -141,6 +143,18 @@ export default {
 	async scheduled(_event: unknown, env: WorkerEnv) {
 		// Recovery only: normal ingestion/API writes publish immediately.
 		await dispatchClassifiers(env, 50);
+		const db = postgres(env.HYPERDRIVE.connectionString, {
+			max: 1,
+			fetch_types: false,
+		});
+		try {
+			await pruneProviderRuns(
+				db,
+				Number(env.CLASSIFIER_LOG_RETENTION_DAYS ?? 30),
+			);
+		} finally {
+			await db.end({ timeout: 5 });
+		}
 	},
 	async queue(batch: QueueBatch, env: WorkerEnv) {
 		if (!queuesEnabled(env)) {

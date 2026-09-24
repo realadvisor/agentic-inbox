@@ -1,3 +1,5 @@
+import { ConversationClassifierDrawer } from "./ConversationClassifierDrawer";
+import { useMailMode } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -51,6 +53,7 @@ function EmailPanelSkeleton() {
 }
 
 export default function EmailPanel({ emailId }: { emailId: string }) {
+	const mode = useMailMode();
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
 		folder: string;
@@ -293,12 +296,19 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			/>
 
 			{mailboxId && (
-				<div className="px-5 py-3 border-b border-kumo-line">
+				<div className="px-5 py-3 border-b border-kumo-line flex flex-wrap items-center gap-2">
 					<TagActions
 						mailboxId={mailboxId}
 						threadIds={[email.thread_id ?? email.id]}
 						tags={email.tags}
 					/>
+					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
+						<ConversationClassifierDrawer
+							key={`${mailboxId}/${email.thread_id ?? email.id}`}
+							mailboxId={mailboxId}
+							threadId={email.thread_id ?? email.id}
+						/>
+					)}
 				</div>
 			)}
 

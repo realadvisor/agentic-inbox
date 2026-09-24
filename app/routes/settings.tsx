@@ -1,3 +1,4 @@
+import ClassifierRuns from "~/components/ClassifierRuns";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -61,12 +62,22 @@ export default function SettingsRoute() {
 	}
 
 	return (
-		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
+		<div
+			className={`${tab === "runs" ? "" : "max-w-2xl"} px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto`}
+		>
 			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
 
 			{hasClassifiers && (
-				<div className="flex gap-2 mb-6" aria-label="Settings sections">
-					{["classifiers", "tags", "account"].map((t) => (
+				<div
+					className="flex flex-wrap gap-2 mb-6"
+					aria-label="Settings sections"
+				>
+					{[
+						"account",
+						"tags",
+						"classifiers",
+						...(mode.data?.canManageClassifiers ? ["runs"] : []),
+					].map((t) => (
 						<Button
 							key={t}
 							variant={tab === t ? "primary" : "ghost"}
@@ -77,7 +88,9 @@ export default function SettingsRoute() {
 					))}
 				</div>
 			)}
-			{hasClassifiers && tab === "classifiers" ? (
+			{hasClassifiers && tab === "runs" ? (
+				<ClassifierRuns />
+			) : hasClassifiers && tab === "classifiers" ? (
 				<Classifiers />
 			) : hasClassifiers && tab === "tags" ? (
 				<TagSettings />

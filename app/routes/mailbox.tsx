@@ -4,7 +4,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useEffect, useRef } from "react";
-import { Outlet, useParams } from "react-router";
+import { Outlet, useParams, useSearchParams } from "react-router";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
 import Sidebar from "~/components/Sidebar";
@@ -13,11 +13,18 @@ import { useUIStore } from "~/hooks/useUIStore";
 
 export default function MailboxRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
+	const [searchParams] = useSearchParams();
+	const deepLinkedEmail = searchParams.get("email");
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);
 	const prevMailboxIdRef = useRef<string | undefined>(undefined);
-	const { isSidebarOpen, closeSidebar, closePanel, closeComposeModal } =
-		useUIStore();
+	const {
+		isSidebarOpen,
+		closeSidebar,
+		closePanel,
+		closeComposeModal,
+		selectEmail,
+	} = useUIStore();
 
 	useEffect(() => {
 		if (
@@ -30,8 +37,17 @@ export default function MailboxRoute() {
 			closeSidebar();
 		}
 
+		if (deepLinkedEmail && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(deepLinkedEmail))
+			selectEmail(deepLinkedEmail);
 		prevMailboxIdRef.current = mailboxId;
-	}, [mailboxId, closeComposeModal, closePanel, closeSidebar]);
+	}, [
+		mailboxId,
+		deepLinkedEmail,
+		selectEmail,
+		closeComposeModal,
+		closePanel,
+		closeSidebar,
+	]);
 
 	return (
 		<div className="flex h-[calc(100dvh-36px)] overflow-hidden">

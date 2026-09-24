@@ -3985,6 +3985,158 @@
 					}
 				}
 			}
+		},
+		"/api/v1/classification/provider-runs": {
+			"get": {
+				"tags": ["Classifiers"],
+				"summary": "List provider requests (inbox administrators only)",
+				"description": "Newest first, one entry per actual Jev request, including retries. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "thread",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "classifier",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["running", "succeeded", "failed", "interrupted"]
+						}
+					},
+					{
+						"name": "from",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "to",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Page of request summaries",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"runs": {
+											"type": "array",
+											"items": {
+												"type": "object"
+											}
+										},
+										"next_cursor": {
+											"type": "string",
+											"nullable": true
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid filters or cursor"
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"503": {
+						"description": "Classifiers disabled"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/provider-runs/{id}": {
+			"get": {
+				"tags": ["Classifiers"],
+				"summary": "Inspect a provider request and response (inbox administrators only)",
+				"description": "Includes exact request/response bodies as text, per-question classifier snapshots and application outcomes. No authorization headers are stored. Bodies may include private email content.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Provider request detail, items and conversation email reference",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid ID"
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"404": {
+						"description": "Run not found"
+					},
+					"503": {
+						"description": "Classifiers disabled"
+					}
+				}
+			}
 		}
 	},
 	"components": {
