@@ -963,3 +963,221 @@ test("example setting persists without clearing decisions; changing question cle
 	assert.equal(response.status, 200);
 	assert.equal((await db`SELECT * FROM classifier_examples`).length, 0);
 });
+
+async function siblingClassifier(question: string) {
+	const [tag] =
+		await db`INSERT INTO tags(name,color) VALUES(${crypto.randomUUID()},'#2563eb') RETURNING id`;
+	const [c] =
+		await db`INSERT INTO classifiers(tag_id,question,enabled,include_reviewed_examples) VALUES(${tag.id},${question},true,true) RETURNING *`;
+	return c;
+}
+
+test("one Jev call answers three classifiers with independent examples and probabilities", async () => {
+	await reset();
+	await db`UPDATE classifiers SET include_reviewed_examples=true WHERE id=${classifierId}`;
+	const second = await siblingClassifier("Second question?"),
+		third = await siblingClassifier("Third question?");
+	const example = await message(undefined, "Historical human decision");
+	await setConversationTags(db, mailbox, [example], tagId, "add", "human");
+	await setConversationTags(
+		db,
+		mailbox,
+		[example],
+		second.tag_id,
+		"remove",
+		"human",
+	);
+	const target = await message(undefined, "Target for three classifiers");
+	let calls = 0;
+	const request: typeof fetch = async (_url, init) => {
+		calls++;
+		const body = JSON.parse(init!.body as string);
+		assert.equal(Object.keys(body.questions).length, 3);
+		assert.equal(body.state.messages.length, 1);
+		const answers = Object.fromEntries(
+			Object.entries(body.questions).map(([id, raw]) => {
+				const q = raw as {
+					instructions: string;
+					criteria?: {
+						true: { examples: unknown[] };
+						false: { examples: unknown[] };
+					};
+				};
+				const isSecond = q.instructions.includes("Second question?"),
+					isThird = q.instructions.includes("Third question?");
+				if (isSecond) {
+					assert.equal(q.criteria?.false.examples.length, 1);
+					assert.equal(q.criteria?.true.examples.length, 0);
+				} else if (!isThird) assert.equal(q.criteria?.true.examples.length, 1);
+				else assert.equal(q.criteria, undefined);
+				return [
+					id,
+					{ type: "noul", noul: isSecond ? 0.01 : isThird ? 0.5 : 0.99 },
+				];
+			}),
+		);
+		return Response.json({ model: "jev-test", answers });
+	};
+	await processJob(db, "test", (await job(target)).token, request);
+	assert.equal(calls, 1);
+	const rows =
+		await db`SELECT * FROM conversation_classifications WHERE thread_id=${target}`;
+	assert.equal(
+		rows.find((r) => r.classifier_id === classifierId)?.answer,
+		true,
+	);
+	assert.equal(rows.find((r) => r.classifier_id === second.id)?.answer, false);
+	assert.equal(
+		rows.find((r) => r.classifier_id === third.id)?.status,
+		"review",
+	);
+	for (const row of rows) await processJob(db, "test", row.token, request);
+	assert.equal(
+		calls,
+		1,
+		"later broker deliveries must not repeat completed questions",
+	);
+});
+
+test("missing batch answers retry independently without discarding successful siblings", async () => {
+	await reset();
+	await siblingClassifier("Missing answer question?");
+	const target = await message();
+	await processJob(
+		db,
+		"test",
+		(await job(target)).token,
+		async (_url, init) => {
+			const { questions } = JSON.parse(init!.body as string);
+			const answers = Object.fromEntries(
+				Object.entries(questions)
+					.filter(
+						([, q]) =>
+							!(q as { instructions: string }).instructions.includes(
+								"Missing answer question?",
+							),
+					)
+					.map(([id]) => [id, { type: "noul", noul: 0.99 }]),
+			);
+			return Response.json({ answers });
+		},
+	);
+	assert.equal((await job(target)).status, "complete");
+	const [missing] =
+		await db`SELECT * FROM conversation_classifications WHERE thread_id=${target} AND classifier_id<>${classifierId}`;
+	assert.equal(missing.status, "pending");
+	assert.equal(missing.error, "invalid_provider_answer");
+	await db`UPDATE conversation_classifications SET available_at=now() WHERE token=${missing.token}`;
+	await processJob(db, "test", missing.token, yes);
+	assert.equal(
+		(
+			await db`SELECT status FROM conversation_classifications WHERE token=${missing.token}`
+		)[0].status,
+		"complete",
+	);
+});
+
+test("human overrides and classifier edits during a batch fence only the affected results", async () => {
+	await reset();
+	const second = await siblingClassifier("Edited question?"),
+		third = await siblingClassifier("Unchanged question?");
+	const target = await message();
+	await processJob(
+		db,
+		"test",
+		(await job(target)).token,
+		async (_url, init) => {
+			const { questions } = JSON.parse(init!.body as string);
+			await setConversationTags(
+				db,
+				mailbox,
+				[target],
+				tagId,
+				"remove",
+				"human",
+			);
+			await db`UPDATE classifiers SET revision=revision+1 WHERE id=${second.id}`;
+			return Response.json({
+				answers: Object.fromEntries(
+					Object.keys(questions).map((id) => [
+						id,
+						{ type: "noul", noul: 0.99 },
+					]),
+				),
+			});
+		},
+	);
+	assert.equal((await job(target)).status, "skipped");
+	const tags =
+		await db`SELECT * FROM conversation_tags WHERE thread_id=${target}`;
+	assert.ok(tags.find((t) => t.tag_id === tagId)?.removed_at);
+	assert.equal(
+		tags.find((t) => t.tag_id === second.tag_id),
+		undefined,
+	);
+	assert.equal(tags.find((t) => t.tag_id === third.tag_id)?.removed_at, null);
+});
+
+test("new mail during a batched request prevents every stale answer from being applied", async () => {
+	await reset();
+	await siblingClassifier("Another question?");
+	const target = await message();
+	await processJob(
+		db,
+		"test",
+		(await job(target)).token,
+		async (_url, init) => {
+			const { questions } = JSON.parse(init!.body as string);
+			await message(target, "New evidence while Jev was answering");
+			return Response.json({
+				answers: Object.fromEntries(
+					Object.keys(questions).map((id) => [
+						id,
+						{ type: "noul", noul: 0.99 },
+					]),
+				),
+			});
+		},
+	);
+	assert.equal(
+		(await db`SELECT * FROM conversation_tags WHERE thread_id=${target}`)
+			.length,
+		0,
+	);
+	const jobs =
+		await db`SELECT status,answer FROM conversation_classifications WHERE thread_id=${target}`;
+	assert.equal(jobs.length, 2);
+	for (const j of jobs) {
+		assert.equal(j.status, "pending");
+		assert.equal(j.answer, null);
+	}
+});
+
+test("overlapping deliveries never send the same question twice", async () => {
+	await reset();
+	await siblingClassifier("Concurrent sibling?");
+	const target = await message();
+	const jobs =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${target}`;
+	const asked: string[] = [];
+	const request: typeof fetch = async (_url, init) => {
+		const { questions } = JSON.parse(init!.body as string);
+		for (const q of Object.values(questions))
+			asked.push((q as { instructions: string }).instructions);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		return Response.json({
+			answers: Object.fromEntries(
+				Object.keys(questions).map((id) => [id, { type: "noul", noul: 0.99 }]),
+			),
+		});
+	};
+	await Promise.all(jobs.map((j) => processJob(db, "test", j.token, request)));
+	assert.equal(asked.length, 2);
+	assert.equal(new Set(asked).size, 2);
+	assert.equal(
+		(
+			await db`SELECT * FROM conversation_classifications WHERE thread_id=${target} AND status='complete'`
+		).length,
+		2,
+	);
+});

@@ -1,3 +1,4 @@
+import { batchRequests } from "./batch";
 import { recentExamples, type HumanExample } from "./examples";
 import { liveSender } from "../mailboxes";
 import type { Database } from "../db";
@@ -120,9 +121,48 @@ export async function finishRuns(db: Database) {
 
 export type DeliveryResult = { ack: true } | { retry: number };
 
+/** A broker delivery also handles ready sibling questions for this conversation.
+ * Each sibling still owns its original token and broker delivery for retries. */
+export async function processJob(
+	db: Database,
+	key: string,
+	token: string,
+	request: typeof fetch = fetch,
+): Promise<DeliveryResult> {
+	const [anchor] = await db<Job[]>`SELECT * FROM conversation_classifications
+	 WHERE token=${token} AND status='pending' AND available_at<=now()
+	 AND (lease_until IS NULL OR lease_until<=now())`;
+	if (!anchor) return processSingleJob(db, key, token, request);
+	// At most three jobs: even payload splits fit within the 90-second lease
+	// with a 20-second timeout per provider call. Queue concurrency stays unchanged.
+	const siblings = await db<{ token: string }[]>`SELECT j.token
+	 FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id
+	 WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id}
+	 AND j.generation=${anchor.generation} AND j.token<>${token}
+	 AND j.status='pending' AND j.available_at<=now()
+	 AND (j.lease_until IS NULL OR j.lease_until<=now())
+	 AND c.enabled AND c.revision=j.revision
+	 ORDER BY j.classifier_id LIMIT 2`;
+	if (!siblings.length) return processSingleJob(db, key, token, request);
+	const tokens = [token, ...siblings.map((j) => j.token)];
+	const batch = batchRequests(request, tokens.length);
+	const results = await Promise.allSettled(
+		tokens.map((jobToken, index) =>
+			processSingleJob(db, key, jobToken, batch.forJob(index)).finally(() =>
+				batch.done(index),
+			),
+		),
+	);
+	for (const result of results)
+		if (result.status === "rejected") throw result.reason;
+	const root = results[0];
+	if (root.status === "rejected") throw root.reason;
+	return root.value;
+}
+
 /** Process exactly the version named by the broker. Leases only deduplicate delivery;
  * concurrency, scheduling and redelivery belong to Cloudflare Queues. */
-export async function processJob(
+async function processSingleJob(
 	db: Database,
 	key: string,
 	token: string,
