@@ -193,16 +193,6 @@ export default function Sidebar() {
 					/>
 				))}
 
-				{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
-					<Link
-						to={`/mailbox/${mailboxId}/classifier-runs`}
-						onClick={handleNavClick}
-						className="flex items-center gap-3 py-2 px-3 rounded-md text-sm text-kumo-strong hover:bg-kumo-tint"
-					>
-						<ClipboardTextIcon size={18} />
-						<span>Classifier runs</span>
-					</Link>
-				)}
 				{/* Custom folders */}
 				{customFolders.length > 0 && (
 					<div className="pt-5">

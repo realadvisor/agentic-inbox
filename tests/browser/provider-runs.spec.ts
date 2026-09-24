@@ -90,7 +90,13 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await context.grantPermissions(["clipboard-read", "clipboard-write"], {
 		origin,
 	});
-	await page.goto(`${origin}/mailbox/${mailbox}/classifier-runs`);
+	await page.goto(`${origin}/mailbox/${mailbox}/settings`);
+	await page.getByRole("button", { name: "Runs", exact: true }).click();
+	await expect(
+		page
+			.locator("nav")
+			.getByRole("link", { name: "Classifier runs", exact: true }),
+	).toHaveCount(0);
 	await expect(
 		page.getByRole("heading", { name: "Classifier runs", exact: true }),
 	).toBeVisible();
@@ -119,7 +125,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 		page.frameLocator("iframe").first().locator("body"),
 	).toContainText("Please help");
 	await page
-		.getByRole("link", { name: "Classifier runs", exact: true })
+		.getByRole("link", { name: "View classifier runs", exact: true })
 		.last()
 		.click();
 	await expect(list.getByRole("button")).toHaveCount(1);

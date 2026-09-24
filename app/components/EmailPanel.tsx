@@ -304,9 +304,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
 						<Link
 							className="text-xs underline inline-block mt-2"
-							to={`/mailbox/${encodeURIComponent(mailboxId)}/classifier-runs?thread=${email.thread_id ?? email.id}`}
+							to={`/mailbox/${encodeURIComponent(mailboxId)}/settings?tab=runs&thread=${email.thread_id ?? email.id}`}
 						>
-							Classifier runs
+							View classifier runs
 						</Link>
 					)}
 				</div>
