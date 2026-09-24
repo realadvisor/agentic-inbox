@@ -94,7 +94,7 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 			await db`SELECT count(*) FILTER (WHERE delivery_status = 'simulated')::int AS sent, count(*) FILTER (WHERE delivery_status = 'draft')::int AS drafts, count(DISTINCT thread_id)::int AS threads FROM emails WHERE mailbox_id = ${mailbox}`;
 		expect(counts).toMatchObject({ sent: 1, drafts: 0, threads: 1 });
 		expect(errors).toEqual([]);
-		await page.goto("/mailbox/privacy@realadvisor.com/emails/inbox");
+		await page.goto("/mailbox/privacy@realadvisor.com/emails/inbox?status=all");
 		await expect(
 			page.getByText("Request to delete my account", { exact: true })
 		).toBeVisible();
