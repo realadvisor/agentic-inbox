@@ -946,6 +946,15 @@
 							"format": "uuid"
 						},
 						"description": "Active conversation tag UUID. Applied before thread grouping, counting and pagination; combined with other filters using AND."
+					},
+					{
+						"name": "needs_review",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						},
+						"description": "When true, only conversations with unresolved classifier reviews or errors are returned. Excludes disabled classifiers and manual tag decisions. Applied before grouping, counting and pagination."
 					}
 				],
 				"responses": {
@@ -1323,6 +1332,15 @@
 							"format": "uuid"
 						},
 						"description": "Active conversation tag UUID. Applied before thread grouping, counting and pagination; combined with other filters using AND."
+					},
+					{
+						"name": "needs_review",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						},
+						"description": "When true, only conversations with unresolved classifier reviews or errors are returned. Excludes disabled classifiers and manual tag decisions. Applied before grouping, counting and pagination."
 					}
 				],
 				"responses": {

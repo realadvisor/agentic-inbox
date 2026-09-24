@@ -52,7 +52,10 @@ function required<T>(row: T | undefined): T {
 }
 
 export class InboxStore {
-	constructor(readonly db: Database) {}
+	constructor(
+		readonly db: Database,
+		readonly options: { classifierPreview?: boolean } = {},
+	) {}
 
 	async tagsForThreads(mailbox: string, threads: string[]) {
 		if (!threads.length) return [];
@@ -152,6 +155,19 @@ export class InboxStore {
 				this
 					.db`EXISTS (SELECT 1 FROM conversation_tags ct WHERE ct.mailbox_id=e.mailbox_id AND ct.thread_id=e.thread_id AND ct.tag_id=${params.tag_id} AND ct.removed_at IS NULL)`,
 			);
+		if (params.needs_review === "true") {
+			const preview = this.options.classifierPreview;
+			conditions.push(this.db`EXISTS (
+				SELECT 1 FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
+				JOIN ${this.db(preview ? "preview_classifiers" : "classifiers")} c ON c.id=r.classifier_id
+				WHERE r.mailbox_id=e.mailbox_id AND r.thread_id=e.thread_id
+				AND c.enabled AND r.answer IS NULL
+				${preview ? this.db`` : this.db`AND r.revision=c.revision AND r.status IN ('review','error')`}
+				AND NOT EXISTS (SELECT 1 FROM conversation_tags ct
+					WHERE ct.mailbox_id=r.mailbox_id AND ct.thread_id=r.thread_id
+					AND ct.tag_id=c.tag_id AND ct.source='manual')
+			)`);
+		}
 		if (params.folder) conditions.push(this.db`e.folder_id = ${params.folder}`);
 		if (params.thread_id)
 			conditions.push(this.db`e.thread_id = ${params.thread_id}`);

@@ -127,8 +127,12 @@ function FolderEmptyState({
 				className="text-kumo-subtle"
 			/>
 		),
-		title: "No emails",
-		description: "This folder is empty.",
+		title:
+			folder === "needs-review" ? "No conversations need review" : "No emails",
+		description:
+			folder === "needs-review"
+				? "Conversations awaiting classification review will appear here."
+				: "This folder is empty.",
 	};
 
 	return (
@@ -182,6 +186,7 @@ export default function EmailListRoute() {
 	} = useUIStore();
 	const [page, setPage] = useState(1);
 	const [searchParams, setSearchParams] = useSearchParams();
+	const needsReview = searchParams.get("needs_review") === "true";
 	const tagId = searchParams.get("tag_id") ?? "";
 	const setTagId = (id: string) =>
 		setSearchParams((current) => {
@@ -190,7 +195,7 @@ export default function EmailListRoute() {
 			else next.delete("tag_id");
 			return next;
 		});
-	const viewKey = `${mailboxId}/${folder}/${tagId}`;
+	const viewKey = `${mailboxId}/${folder}/${tagId}/${needsReview}`;
 	const prevFolderRef = useRef<string | undefined>(undefined);
 	const viewChanged = prevFolderRef.current !== viewKey;
 	const currentPage = viewChanged ? 1 : page;
@@ -198,7 +203,7 @@ export default function EmailListRoute() {
 	const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
 	useEffect(() => {
 		setSelectedThreads([]);
-	}, [mailboxId, folder, page, tagId]);
+	}, [mailboxId, folder, page, tagId, needsReview]);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -212,8 +217,9 @@ export default function EmailListRoute() {
 			page: String(currentPage),
 			limit: String(PAGE_SIZE),
 			...(tagId ? { tag_id: tagId } : {}),
+			...(needsReview ? { needs_review: "true" } : {}),
 		}),
-		[folder, currentPage, tagId],
+		[folder, currentPage, tagId, needsReview],
 	);
 
 	const { data: emailData, isFetching: isRefreshing } = useEmails(
@@ -228,6 +234,7 @@ export default function EmailListRoute() {
 	const { data: folders = [] } = useFolders(mailboxId);
 
 	const folderName = useMemo(() => {
+		if (needsReview) return "Needs review";
 		if (folder === "all")
 			return tagId
 				? (catalog.data?.find((tag) => tag.id === tagId)?.name ??
@@ -236,7 +243,7 @@ export default function EmailListRoute() {
 		const found = folders.find((f) => f.id === folder);
 		if (found) return found.name;
 		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";
-	}, [folders, folder, tagId, catalog.data]);
+	}, [folders, folder, tagId, catalog.data, needsReview]);
 
 	const isPanelOpen = selectedEmailId !== null || isComposing;
 
@@ -603,7 +610,10 @@ export default function EmailListRoute() {
 							: "No conversations with this tag in this folder."}
 					</p>
 				) : (
-					<FolderEmptyState folder={folder} onCompose={() => startCompose()} />
+					<FolderEmptyState
+						folder={needsReview ? "needs-review" : folder}
+						onCompose={() => startCompose()}
+					/>
 				)}
 			</div>
 
