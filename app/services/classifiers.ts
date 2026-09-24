@@ -17,6 +17,7 @@ export interface Classifier {
 	question: string;
 	mailbox_ids: string[];
 	enabled: boolean;
+	include_reviewed_examples?: boolean;
 	revision: number;
 	run: ClassifierRun | null;
 	errors?: number;

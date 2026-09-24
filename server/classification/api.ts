@@ -10,6 +10,7 @@ const input = z
 		tag_id: id,
 		mailbox_ids: z.array(z.string().email()).max(50),
 		enabled: z.boolean(),
+		include_reviewed_examples: z.boolean().optional(),
 		revision: z.number().int().positive().optional(),
 	})
 	.strict();
@@ -77,7 +78,7 @@ export function classifierApi(
 					await tx`SELECT count(*)::int AS count FROM classifiers`;
 				if (count >= 50) fail(400, "A maximum of 50 classifiers is supported");
 				const [created] =
-					await tx`INSERT INTO classifiers(question,tag_id,mailbox_ids,enabled) VALUES(${values.question},${values.tag_id},ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),${values.enabled}) RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
+					await tx`INSERT INTO classifiers(question,tag_id,mailbox_ids,enabled,include_reviewed_examples) VALUES(${values.question},${values.tag_id},ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),${values.enabled},${data.include_reviewed_examples ?? false}) RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 				return { ...created, ...tag, run: null };
 			}
 			const [old] =
@@ -85,6 +86,8 @@ export function classifierApi(
 			if (!old) fail(404, "Classifier not found");
 			if (data.revision !== old.revision)
 				fail(409, "Classifier changed; refresh and try again");
+			if (old.question !== data.question || old.tag_id !== data.tag_id)
+				await tx`DELETE FROM classifier_examples WHERE classifier_id=${classifierId}`;
 			const changed =
 				old.question !== data.question ||
 				old.tag_id !== data.tag_id ||
@@ -96,7 +99,7 @@ export function classifierApi(
 				await tx`DELETE FROM conversation_tags WHERE tag_id=${old.tag_id} AND source='classifier'`;
 			}
 			const [updated] =
-				await tx`UPDATE classifiers SET question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
+				await tx`UPDATE classifiers SET question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},include_reviewed_examples=${data.include_reviewed_examples ?? old.include_reviewed_examples},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 			// Enabling does not implicitly classify historical mail. Preserve existing jobs on a no-op edit.
 			if (!changed && data.enabled)
 				await tx`UPDATE conversation_classifications SET revision=${updated.revision},token=gen_random_uuid(),lease_until=NULL WHERE classifier_id=${classifierId}`;
