@@ -45,6 +45,7 @@ const tagSchema = z
 	.strict();
 const querySchema = z.object({
 	tag_id: id.optional(),
+	needs_review: z.enum(["true", "false"]).optional(),
 	page: z.coerce.number().int().min(1).max(100000).optional(),
 	limit: z.coerce.number().int().min(1).max(100).optional(),
 	thread_id: id.optional(),
@@ -70,7 +71,9 @@ export interface ApiOptions {
 }
 
 export function createApi(db: Database, options: ApiOptions) {
-	const store = new InboxStore(db);
+	const store = new InboxStore(db, {
+		classifierPreview: options.classifierPreview,
+	});
 	const isLive = options.mode === "live";
 	const canCreate =
 		!isLive ||

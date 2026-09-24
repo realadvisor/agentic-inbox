@@ -1216,3 +1216,65 @@ test("all ready classifiers are included without the former three-question cap",
 		8,
 	);
 });
+
+test("needs-review filter counts and paginates unresolved conversations across folders", async () => {
+	await reset();
+	const reviewThread = await message();
+	await message(reviewThread);
+	const errorThread = await message();
+	const pendingThread = await message();
+	const completedThread = await message();
+	const staleThread = await message();
+	const manualThread = await message();
+	await db`UPDATE emails SET folder_id='archive' WHERE thread_id=${errorThread}`;
+	for (const thread of [reviewThread, errorThread, staleThread, manualThread]) {
+		await db`UPDATE conversation_classifications SET status='review',answer=NULL WHERE thread_id=${thread}`;
+	}
+	await db`UPDATE conversation_classifications SET status='error' WHERE thread_id=${errorThread}`;
+	await db`UPDATE conversation_classifications SET status='complete',answer=true WHERE thread_id=${completedThread}`;
+	await db`UPDATE conversation_classifications SET revision=0 WHERE thread_id=${staleThread}`;
+	await db`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at)
+		VALUES(${mailbox},${manualThread},${tagId},'manual','review-test',now())`;
+	const path = `/api/v1/mailboxes/${mailbox}/emails?needs_review=true&threaded=true&limit=1`;
+	const firstResponse = await app.request(`http://127.0.0.1:4311${path}`);
+	assert.equal(firstResponse.status, 200);
+	const first = await firstResponse.json();
+	const second = await (
+		await app.request(`http://127.0.0.1:4311${path}&page=2`)
+	).json();
+	assert.equal(first.totalCount, 2);
+	assert.equal(first.emails.length, 1);
+	assert.equal(second.totalCount, 2);
+	assert.deepEqual(
+		new Set([first.emails[0].thread_id, second.emails[0].thread_id]),
+		new Set([reviewThread, errorThread]),
+	);
+	const inbox = await store.list(mailbox, {
+		needs_review: "true",
+		threaded: "true",
+		folder: "inbox",
+	});
+	assert.equal(inbox.totalCount, 1);
+	assert.equal(inbox.emails[0].thread_id, reviewThread);
+	assert.equal((await job(pendingThread)).status, "pending");
+	await db`UPDATE conversation_classifications SET status='complete',answer=false WHERE thread_id=${reviewThread}`;
+	assert.equal(
+		(await store.list(mailbox, { needs_review: "true", threaded: "true" }))
+			.totalCount,
+		1,
+	);
+	await db`UPDATE classifiers SET enabled=false WHERE id=${classifierId}`;
+	assert.equal(
+		(await store.list(mailbox, { needs_review: "true", threaded: "true" }))
+			.totalCount,
+		0,
+	);
+	assert.equal(
+		(
+			await app.request(
+				`http://127.0.0.1:4311${path.replace("needs_review=true", "needs_review=invalid")}`,
+			)
+		).status,
+		400,
+	);
+});

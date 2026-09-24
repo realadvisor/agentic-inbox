@@ -6,6 +6,7 @@
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
+	ClipboardTextIcon,
 	CaretLeftIcon,
 	FileIcon,
 	FolderIcon,
@@ -29,6 +30,7 @@ import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
 import { useTags } from "~/queries/tags";
 import { useMailbox } from "~/queries/mailboxes";
+import { useMailMode } from "./MailMode";
 import { RenameFolder } from "./RenameFolder";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -91,6 +93,9 @@ export default function Sidebar() {
 	}>();
 	const [searchParams] = useSearchParams();
 	const catalog = useTags();
+	const mode = useMailMode();
+	const reviewActive =
+		folder === "all" && searchParams.get("needs_review") === "true";
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
@@ -188,6 +193,18 @@ export default function Sidebar() {
 					/>
 				))}
 
+				{(mode.data?.classifiersEnabled || mode.data?.classifierPreview) && (
+					<Link
+						to={`/mailbox/${mailboxId}/emails/all?needs_review=true`}
+						aria-current={reviewActive ? "page" : undefined}
+						onClick={handleNavClick}
+						className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${reviewActive ? "bg-kumo-fill font-semibold text-kumo-default" : "text-kumo-strong hover:bg-kumo-tint"}`}
+					>
+						<ClipboardTextIcon size={18} className="shrink-0" />
+						<span>Needs review</span>
+					</Link>
+				)}
+
 				{/* Custom folders */}
 				{customFolders.length > 0 && (
 					<div className="pt-5">
@@ -266,7 +283,9 @@ export default function Sidebar() {
 					</div>
 					{catalog.data?.map((tag) => {
 						const active =
-							folder === "all" && searchParams.get("tag_id") === tag.id;
+							folder === "all" &&
+							!reviewActive &&
+							searchParams.get("tag_id") === tag.id;
 						return (
 							<Link
 								key={tag.id}
