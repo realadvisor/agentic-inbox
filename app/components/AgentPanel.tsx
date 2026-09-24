@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
 	ArrowUpIcon,
+	StopIcon,
 	ArrowUpRightIcon,
 	ArrowsOutSimpleIcon,
 	ArrowsInSimpleIcon,
@@ -40,7 +41,10 @@ export default function AgentPanel({
 	const state = useQuery({
 		queryKey: ["agent", mailboxId],
 		queryFn: () => getState(mailboxId),
-		refetchInterval: 10000,
+		refetchInterval: (query) =>
+			query.state.data?.turns.some((t) => t.status === "running")
+				? 2000
+				: 10000,
 	});
 	return (
 		<aside
@@ -125,6 +129,7 @@ function AgentChat({
 	);
 	const [prompt, setPrompt] = useState("");
 	const [draftError, setDraftError] = useState("");
+	const [stopping, setStopping] = useState(false);
 	const bottom = useRef<HTMLDivElement>(null);
 	const scrollArea = useRef<HTMLDivElement>(null);
 	const follow = useRef(true);
@@ -156,21 +161,28 @@ function AgentChat({
 			}),
 		[mailboxId],
 	);
-	const { messages, sendMessage, status, error, setMessages, clearError } =
-		useChat<InboxChatMessage>({
-			id: mailboxId,
-			transport,
-			generateId: () => crypto.randomUUID(),
-			messages: turnsToMessages(state.turns),
-			onFinish: refresh,
-			onError: () => {
-				void refresh();
-			},
-		});
+	const {
+		messages,
+		sendMessage,
+		status,
+		error,
+		setMessages,
+		clearError,
+		stop,
+	} = useChat<InboxChatMessage>({
+		id: mailboxId,
+		transport,
+		generateId: () => crypto.randomUUID(),
+		messages: turnsToMessages(state.turns),
+		onFinish: refresh,
+		onError: () => {
+			void refresh();
+		},
+	});
 	const busy = status === "submitted" || status === "streaming";
 	const running = busy || state.turns.some((t) => t.status === "running");
 	useEffect(() => {
-		if (!busy && !error) setMessages(turnsToMessages(state.turns));
+		if (!busy) setMessages(turnsToMessages(state.turns));
 	}, [state.turns, busy, error, setMessages]);
 	useEffect(() => {
 		if (follow.current) bottom.current?.scrollIntoView({ block: "nearest" });
@@ -191,6 +203,35 @@ function AgentChat({
 			},
 		);
 	};
+	const stopActive = async () => {
+		const id =
+			state.turns.find((t) => t.status === "running")?.id ??
+			[...messages].reverse().find((m) => m.role === "user")?.id;
+		if (!id) return;
+		setStopping(true);
+		setDraftError("");
+		try {
+			const response = await fetch(`${endpoint(mailboxId)}/stop`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ id }),
+			});
+			if (!response.ok)
+				throw new Error(
+					"Could not confirm the stop. The assistant may still be running; try Stop again.",
+				);
+			await stop();
+			clearError();
+			await refresh();
+		} catch (err) {
+			setDraftError(
+				err instanceof Error ? err.message : "Could not stop the assistant",
+			);
+		} finally {
+			setStopping(false);
+		}
+	};
+
 	const openDraft = async (id: string) => {
 		try {
 			const email = await api.getEmail(mailboxId, id);
@@ -372,15 +413,28 @@ function AgentChat({
 							disabled={running}
 							onChange={(value) => setAgentModel(mailboxId, value)}
 						/>
-						<button
-							type="submit"
-							className="agent-send"
-							aria-label="Send message"
-							title="Send message"
-							disabled={!prompt.trim() || running || !modelAvailable}
-						>
-							<ArrowUpIcon size={17} weight="bold" />
-						</button>
+						{running ? (
+							<button
+								type="button"
+								className="agent-send"
+								aria-label="Stop assistant"
+								title="Stop assistant"
+								disabled={stopping}
+								onClick={() => void stopActive()}
+							>
+								<StopIcon size={15} weight="fill" />
+							</button>
+						) : (
+							<button
+								type="submit"
+								className="agent-send"
+								aria-label="Send message"
+								title="Send message"
+								disabled={!prompt.trim() || running || !modelAvailable}
+							>
+								<ArrowUpIcon size={17} weight="bold" />
+							</button>
+						)}
 					</div>
 				</div>
 			</form>

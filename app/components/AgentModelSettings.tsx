@@ -70,11 +70,17 @@ export default function AgentModelSettings({
 			</p>
 		);
 	const { catalog, settings } = state.data;
-	const models = catalog.models.filter((m) =>
-		`${m.name} ${m.id} ${m.provider}`
-			.toLowerCase()
-			.includes(search.toLowerCase()),
-	);
+	const models = catalog.models
+		.filter((m) =>
+			`${m.name} ${m.id} ${m.provider}`
+				.toLowerCase()
+				.includes(search.toLowerCase()),
+		)
+		.sort(
+			(a, b) =>
+				Number(b.selectable) - Number(a.selectable) ||
+				Number(b.id === settings.model) - Number(a.id === settings.model),
+		);
 	const defaultModel = catalog.models.find((m) => m.id === settings.model);
 	return (
 		<div className="space-y-6 text-kumo-default">

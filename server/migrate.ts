@@ -14,6 +14,7 @@ export async function migrate(db: Database) {
 		[10, "010_classifier_provider_runs.sql"],
 		[11, "011_agent_ui_messages.sql"],
 		[12, "012_agent_model_catalog.sql"],
+		[13, "013_agent_run_usage.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),

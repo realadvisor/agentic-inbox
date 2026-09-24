@@ -1,8 +1,15 @@
 import type { UIMessage } from "ai";
 
+export interface AgentUsage {
+	inputTokens: number;
+	outputTokens: number;
+	estimatedCostUsd?: number;
+}
+
 export type InboxChatMessage = UIMessage<{
 	model?: string;
-	status?: "running" | "complete" | "failed";
+	usage?: AgentUsage;
+	status?: "running" | "complete" | "failed" | "stopped";
 }>;
 
 // Workers AI seed choices. Gateway choices come from the refreshed catalog.
@@ -45,10 +52,11 @@ export interface AgentTurn {
 	model: string;
 	prompt: string;
 	answer: string;
-	status: "running" | "complete" | "failed";
+	status: "running" | "complete" | "failed" | "stopped";
 	actions: AgentAction[];
 	created_at: string;
 	ui_message?: InboxChatMessage | null;
+	usage?: AgentUsage | null;
 }
 export interface AgentState {
 	available: boolean;

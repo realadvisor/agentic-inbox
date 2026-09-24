@@ -161,6 +161,18 @@ export default function AgentMessage({
 			{!user && text && (
 				<div className="agent-message-meta">
 					<span>{modelName}</span>
+					{message.metadata?.usage && (
+						<span title="Estimated model cost at catalog rates; excludes discounts, caching adjustments and gateway fees.">
+							{(
+								message.metadata.usage.inputTokens +
+								message.metadata.usage.outputTokens
+							).toLocaleString()}{" "}
+							tokens
+							{message.metadata.usage.estimatedCostUsd != null
+								? ` · ~$${message.metadata.usage.estimatedCostUsd.toFixed(4)}`
+								: ""}
+						</span>
+					)}
 					<button
 						type="button"
 						aria-label={copied ? "Response copied" : "Copy response"}
@@ -171,6 +183,11 @@ export default function AgentMessage({
 					</button>
 					{copyError && <span role="alert">Could not copy</span>}
 				</div>
+			)}
+			{message.metadata?.status === "stopped" && (
+				<p className="agent-run-warning">
+					Stopped. Any changes already saved remain available.
+				</p>
 			)}
 			{message.metadata?.status === "failed" && (
 				<p className="agent-run-warning">

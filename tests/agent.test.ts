@@ -15,6 +15,8 @@ import { InboxStore } from "../server/store";
 import { createApi } from "../server/api";
 import {
 	claimRun,
+	stopRun,
+	startRun,
 	createTools,
 	executeRun,
 	saveSettings,
@@ -740,4 +742,82 @@ test("browser disconnect does not lose native UI history or leave the mailbox le
 	const [lease] =
 		await db`SELECT active_run FROM agent_settings WHERE mailbox_id=${mailbox}`;
 	assert.equal(lease.active_run, null);
+});
+
+test("stopping a run fences later writes, preserves drafts, and cannot stop a newer run", async () => {
+	const mailbox = "stop@example.test";
+	await store.createMailbox(mailbox, "Stop");
+	const email = (await incoming(mailbox))!;
+	const r = run(mailbox);
+	await claimRun(db, r);
+	const tools = createTools(db, r, () => {});
+	const draft = await tools.draft_reply.execute!(
+		{ originalEmailId: email.id, body: "Saved before stop" },
+		toolOptions,
+	);
+	assert.ok(draft);
+	assert.deepEqual(await stopRun(db, mailbox, r.id), { stopped: true });
+	await assert.rejects(
+		() =>
+			tools.draft_reply.execute!(
+				{ originalEmailId: email.id, body: "Too late" },
+				toolOptions,
+			) as Promise<unknown>,
+		/no longer active/,
+	);
+	const [saved] =
+		await db`SELECT count(*)::int AS count FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='draft'`;
+	assert.equal(saved.count, 1);
+	const next = run(mailbox);
+	await claimRun(db, next);
+	assert.deepEqual(await stopRun(db, mailbox, r.id), { stopped: false });
+	const [lease] =
+		await db`SELECT active_run FROM agent_settings WHERE mailbox_id=${mailbox}`;
+	assert.equal(lease.active_run, next.id);
+	await assert.rejects(() => stopRun(db, b, next.id), /not found/);
+	await stopRun(db, mailbox, next.id);
+});
+
+test("server cancellation aborts live generation and preserves stopped status", async () => {
+	const mailbox = "abort@example.test";
+	await store.createMailbox(mailbox, "Abort");
+	const r = run(mailbox);
+	const settings = await claimRun(db, r);
+	let aborted = false;
+	const slow = new MockLanguageModelV3({
+		doStream: async (options) => ({
+			stream: new ReadableStream({
+				start(controller) {
+					options.abortSignal?.addEventListener(
+						"abort",
+						() => {
+							aborted = true;
+							controller.close();
+						},
+						{ once: true },
+					);
+				},
+			}),
+		}),
+	});
+	const execution = await startRun(db, r, settings, () => slow);
+	await stopRun(db, mailbox, r.id);
+	await execution.completion;
+	assert.equal(aborted, true);
+	const [turn] = await db`SELECT status FROM agent_turns WHERE id=${r.id}`;
+	assert.equal(turn.status, "stopped");
+});
+
+test("completed runs persist token usage and catalog cost estimates", async () => {
+	const mailbox = "usage@example.test";
+	await store.createMailbox(mailbox, "Usage");
+	await db`UPDATE agent_models SET input_price=2,output_price=8 WHERE id=${AGENT_MODELS[0].id}`;
+	const r = run(mailbox);
+	const settings = await claimRun(db, r);
+	await executeRun(db, r, settings, () => textModel());
+	const [turn] = await db`SELECT usage FROM agent_turns WHERE id=${r.id}`;
+	assert.equal(turn.usage.inputTokens, 1);
+	assert.equal(turn.usage.outputTokens, 1);
+	assert.equal(turn.usage.estimatedCostUsd, 0.00001);
+	await db`UPDATE agent_models SET input_price=NULL,output_price=NULL WHERE id=${AGENT_MODELS[0].id}`;
 });

@@ -1,13 +1,7 @@
+import { buildHistory } from "./history";
+import { agentErrorMessage } from "./errors";
 import { modelIdSchema, requireModel } from "./catalog";
-import {
-	streamText,
-	convertToModelMessages,
-	isToolOrDynamicToolUIPart,
-	stepCountIs,
-	tool,
-	type LanguageModel,
-	type ModelMessage,
-} from "ai";
+import { streamText, stepCountIs, tool, type LanguageModel } from "ai";
 import { createWorkersAI, type WorkersAISettings } from "workers-ai-provider";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -124,6 +118,23 @@ export async function claimRun(db: Database, run: Run) {
 		await tx`UPDATE agent_settings SET active_run=${run.id},lease_until=now()+interval '3 minutes' WHERE mailbox_id=${run.mailbox}`;
 		await tx`INSERT INTO agent_turns(id,mailbox_id,model,actor,prompt,status) VALUES(${run.id},${run.mailbox},${parsed.model},${run.actor},${run.prompt},'running')`;
 		return parsed;
+	});
+}
+
+// Serialize cancellation with mutations on the same lease row. Once this returns,
+// earlier mutations have committed and this run can no longer make new changes.
+export async function stopRun(db: Database, mailbox: string, id: string) {
+	return db.begin(async (tx) => {
+		const [settings] =
+			await tx`SELECT active_run FROM agent_settings WHERE mailbox_id=${mailbox} FOR UPDATE`;
+		const [turn] =
+			await tx`SELECT status FROM agent_turns WHERE mailbox_id=${mailbox} AND id=${id}`;
+		if (!turn) throw new HTTPException(404, { message: "Agent run not found" });
+		if (turn.status !== "running") return { stopped: false };
+		if (settings?.active_run === id)
+			await tx`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${mailbox} AND active_run=${id}`;
+		await tx`UPDATE agent_turns SET status='stopped' WHERE mailbox_id=${mailbox} AND id=${id} AND status='running'`;
+		return { stopped: true };
 	});
 }
 
@@ -437,58 +448,20 @@ export async function startRun(
 	emit: (event: AgentEvent) => void = () => {},
 ) {
 	let answer = "";
+	let checkpointAt = Date.now();
 	const history = run.automatic
 		? []
 		: await db<
 				AgentTurn[]
-			>`SELECT id,model,prompt,answer,actions,ui_message,status,created_at FROM agent_turns WHERE mailbox_id=${run.mailbox} AND status='complete' AND id<>${run.id} ORDER BY created_at DESC LIMIT 3`;
-	const messages: ModelMessage[] = [];
-	let historyToolIndex = 0;
-	for (const turn of history.reverse()) {
-		messages.push({ role: "user", content: turn.prompt.slice(0, 4000) });
-		if (turn.ui_message) {
-			const bounded = {
-				...turn.ui_message,
-				parts: turn.ui_message.parts
-					.filter((p) => p.type !== "reasoning")
-					.map((part) => {
-						// Provider IDs can contain characters rejected by another provider.
-						// Rename history calls before conversion so calls and results stay paired.
-						const p = isToolOrDynamicToolUIPart(part)
-							? { ...part, toolCallId: `history_tool_${historyToolIndex++}` }
-							: part;
-						if (p.type === "text") return { ...p, text: p.text.slice(0, 4000) };
-						if (
-							isToolOrDynamicToolUIPart(p) &&
-							p.state === "output-available" &&
-							JSON.stringify(p.output).length > 12000
-						)
-							return {
-								...p,
-								output: {
-									truncated: true,
-									excerpt: JSON.stringify(p.output).slice(0, 12000),
-								},
-							};
-						return p;
-					}),
-			};
-			messages.push(
-				...(await convertToModelMessages([bounded], {
-					ignoreIncompleteToolCalls: true,
-				})),
-			);
-		} else {
-			messages.push({
-				role: "assistant",
-				content:
-					turn.answer.slice(0, 4000) +
-					(turn.actions.length
-						? `\nSaved actions: ${JSON.stringify(turn.actions).slice(0, 4000)}`
-						: ""),
-			});
-		}
-	}
+			>`SELECT id,model,prompt,answer,actions,ui_message,status,created_at FROM agent_turns WHERE mailbox_id=${run.mailbox} AND status<>'running' AND id<>${run.id} ORDER BY created_at DESC LIMIT 30`;
+	const [catalogModel] =
+		await db`SELECT context_window,input_price,output_price FROM agent_models WHERE id=${settings.model}`;
+	const system = `${SYSTEM}\nMailbox: ${run.mailbox}\nAdditional operator preferences:\n${settings.system_prompt}`;
+	const messages = await buildHistory(
+		history.reverse(),
+		catalogModel?.context_window ?? null,
+		system + run.prompt,
+	);
 	let prompt = run.prompt;
 	let generation: number | undefined;
 	if (run.emailId) {
@@ -500,9 +473,31 @@ export async function startRun(
 	}
 	messages.push({ role: "user", content: prompt });
 	const tools = createTools(db, run, emit, generation);
+	const controller = new AbortController();
+	const abortSignal = AbortSignal.any([
+		controller.signal,
+		AbortSignal.timeout(120000),
+	]);
+	let checking = false;
+	const checkActive = async () => {
+		if (checking) return;
+		checking = true;
+		try {
+			const [active] =
+				await db`SELECT id FROM agent_turns WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
+			if (!active) controller.abort();
+		} catch {
+			controller.abort();
+		} finally {
+			checking = false;
+		}
+	};
+	await checkActive();
+	let inputTokens = 0,
+		outputTokens = 0;
 	const result = streamText({
 		model: model(settings.model),
-		system: `${SYSTEM}\nMailbox: ${run.mailbox}\nAdditional operator preferences:\n${settings.system_prompt}`,
+		system,
 		messages,
 		tools,
 		stopWhen: stepCountIs(5),
@@ -511,13 +506,21 @@ export async function startRun(
 		onError: () => {
 			console.error("Inbox agent provider request failed");
 		},
-		abortSignal: AbortSignal.timeout(120000),
+		abortSignal,
+		onStepFinish: async (step) => {
+			inputTokens += step.usage.inputTokens ?? 0;
+			outputTokens += step.usage.outputTokens ?? 0;
+			// Save progress independently of the client connection.
+			await db`UPDATE agent_turns SET answer=${answer} WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
+		},
 	});
+	const monitor = setInterval(() => void checkActive(), 1000);
 	const completion = (async () => {
 		try {
 			let failed = false;
 			for await (const part of result.fullStream) {
-				if (part.type === "error") throw new Error("Model request failed");
+				if (part.type === "error") throw part.error;
+				if (part.type === "abort") throw new Error("Run aborted");
 				if (part.type === "tool-error") {
 					failed = true;
 					emit({
@@ -529,21 +532,41 @@ export async function startRun(
 				if (part.type === "text-delta") {
 					answer += part.text;
 					emit({ type: "text", text: part.text });
+					if (Date.now() - checkpointAt > 1000) {
+						checkpointAt = Date.now();
+						await db`UPDATE agent_turns SET answer=${answer} WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
+					}
 				}
 			}
 			if (!answer.trim())
 				answer =
 					"Finished. Check the actions below and review saved drafts before sending.";
-			await db`UPDATE agent_turns SET answer=${answer},status=${failed ? "failed" : "complete"} WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
+			const updated =
+				await db`UPDATE agent_turns SET answer=${answer},status=${failed ? "failed" : "complete"} WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running' RETURNING id`;
+			if (!updated.length) return false;
 			emit({ type: "done" });
 			return !failed;
-		} catch {
-			const message =
-				"The agent could not finish. Any drafts already saved remain available. Check them before trying again.";
+		} catch (error) {
+			const message = agentErrorMessage(error);
 			await db`UPDATE agent_turns SET answer=${answer ? `${answer}\n\n${message}` : message},status='failed' WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
 			emit({ type: "error", message });
 			return false;
 		} finally {
+			clearInterval(monitor);
+			const usage = {
+				inputTokens,
+				outputTokens,
+				...(catalogModel?.input_price != null &&
+				catalogModel?.output_price != null
+					? {
+							estimatedCostUsd:
+								(inputTokens * catalogModel.input_price +
+									outputTokens * catalogModel.output_price) /
+								1e6,
+						}
+					: {}),
+			};
+			await db`UPDATE agent_turns SET usage=CASE WHEN status='complete' THEN ${db.json(usage)} ELSE NULL END WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
 			await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${run.mailbox} AND active_run=${run.id}`;
 		}
 	})();
@@ -562,7 +585,7 @@ export async function executeRun(
 			await startRun(db, run, settings, model, emit)
 		).completion;
 	} catch {
-		await db`UPDATE agent_turns SET status='failed',answer='Could not start the model. Check provider configuration.' WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;
+		await db`UPDATE agent_turns SET status='failed',answer='Could not start the model. Check provider configuration.' WHERE id=${run.id} AND mailbox_id=${run.mailbox} AND status='running'`;
 		await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${run.mailbox} AND active_run=${run.id}`;
 		return false;
 	}

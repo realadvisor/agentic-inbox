@@ -4410,6 +4410,66 @@
 					}
 				}
 			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/stop": {
+			"post": {
+				"operationId": "stopAgentRun",
+				"tags": ["Agent"],
+				"summary": "Stop a specific mailbox agent run",
+				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run.",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["id"],
+								"additionalProperties": false,
+								"properties": {
+									"id": {
+										"type": "string",
+										"format": "uuid"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Stop acknowledged; stopped is false if the run was already terminal",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["stopped"],
+									"properties": {
+										"stopped": {
+											"type": "boolean"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid run ID"
+					},
+					"404": {
+						"description": "Run not found in this mailbox"
+					}
+				}
+			}
 		}
 	},
 	"components": {

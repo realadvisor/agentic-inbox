@@ -1,3 +1,4 @@
+import { agentErrorMessage } from "./errors";
 import {
 	getCatalog,
 	refreshCatalog,
@@ -12,6 +13,7 @@ import { z } from "zod";
 import type { Database } from "../db";
 import {
 	claimRun,
+	stopRun,
 	startRun,
 	getSettings,
 	saveSettings,
@@ -42,7 +44,8 @@ export function agentApi(db: Database, options: AgentOptions) {
 	});
 	app.get("/api/v1/mailboxes/:mailboxId/agent", async (c) => {
 		const mailbox = c.req.param("mailboxId");
-		const turns = await db`SELECT id,model,prompt,answer,actions,ui_message,
+		const turns =
+			await db`SELECT id,model,prompt,answer,actions,ui_message,usage,
 		 CASE WHEN status='running' AND created_at<now()-interval '3 minutes' THEN 'failed' ELSE status END AS status,created_at
 		 FROM agent_turns WHERE mailbox_id=${mailbox} ORDER BY created_at DESC LIMIT 30`;
 		return c.json({
@@ -64,6 +67,14 @@ export function agentApi(db: Database, options: AgentOptions) {
 			});
 		return c.json(await saveSettings(db, c.req.param("mailboxId"), input));
 	});
+	app.post("/api/v1/mailboxes/:mailboxId/agent/stop", async (c) => {
+		const { id } = z
+			.object({ id: z.string().uuid() })
+			.strict()
+			.parse(await c.req.json());
+		return c.json(await stopRun(db, c.req.param("mailboxId"), id));
+	});
+
 	app.post("/api/v1/mailboxes/:mailboxId/agent/chat", async (c) => {
 		if (!options.model)
 			throw new HTTPException(503, { message: "No AI provider is configured" });
@@ -95,8 +106,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 				sendReasoning: false,
 				messageMetadata: ({ part }) =>
 					part.type === "start" ? { model: settings.model } : undefined,
-				onError: (error) =>
-					error instanceof Error ? error.message : "The model request failed",
+				onError: agentErrorMessage,
 				onFinish: async ({ responseMessage }) => {
 					await execution.completion;
 					await db`UPDATE agent_turns SET ui_message=${db.json(JSON.parse(JSON.stringify(responseMessage)))} WHERE id=${run.id} AND mailbox_id=${run.mailbox}`;

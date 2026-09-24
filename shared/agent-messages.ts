@@ -36,6 +36,7 @@ export function turnsToMessages(turns: AgentTurn[]): InboxChatMessage[] {
 				metadata: {
 					...assistant.metadata,
 					model: turn.model,
+					usage: turn.usage ?? undefined,
 					status: turn.status,
 				},
 			},
