@@ -112,6 +112,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await page.screenshot({
 		path: ".local/classifier-runs-desktop.png",
 		fullPage: true,
+		animations: "disabled",
 	});
 	await detail.getByRole("link", { name: "Open conversation" }).click();
 	await expect(
@@ -125,13 +126,19 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await page.getByRole("button", { name: "Conversation filter" }).click();
 	await expect(page).not.toHaveURL(/thread=/);
 	await expect(list.getByRole("button")).toHaveCount(2);
-	await page
-		.getByRole("combobox", { name: "Status", exact: true })
-		.selectOption("failed");
+	await page.getByRole("combobox", { name: "Status", exact: true }).click();
+	await page.getByRole("option", { name: "Failed", exact: true }).click();
 	await expect(list.getByRole("button")).toHaveCount(1);
 	await list.getByRole("button").click();
 	await detail.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(detail.locator("pre")).toHaveText("rate limited");
+	await page.getByRole("button", { name: "Date range", exact: true }).click();
+	await page.getByRole("button", { name: "Today", exact: true }).click();
+	await expect(page).toHaveURL(/from=/);
+	await page.getByRole("button", { name: "Date range", exact: true }).click();
+	await page.getByRole("button", { name: "All time", exact: true }).click();
+	await expect(page).not.toHaveURL(/from=/);
+	await list.getByRole("button").click();
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expect
 		.poll(() =>
@@ -143,6 +150,16 @@ test("inspect requests and responses, filter failures, and open the conversation
 		.toBeLessThanOrEqual(0);
 	await detail.getByRole("tab", { name: "Request", exact: true }).click();
 	await detail.getByRole("tab", { name: "Response", exact: true }).click();
+	await page.getByRole("button", { name: "Date range", exact: true }).click();
+	await expect(
+		page.getByRole("button", { name: "Apply dates", exact: true }),
+	).toBeVisible();
+	await page.screenshot({
+		path: ".local/classifier-runs-date-picker.png",
+		fullPage: true,
+		animations: "disabled",
+	});
+	await page.keyboard.press("Escape");
 	await expect(detail).toBeVisible();
 	await expect(
 		detail.getByRole("tab", { name: "Request", exact: true }),
@@ -155,6 +172,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await page.screenshot({
 		path: ".local/classifier-runs-mobile.png",
 		fullPage: true,
+		animations: "disabled",
 	});
 	expect(errors).toEqual([]);
 	expect(calls).toBe(2);

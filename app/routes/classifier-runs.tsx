@@ -1,3 +1,4 @@
+import { ClassifierRunFilters } from "~/components/ClassifierRunFilters";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Button } from "@cloudflare/kumo";
 import { useState } from "react";
@@ -10,8 +11,6 @@ import type {
 	ProviderRunDetail,
 } from "../../shared/provider-runs";
 
-const field =
-	"rounded-md border border-kumo-line bg-kumo-base px-3 py-2 text-sm text-kumo-default";
 const statusLabels = {
 	running: "Running",
 	succeeded: "Succeeded",
@@ -76,12 +75,14 @@ export default function ClassifierRunsRoute() {
 		},
 		getNextPageParam: (page) => page.next_cursor ?? undefined,
 	});
-	function filter(name: string, value: string) {
+	function changeFilters(changes: Record<string, string>) {
 		setParams(
 			(prev) => {
 				const next = new URLSearchParams(prev);
-				if (value) next.set(name, value);
-				else next.delete(name);
+				for (const [name, value] of Object.entries(changes)) {
+					if (value) next.set(name, value);
+					else next.delete(name);
+				}
 				next.delete("run");
 				return next;
 			},
@@ -110,72 +111,19 @@ export default function ClassifierRunsRoute() {
 						Refresh
 					</Button>
 				</div>
-				<div className="flex flex-wrap gap-2 mt-4">
-					<select
-						aria-label="Mailbox"
-						className={field}
-						value={mailbox}
-						onChange={(e) => filter("mailbox", e.target.value)}
-					>
-						<option value="all">All mailboxes</option>
-						{mailboxes.data?.map((m) => (
-							<option key={m.id} value={m.id}>
-								{m.email}
-							</option>
-						))}
-					</select>
-					<select
-						aria-label="Status"
-						className={field}
-						value={params.get("status") ?? ""}
-						onChange={(e) => filter("status", e.target.value)}
-					>
-						<option value="">All statuses</option>
-						{Object.entries(statusLabels).map(([value, label]) => (
-							<option key={value} value={value}>
-								{label}
-							</option>
-						))}
-					</select>
-					<select
-						aria-label="Classifier"
-						className={field}
-						value={params.get("classifier") ?? ""}
-						onChange={(e) => filter("classifier", e.target.value)}
-					>
-						<option value="">All classifiers</option>
-						{classifiers.data?.map((c) => (
-							<option key={c.id} value={c.id}>
-								{c.name}
-							</option>
-						))}
-					</select>
-					<label className="text-xs text-kumo-subtle">
-						From{" "}
-						<input
-							aria-label="From date"
-							type="date"
-							className={field}
-							value={params.get("from") ?? ""}
-							onChange={(e) => filter("from", e.target.value)}
-						/>
-					</label>
-					<label className="text-xs text-kumo-subtle">
-						Through{" "}
-						<input
-							aria-label="Through date"
-							type="date"
-							className={field}
-							value={params.get("to") ?? ""}
-							onChange={(e) => filter("to", e.target.value)}
-						/>
-					</label>
-					{params.has("thread") && (
-						<Button variant="secondary" onClick={() => filter("thread", "")}>
-							Conversation filter ×
-						</Button>
-					)}
-				</div>
+				<ClassifierRunFilters
+					mailbox={mailbox}
+					mailboxes={(mailboxes.data ?? []).map((m) => ({
+						value: m.id,
+						label: m.email,
+					}))}
+					classifiers={(classifiers.data ?? []).map((c) => ({
+						value: c.id,
+						label: c.name,
+					}))}
+					params={params}
+					onChange={changeFilters}
+				/>
 			</header>
 			<div
 				className={`grid ${selected ? "xl:grid-cols-[minmax(280px,1fr)_minmax(360px,1fr)]" : ""}`}
@@ -271,7 +219,7 @@ export default function ClassifierRunsRoute() {
 					<RunDetail
 						key={selected}
 						id={selected}
-						close={() => filter("run", "")}
+						close={() => changeFilters({ run: "" })}
 					/>
 				)}
 			</div>
