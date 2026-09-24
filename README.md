@@ -185,7 +185,7 @@ Ready classifier questions for the same conversation are grouped into one Jev re
 
 ## Classifier request logs
 
-Inbox administrators can open **Settings → Runs** or use **View classifier runs** on a conversation. Each entry is one actual Jev request, including batched questions and retries. The drawer contains per-question probabilities and application outcomes, the request JSON, and the raw response (including malformed/non-JSON errors). Reading logs does not run classifiers. Logs start at migration `010_classifier_provider_runs.sql`; older raw payloads cannot be reconstructed.
+Inbox administrators can open **Settings → Runs** or use the **Classification** button on a conversation to open its latest run directly in a side drawer. Earlier runs are available from the run history selector without leaving the email. Each entry is one actual Jev request, including batched questions and retries. The drawer contains per-question probabilities and application outcomes, the request JSON, and the raw response (including malformed/non-JSON errors). Reading logs does not run classifiers. Logs start at migration `010_classifier_provider_runs.sql`; older raw payloads cannot be reconstructed.
 
 The provider-call tables are separate from backfill `classifier_runs`. Requests snapshot questions, revisions, conversation content and any reviewed examples. Authorization headers are never stored. Both list and detail APIs require classifier-management permissions and return `Cache-Control: no-store`. Payloads remain private email data.
 

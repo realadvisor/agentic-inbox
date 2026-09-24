@@ -1,3 +1,4 @@
+import { ConversationClassifierDrawer } from "./ConversationClassifierDrawer";
 import { useMailMode } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
@@ -7,7 +8,7 @@ import { useMailMode } from "~/components/MailMode";
 import { TagActions } from "~/components/ConversationTags";
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { Folders } from "shared/folders";
 import EmailPanelDialogs from "~/components/email-panel/EmailPanelDialogs";
 import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
@@ -295,19 +296,18 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			/>
 
 			{mailboxId && (
-				<div className="px-5 py-3 border-b border-kumo-line">
+				<div className="px-5 py-3 border-b border-kumo-line flex flex-wrap items-center gap-2">
 					<TagActions
 						mailboxId={mailboxId}
 						threadIds={[email.thread_id ?? email.id]}
 						tags={email.tags}
 					/>
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
-						<Link
-							className="text-xs underline inline-block mt-2"
-							to={`/mailbox/${encodeURIComponent(mailboxId)}/settings?tab=runs&thread=${email.thread_id ?? email.id}`}
-						>
-							View classifier runs
-						</Link>
+						<ConversationClassifierDrawer
+							key={`${mailboxId}/${email.thread_id ?? email.id}`}
+							mailboxId={mailboxId}
+							threadId={email.thread_id ?? email.id}
+						/>
 					)}
 				</div>
 			)}

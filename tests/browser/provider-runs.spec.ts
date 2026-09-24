@@ -52,6 +52,8 @@ test.beforeAll(async () => {
 			});
 		});
 	}
+	await db`INSERT INTO classifier_provider_runs (mailbox_id,thread_id,subject,started_at,status,requested_model,request_body,response_body)
+		SELECT mailbox_id,thread_id,subject,started_at - interval '1 hour','succeeded',requested_model,request_body,'{"older":true}' FROM classifier_provider_runs WHERE subject='Help with my account'`;
 	let app: ReturnType<typeof createApi>;
 	server = serve({
 		fetch: (request) => app.fetch(request),
@@ -101,10 +103,11 @@ test("inspect requests and responses, filter failures, and open the conversation
 		page.getByRole("heading", { name: "Classifier runs", exact: true }),
 	).toBeVisible();
 	const list = page.getByRole("region", { name: "Provider runs" });
-	await expect(list.getByRole("button")).toHaveCount(2);
+	await expect(list.getByRole("button")).toHaveCount(3);
 	await list
 		.getByRole("button")
 		.filter({ hasText: "Help with my account" })
+		.first()
 		.click();
 	const detail = page.getByRole("complementary", { name: "Run details" });
 	await expect(detail.getByText("94.0% yes")).toHaveCount(3);
@@ -124,14 +127,50 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await expect(
 		page.frameLocator("iframe").first().locator("body"),
 	).toContainText("Please help");
-	await page
-		.getByRole("link", { name: "View classifier runs", exact: true })
-		.last()
-		.click();
-	await expect(list.getByRole("button")).toHaveCount(1);
-	await page.getByRole("button", { name: "Conversation filter" }).click();
-	await expect(page).not.toHaveURL(/thread=/);
-	await expect(list.getByRole("button")).toHaveCount(2);
+	const conversationUrl = page.url();
+	const trigger = page.getByRole("button", {
+		name: "View classifier runs",
+		exact: true,
+	});
+	await trigger.click();
+	const drawer = page.getByRole("dialog", {
+		name: "Classification",
+		exact: true,
+	});
+	await expect(drawer).toBeVisible();
+	await expect(drawer.getByText("94.0% yes")).toHaveCount(3);
+	await expect(page).toHaveURL(conversationUrl);
+	await drawer.getByRole("combobox", { name: "Run history" }).click();
+	await page.getByRole("option").last().click();
+	await drawer.getByRole("tab", { name: "Response", exact: true }).click();
+	await expect(drawer.locator("pre")).toContainText('"older": true');
+	await drawer.getByRole("combobox", { name: "Run history" }).click();
+	await page.getByRole("option", { name: /^Latest/ }).click();
+
+	await drawer.getByRole("tab", { name: "Request", exact: true }).click();
+	await expect(drawer.locator("pre")).toContainText("body_html");
+	await drawer.getByRole("tab", { name: "Response", exact: true }).click();
+	await expect(drawer.locator("pre")).toContainText("jev-test");
+	await page.screenshot({
+		path: ".local/classifier-run-drawer-desktop.png",
+		animations: "disabled",
+	});
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect(drawer).toBeVisible();
+	const bounds = await drawer.boundingBox();
+	expect(bounds?.width).toBeLessThanOrEqual(390);
+	expect(bounds?.x).toBeGreaterThanOrEqual(0);
+	await page.screenshot({
+		path: ".local/classifier-run-drawer-mobile.png",
+		animations: "disabled",
+	});
+	await page.keyboard.press("Escape");
+	await expect(drawer).not.toBeVisible();
+	await expect(trigger).toBeFocused();
+	await expect(page).toHaveURL(conversationUrl);
+	await page.setViewportSize({ width: 1440, height: 1000 });
+	await page.goto(`${origin}/mailbox/${mailbox}/settings?tab=runs`);
+	await expect(list.getByRole("button")).toHaveCount(3);
 	await page.getByRole("combobox", { name: "Status", exact: true }).click();
 	await page.getByRole("option", { name: "Failed", exact: true }).click();
 	await expect(list.getByRole("button")).toHaveCount(1);
