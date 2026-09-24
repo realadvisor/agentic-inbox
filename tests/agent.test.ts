@@ -617,7 +617,7 @@ test("native SDK transport persists structured tools and replays results in foll
 					start(controller) {
 						controller.enqueue({
 							type: "tool-call",
-							toolCallId: "read-original",
+							toolCallId: "read.original:provider/1",
 							toolName: "get_email",
 							input: JSON.stringify({ emailId: email.id }),
 						});
@@ -698,6 +698,18 @@ test("native SDK transport persists structured tools and replays results in foll
 	await Promise.all(tasks);
 	assert.match(JSON.stringify(prompts.at(-1)), new RegExp(email.id));
 	assert.match(JSON.stringify(prompts.at(-1)), /Please help/);
+	const replay = prompts.at(-1) as Array<{
+		content: Array<{ type: string; toolCallId?: string }> | string;
+	}>;
+	const toolParts = replay
+		.flatMap((m) => (typeof m.content === "string" ? [] : m.content))
+		.filter((p) => p.type === "tool-call" || p.type === "tool-result");
+	assert.equal(toolParts.length, 2);
+	assert.match(toolParts[0].toolCallId!, /^[a-zA-Z0-9_-]+$/);
+	assert.equal(toolParts[0].toolCallId, toolParts[1].toolCallId);
+	assert.ok(
+		JSON.stringify(turn.ui_message).includes("read.original:provider/1"),
+	);
 });
 
 test("browser disconnect does not lose native UI history or leave the mailbox lease active", async () => {

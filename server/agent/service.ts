@@ -443,6 +443,7 @@ export async function startRun(
 				AgentTurn[]
 			>`SELECT id,model,prompt,answer,actions,ui_message,status,created_at FROM agent_turns WHERE mailbox_id=${run.mailbox} AND status='complete' AND id<>${run.id} ORDER BY created_at DESC LIMIT 3`;
 	const messages: ModelMessage[] = [];
+	let historyToolIndex = 0;
 	for (const turn of history.reverse()) {
 		messages.push({ role: "user", content: turn.prompt.slice(0, 4000) });
 		if (turn.ui_message) {
@@ -450,7 +451,12 @@ export async function startRun(
 				...turn.ui_message,
 				parts: turn.ui_message.parts
 					.filter((p) => p.type !== "reasoning")
-					.map((p) => {
+					.map((part) => {
+						// Provider IDs can contain characters rejected by another provider.
+						// Rename history calls before conversion so calls and results stay paired.
+						const p = isToolOrDynamicToolUIPart(part)
+							? { ...part, toolCallId: `history_tool_${historyToolIndex++}` }
+							: part;
 						if (p.type === "text") return { ...p, text: p.text.slice(0, 4000) };
 						if (
 							isToolOrDynamicToolUIPart(p) &&
