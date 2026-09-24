@@ -24,6 +24,11 @@ export interface Classifier {
 	errors?: number;
 }
 export interface Classification {
+	confidence?: number | null;
+	group_id?: string | null;
+	group_name?: string | null;
+	group_selection?: "single" | "multiple" | null;
+	group_instructions?: string | null;
 	mailbox_id: string;
 	thread_id: string;
 	classifier_id: string;

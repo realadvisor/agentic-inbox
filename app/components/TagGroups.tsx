@@ -477,6 +477,7 @@ function Editor({
 					<h3 className="text-sm font-semibold">Test</h3>
 					<JevRequestPreview
 						group={draft}
+						groupId={current?.id}
 						selection={draft.selection}
 						questions={draft.tags.map((tag) => ({
 							name: tag.name,

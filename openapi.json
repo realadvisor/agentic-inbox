@@ -4753,6 +4753,16 @@
 									},
 									"group": {
 										"$ref": "#/components/schemas/TagGroupInput"
+									},
+									"group_id": {
+										"type": "string",
+										"format": "uuid",
+										"description": "Saved group whose curated teaching examples should be used."
+									},
+									"example_id": {
+										"type": "string",
+										"format": "uuid",
+										"description": "Evaluate the frozen example snapshot instead of the current thread. Must match mailbox, thread and target."
 									}
 								}
 							}
@@ -4924,6 +4934,368 @@
 					},
 					{
 						"name": "threadId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				]
+			}
+		},
+		"/api/v1/classification/threads/{mailbox}/{thread}/rerun": {
+			"post": {
+				"summary": "Queue all configured classifiers in mailbox scope for this conversation, including automatic-assignment-disabled classifiers, preserving manual choices and human corrections",
+				"description": "Includes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"name": "thread",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "Queued and protected classifier counts"
+					},
+					"400": {
+						"description": "No configured scoped classifiers or no eligible messages"
+					},
+					"403": {
+						"description": "Administrators only"
+					},
+					"404": {
+						"description": "Conversation not found"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/threads/{mailbox}/{thread}": {
+			"get": {
+				"summary": "Read explicit conversation reclassification status (administrators only)",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"name": "thread",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Counts of pending, complete, review, failed and skipped jobs"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/examples/{id}": {
+			"put": {
+				"summary": "Edit and reconfirm labels without replacing the conversation snapshot",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["target", "thread_id", "value"],
+								"properties": {
+									"target": {
+										"type": "object",
+										"properties": {
+											"group_id": {
+												"type": "string",
+												"format": "uuid"
+											},
+											"classifier_id": {
+												"type": "string",
+												"format": "uuid"
+											},
+											"mailbox_id": {
+												"type": "string",
+												"format": "email"
+											}
+										},
+										"required": ["mailbox_id"],
+										"description": "Exactly one of group_id or classifier_id is required."
+									},
+									"thread_id": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"value": {
+										"type": "object",
+										"required": ["role", "labels", "config"],
+										"properties": {
+											"role": {
+												"type": "string",
+												"enum": ["teach", "test"]
+											},
+											"labels": {
+												"type": "array",
+												"maxItems": 10,
+												"items": {
+													"type": "string"
+												},
+												"description": "Group tag UUIDs (or insufficient_evidence for single groups); standalone: yes or no."
+											},
+											"note": {
+												"type": "string",
+												"maxLength": 1000
+											},
+											"config": {
+												"type": "string",
+												"description": "Semantic configuration fingerprint from the list response."
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated example"
+					}
+				}
+			},
+			"delete": {
+				"summary": "Remove a curated example",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "group_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "classifier_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "mailbox_id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Removed"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/examples": {
+			"get": {
+				"summary": "List curated examples and current configuration fingerprint (administrators only)",
+				"parameters": [
+					{
+						"name": "group_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "classifier_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					{
+						"name": "mailbox_id",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Frozen examples for this mailbox and group/classifier"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/examples/from-tags": {
+			"post": {
+				"summary": "Save current conversation tags as human-confirmed example labels",
+				"description": "Atomically saves assigned groups and configured standalone tags. Unassigned groups/tags are skipped; multiple-group labels imply other options are negative. Updates existing snapshots, preserves test-only roles, and defaults new examples to teaching. Does not modify inbox tags. Administrators only.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["mailbox_id", "thread_id", "tag_ids"],
+								"properties": {
+									"mailbox_id": {
+										"type": "string",
+										"format": "email"
+									},
+									"thread_id": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"tag_ids": {
+										"type": "array",
+										"maxItems": 100,
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"description": "Visible tag IDs; rejects stale selections."
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Names of saved groups/tags"
+					},
+					"400": {
+						"description": "No eligible labels or example limit exceeded"
+					},
+					"409": {
+						"description": "Tags changed since displayed"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/examples/threads/{mailbox}/{thread}": {
+			"get": {
+				"summary": "Check whether a conversation has saved examples (admin only)",
+				"responses": {
+					"200": {
+						"description": "Saved status",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["saved"],
+									"properties": {
+										"saved": {
+											"type": "boolean"
+										}
+									}
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Administrator required"
+					}
+				},
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"name": "thread",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				]
+			},
+			"delete": {
+				"summary": "Remove all examples for this conversation without changing its tags (admin only)",
+				"responses": {
+					"204": {
+						"description": "Examples removed"
+					},
+					"403": {
+						"description": "Administrator required"
+					}
+				},
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"name": "thread",
 						"in": "path",
 						"required": true,
 						"schema": {

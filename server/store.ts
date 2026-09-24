@@ -176,7 +176,7 @@ export class InboxStore {
 				SELECT 1 FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
 				JOIN ${this.db(preview ? "preview_classifiers" : "classifiers")} c ON c.id=r.classifier_id
 				WHERE r.mailbox_id=e.mailbox_id AND r.thread_id=e.thread_id
-				AND c.enabled ${preview ? this.db`AND r.answer IS NULL` : this.db`AND (r.answer IS NULL OR r.error='group_conflict')`}
+				AND ${preview ? this.db`c.enabled` : this.db`(c.enabled OR r.priority=2)`} ${preview ? this.db`AND r.answer IS NULL` : this.db`AND (r.answer IS NULL OR r.error='group_conflict')`}
 				${preview ? this.db`` : this.db`AND r.revision=c.revision AND r.status IN ('review','error')`}
 				AND NOT tag_manually_overridden(r.mailbox_id,r.thread_id,c.tag_id)
 			)`);

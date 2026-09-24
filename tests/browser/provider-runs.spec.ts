@@ -112,7 +112,9 @@ test("inspect requests and responses, filter failures, and open the conversation
 	const detail = page.getByRole("complementary", { name: "Run details" });
 	await expect(detail.getByText("94.0% yes")).toHaveCount(3);
 	await detail.getByRole("tab", { name: "Request", exact: true }).click();
-	await expect(detail.locator("pre")).toContainText("Please help with my account.");
+	await expect(detail.locator("pre")).toContainText(
+		"Please help with my account.",
+	);
 	await expect(detail.locator("pre")).toContainText("q0");
 	await detail.getByRole("button", { name: "Copy JSON" }).click();
 	await expect(detail.getByRole("status")).toHaveText("Copied");
@@ -145,10 +147,12 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await drawer.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(drawer.locator("pre")).toContainText('"older": true');
 	await drawer.getByRole("combobox", { name: "Run history" }).click();
-	await page.getByRole("option", { name: /^Latest/ }).click();
+	await page.getByRole("option", { name: /^Latest ·/ }).click();
 
 	await drawer.getByRole("tab", { name: "Request", exact: true }).click();
-	await expect(drawer.locator("pre")).toContainText("Please help with my account.");
+	await expect(drawer.locator("pre")).toContainText(
+		"Please help with my account.",
+	);
 	await drawer.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(drawer.locator("pre")).toContainText("jev-test");
 	await page.screenshot({
@@ -221,4 +225,109 @@ test("inspect requests and responses, filter failures, and open the conversation
 	});
 	expect(errors).toEqual([]);
 	expect(calls).toBe(2);
+});
+
+test("conversation drawer includes questions split across provider requests", async ({
+	page,
+}) => {
+	const [original] =
+		await db`SELECT id,thread_id FROM classifier_provider_runs WHERE subject='Help with my account' AND response_body <> '{"older":true}' ORDER BY started_at DESC LIMIT 1`;
+	const [item] =
+		await db`SELECT * FROM classifier_provider_run_items WHERE run_id=${original.id} LIMIT 1`;
+	const splitId = crypto.randomUUID();
+	await page.route("**/classification/provider-runs?*", async (route) => {
+		const response = await route.fetch();
+		const body = await response.json();
+		const source = body.runs.find((r: { id: string }) => r.id === original.id);
+		await route.fulfill({
+			json: {
+				...body,
+				runs: [
+					{
+						...source,
+						id: splitId,
+						classifiers: [
+							source.classifiers.find(
+								(c: { classifier_id: string }) =>
+									c.classifier_id === item.classifier_id,
+							),
+						],
+					},
+					...body.runs,
+				],
+			},
+		});
+	});
+	await page.route(
+		`**/classification/provider-runs/${splitId}`,
+		async (route) => {
+			const response = await page.request.get(
+				`${origin}/api/v1/classification/provider-runs/${original.id}`,
+			);
+			const body = await response.json();
+			const request = JSON.parse(body.request_body);
+			request.questions[item.question_key].instructions +=
+				"\n\nHistorical human-labeled examples (guidance only; classify the current state, never these examples):\n" +
+				JSON.stringify([
+					{
+						conversation: {
+							messages: [{ text: "Synthetic teaching conversation" }],
+						},
+						expected: true,
+						explanation: "Confirmed label",
+					},
+				]);
+			body.request_body = JSON.stringify(request);
+			await route.fulfill({
+				json: {
+					...body,
+					id: splitId,
+					items: [
+						body.items.find(
+							(i: { classifier_id: string }) =>
+								i.classifier_id === item.classifier_id,
+						),
+					],
+					response_body: JSON.stringify({
+						answers: { split_question: { type: "noul", noul: 0.94 } },
+					}),
+				},
+			});
+		},
+	);
+	await page.goto(`${origin}/mailbox/${mailbox}/emails/inbox`);
+	await page.getByText("Help with my account", { exact: true }).click();
+	await page
+		.getByRole("button", { name: "View classifier runs", exact: true })
+		.click();
+	const drawer = page.getByRole("dialog", {
+		name: "Classification",
+		exact: true,
+	});
+	await expect(
+		drawer.getByText("Latest results across 2 requests.", { exact: false }),
+	).toBeVisible();
+	await expect(drawer.getByText("94.0% yes")).toHaveCount(3);
+	const details = drawer.getByRole("complementary", { name: "Run details" });
+	await expect(details).toHaveCount(2);
+	await details
+		.first()
+		.getByRole("tab", { name: "Request", exact: true })
+		.click();
+	const exampleSection = details
+		.first()
+		.getByRole("region", { name: "Examples sent to Jev" });
+	await expect(exampleSection).toContainText("1 example");
+	await expect(exampleSection).toContainText("Synthetic teaching conversation");
+
+	await details
+		.first()
+		.getByRole("tab", { name: "Response", exact: true })
+		.click();
+	await expect(details.first().locator("pre")).toContainText("split_question");
+	await details
+		.last()
+		.getByRole("tab", { name: "Response", exact: true })
+		.click();
+	await expect(details.last().locator("pre")).toContainText("jev-test");
 });

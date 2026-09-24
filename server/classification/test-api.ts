@@ -6,8 +6,12 @@ import { conversationState } from "./state";
 import { batchRequests } from "./batch";
 import { tagGroupInput, groupQuestion } from "../../shared/tag-groups";
 import { askJev, JevError } from "./queue";
-import { recentExamples } from "./examples";
-import { groupChoice, guard } from "../../shared/jev-request";
+import {
+	curatedQuestion,
+	listExamples,
+	exampleOwner,
+} from "./curated-examples";
+import { groupChoice, jevQuestion } from "../../shared/jev-request";
 
 const input = z
 	.object({
@@ -26,6 +30,8 @@ const input = z
 			.min(1)
 			.max(10),
 		group: tagGroupInput.optional(),
+		group_id: z.string().uuid().optional(),
+		example_id: z.string().uuid().optional(),
 		include_examples: z.boolean().default(false),
 		execute: z.boolean().default(false),
 	})
@@ -43,18 +49,41 @@ export function classifierTestApi(
 				message:
 					"Jev testing is unavailable. Configure TYPESAFE_API_KEY on the server.",
 			});
-		const [size] =
-			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${data.mailbox_id} AND thread_id=${data.thread_id} AND delivery_status IN ('received','sent')`;
-		if (!size.count)
-			throw new HTTPException(404, {
-				message: "No received or sent messages in this conversation",
-			});
-		if (size.count > 30 || size.chars > 100000)
+		const target = data.group_id
+			? { group_id: data.group_id }
+			: data.questions.length === 1 && data.questions[0].classifier_id
+				? { classifier_id: data.questions[0].classifier_id }
+				: undefined;
+		if (data.group_id && !data.group)
 			throw new HTTPException(400, {
-				message:
-					"This conversation exceeds the classifier limit (30 messages or 100,000 characters).",
+				message: "Group configuration is required",
 			});
-		const state = await conversationState(db, data.mailbox_id, data.thread_id);
+		if (target) await exampleOwner(db, target);
+		const savedExample =
+			data.example_id && target
+				? (await listExamples(db, target, data.mailbox_id)).find(
+						(e) => e.id === data.example_id && e.thread_id === data.thread_id,
+					)
+				: undefined;
+		if (data.example_id && !savedExample)
+			throw new HTTPException(404, { message: "Example not found" });
+		if (!savedExample) {
+			const [size] =
+				await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${data.mailbox_id} AND thread_id=${data.thread_id} AND delivery_status IN ('received','sent')`;
+			if (!size.count)
+				throw new HTTPException(404, {
+					message: "No received or sent messages in this conversation",
+				});
+			if (size.count > 30 || size.chars > 100000)
+				throw new HTTPException(400, {
+					message:
+						"This conversation exceeds the classifier limit (30 messages or 100,000 characters).",
+				});
+		}
+		const state =
+			savedExample?.state ??
+			(await conversationState(db, data.mailbox_id, data.thread_id));
+
 		const questions = data.group
 			? data.group.tags.map((t) => ({
 					name: t.name,
@@ -66,8 +95,6 @@ export function classifierTestApi(
 					...q,
 					option: undefined as string | undefined,
 				}));
-		const typedQuestion =
-			data.group?.selection === "single" ? groupChoice(data.group) : undefined;
 		const requests = new Map<number, unknown>();
 		const batch = batchRequests(
 			transport,
@@ -84,30 +111,30 @@ export function classifierTestApi(
 		const results = await Promise.all(
 			questions.map(async (q, index) => {
 				try {
-					const budget = Math.min(
-						12000,
-						24000 -
-							new TextEncoder().encode(
-								JSON.stringify(state) + q.question + guard,
-							).length,
-					);
-					const examples =
-						data.include_examples && q.classifier_id
-							? await recentExamples(
-									db,
-									q.classifier_id,
-									data.mailbox_id,
-									data.thread_id,
-									q.question,
-									budget,
-								)
-							: [];
+					const questionTarget =
+						target ??
+						(q.classifier_id ? { classifier_id: q.classifier_id } : undefined);
+					const typedQuestion = questionTarget
+						? await curatedQuestion(db, {
+								target: questionTarget,
+								mailbox: data.mailbox_id,
+								thread: data.thread_id,
+								state,
+								group: data.group,
+								question: q.question,
+								option: q.option,
+								legacy: data.include_examples,
+							})
+						: data.group?.selection === "single"
+							? groupChoice(data.group)
+							: jevQuestion(q.question);
+
 					const result = await askJev(
 						key ?? "preview",
 						q.question,
 						state,
 						batch.forJob(index),
-						examples,
+						[],
 						typedQuestion,
 						q.option,
 					);

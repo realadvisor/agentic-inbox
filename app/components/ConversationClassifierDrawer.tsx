@@ -33,7 +33,15 @@ export function ConversationClassifierDrawer({
 		getNextPageParam: (page) => page.next_cursor ?? undefined,
 	});
 	const history = runs.data?.pages.flatMap((p) => p.runs) ?? [];
-	const active = selected ?? history[0]?.id;
+	const active = selected ?? "all";
+	const seen = new Set<string>();
+	const latest = history.flatMap((run) => {
+		const classifierIds = run.classifiers
+			.map((c) => c.classifier_id)
+			.filter((id) => !seen.has(id));
+		for (const id of classifierIds) seen.add(id);
+		return classifierIds.length ? [{ run, classifierIds }] : [];
+	});
 	const choices = history.map((run, index) => ({
 		value: run.id,
 		label: `${index === 0 ? "Latest · " : ""}${new Date(run.started_at).toLocaleString()} · ${run.status}`,
@@ -129,11 +137,17 @@ export function ConversationClassifierDrawer({
 								aria-label="Run history"
 								className="w-full"
 								value={active}
-								items={choices}
+								items={[
+									{ value: "all", label: "Latest results · all questions" },
+									...choices,
+								]}
 								onValueChange={(value) => {
 									if (value) setSelected(value);
 								}}
 							>
+								<Select.Option value="all">
+									Latest results · all questions
+								</Select.Option>
 								{choices.map((c) => (
 									<Select.Option key={c.value} value={c.value}>
 										{c.label}
@@ -142,7 +156,25 @@ export function ConversationClassifierDrawer({
 							</Select>
 						</div>
 					)}
-					{active && (
+					{active === "all" ? (
+						<>
+							{latest.length > 1 && (
+								<p className="px-5 py-3 text-xs text-kumo-subtle">
+									Latest results across {latest.length} requests. Each request
+									has its own timestamp and full request/response.
+								</p>
+							)}
+							{latest.map(({ run, classifierIds }) => (
+								<RunDetail
+									key={run.id}
+									id={run.id}
+									classifierIds={classifierIds}
+									showConversationLink={false}
+									className="border-b border-kumo-line"
+								/>
+							))}
+						</>
+					) : (
 						<RunDetail key={active} id={active} showConversationLink={false} />
 					)}
 					{runs.data && !history.length && (

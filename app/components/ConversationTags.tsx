@@ -81,6 +81,8 @@ export function TagPicker({
 	disabled,
 	allowAll = false,
 	multiple = false,
+	compact = false,
+	source,
 }: {
 	tags: Tag[];
 	value?: string;
@@ -90,6 +92,8 @@ export function TagPicker({
 	disabled?: boolean;
 	allowAll?: boolean;
 	multiple?: boolean;
+	compact?: boolean;
+	source?: ConversationTag["source"];
 }) {
 	const [open, setOpen] = useState(false);
 	const [search, setSearch] = useState("");
@@ -125,15 +129,42 @@ export function TagPicker({
 						type="button"
 						disabled={disabled}
 						aria-label={label}
-						className={`inline-flex h-8 max-w-full items-center gap-2 rounded-lg border px-2.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${selected ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
+						title={
+							source === "classifier"
+								? "Applied automatically by Jev"
+								: source === "manual"
+									? "Applied manually"
+									: undefined
+						}
+						className={`inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
+						style={
+							compact && selected
+								? {
+										backgroundColor: `${selected.color}20`,
+										color: `color-mix(in srgb, ${selected.color} 45%, currentColor)`,
+										borderColor: `${selected.color}14`,
+									}
+								: undefined
+						}
 					/>
 				}
 			>
-				{selected ? (
-					<span
-						className="h-2 w-2 rounded-full shrink-0"
-						style={{ backgroundColor: selected.color }}
+				{selected && source === "classifier" && (
+					<RobotIcon
+						size={12}
+						weight="fill"
+						className="shrink-0"
+						role="img"
+						aria-label="Applied automatically"
 					/>
+				)}
+				{selected ? (
+					compact ? null : (
+						<span
+							className="h-2 w-2 rounded-full shrink-0"
+							style={{ backgroundColor: selected.color }}
+						/>
+					)
 				) : allowAll ? (
 					<TagIcon size={15} />
 				) : (
@@ -227,7 +258,7 @@ export function TagActions({
 }: {
 	mailboxId: string;
 	threadIds: string[];
-	tags?: Tag[];
+	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	bulk?: boolean;
 }) {
 	const catalog = useTags();
@@ -261,6 +292,8 @@ export function TagActions({
 						.map((tag) => (
 							<TagPicker
 								key={tag.id}
+								compact
+								source={tag.source}
 								tags={(catalog.data ?? []).filter(
 									(option) => option.group_id === tag.group_id,
 								)}
@@ -274,6 +307,7 @@ export function TagActions({
 				</>
 			)}
 			<TagPicker
+				compact={!bulk}
 				tags={choices}
 				value={bulk ? validSelection : undefined}
 				label={bulk ? "Tag for selected conversations" : "+ Tag"}

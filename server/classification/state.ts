@@ -27,8 +27,18 @@ export async function conversationState(
 	thread: string,
 	evaluatedAt = new Date(),
 ) {
-	const rows =
-		await db`SELECT sender AS "from",recipient AS "to",cc,subject,body AS body_html,date,CASE WHEN delivery_status='sent' THEN 'outbound' ELSE 'inbound' END AS direction,(SELECT count(*)::int FROM attachments a WHERE a.email_id=e.id AND a.mailbox_id=e.mailbox_id) AS attachment_count FROM emails e WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND delivery_status IN ('received','sent') ORDER BY date,id LIMIT 30`;
+	const rows = await db<
+		{
+			from: string;
+			to: string;
+			cc: string;
+			subject: string;
+			body_html: string;
+			date: Date;
+			direction: string;
+			attachment_count: number;
+		}[]
+	>`SELECT sender AS "from",recipient AS "to",cc,subject,body AS body_html,date,CASE WHEN delivery_status='sent' THEN 'outbound' ELSE 'inbound' END AS direction,(SELECT count(*)::int FROM attachments a WHERE a.email_id=e.id AND a.mailbox_id=e.mailbox_id) AS attachment_count FROM emails e WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND delivery_status IN ('received','sent') ORDER BY date,id LIMIT 30`;
 	const seen = new Set<string>();
 	const messages = rows.map(({ body_html, ...row }) => {
 		const lines = readableText(body_html).split("\n");
@@ -44,6 +54,7 @@ export async function conversationState(
 		});
 		return {
 			...row,
+			date: row.date.toISOString(),
 			text: kept.join("\n"),
 			duplicate_quoted_lines_removed: lines.length - kept.length,
 		};

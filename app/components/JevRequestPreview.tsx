@@ -1,3 +1,4 @@
+import { JevExamples } from "./JevExamples";
 import { JevEmailTest } from "./JevEmailTest";
 import { useState } from "react";
 import { Button } from "@cloudflare/kumo";
@@ -8,10 +9,12 @@ export function JevRequestPreview({
 	examples = false,
 	selection,
 	group,
+	groupId,
 }: {
 	questions: { name: string; question: string; classifier_id?: string }[];
 	selection?: string;
 	group?: TagGroupInput;
+	groupId?: string;
 	examples?: boolean;
 }) {
 	const [copied, setCopied] = useState("");
@@ -60,11 +63,13 @@ export function JevRequestPreview({
 					Copy JSON
 				</Button>
 			</div>
+			<JevExamples group={group} groupId={groupId} questions={questions} />
 			<JevEmailTest
 				questions={questions}
 				examples={examples}
 				selection={selection}
 				group={group}
+				groupId={groupId}
 			/>
 			<details>
 				<summary className="cursor-pointer p-4 text-xs font-medium">
@@ -76,10 +81,11 @@ export function JevRequestPreview({
 						Request template — conversation content is substituted at runtime.
 						Previewing does not call Jev or change tags.
 					</p>
-					{examples && (
+					{(examples || groupId || questions[0]?.classifier_id) && (
 						<p>
-							Reviewed examples are selected for each conversation at runtime
-							and are not included in this template.
+							Compatible teaching examples are added at runtime and are not
+							included in this template. Preview a conversation to see the full
+							request.
 						</p>
 					)}
 					<p>

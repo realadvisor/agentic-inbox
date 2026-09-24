@@ -13,11 +13,13 @@ export function JevEmailTest({
 	examples,
 	selection,
 	group,
+	groupId,
 }: {
 	questions: Question[];
 	examples: boolean;
 	selection?: string;
 	group?: TagGroupInput;
+	groupId?: string;
 }) {
 	const { mailboxId } = useParams();
 	const [search, setSearch] = useState("");
@@ -67,6 +69,7 @@ export function JevEmailTest({
 						questions,
 						include_examples: examples,
 						group,
+						group_id: groupId,
 						execute,
 					}),
 				});
