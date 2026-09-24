@@ -1,36 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import {
-	DefaultChatTransport,
-	getToolOrDynamicToolName,
-	isToolOrDynamicToolUIPart,
-} from "ai";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+	ArrowUpIcon,
+	ArrowUpRightIcon,
+	ArrowsOutSimpleIcon,
+	ArrowsInSimpleIcon,
+	EnvelopeSimpleIcon,
+	GearSixIcon,
+	MagnifyingGlassIcon,
+	SparkleIcon,
+	TextAlignLeftIcon,
+	XIcon,
+} from "@phosphor-icons/react";
+import AgentMessage from "./AgentMessage";
+import AgentModelPicker from "./AgentModelPicker";
+import "./agent-chat.css";
 import { Link } from "react-router";
-import { Button } from "@cloudflare/kumo";
 import { useUIStore } from "~/hooks/useUIStore";
 import api from "~/services/api";
 import type { AgentState, InboxChatMessage } from "../../shared/agent";
-import {
-	draftIdFromOutput,
-	turnsToMessages,
-} from "../../shared/agent-messages";
-
+import { turnsToMessages } from "../../shared/agent-messages";
 const endpoint = (mailbox: string) =>
 	`/api/v1/mailboxes/${encodeURIComponent(mailbox)}/agent`;
-const toolLabels: Record<string, string> = {
-	list_emails: "Read inbox",
-	get_email: "Read email",
-	get_thread: "Read conversation",
-	search_emails: "Search emails",
-	draft_reply: "Draft reply",
-	draft_email: "Compose draft",
-	mark_email_read: "Update read status",
-	move_email: "Move email",
-	discard_draft: "Discard draft",
-};
 async function getState(mailbox: string): Promise<AgentState> {
 	const response = await fetch(endpoint(mailbox));
 	if (!response.ok) throw new Error("Could not load the inbox assistant");
@@ -43,6 +36,7 @@ export default function AgentPanel({
 	mailboxId: string;
 	close: () => void;
 }) {
+	const [expanded, setExpanded] = useState(false);
 	const state = useQuery({
 		queryKey: ["agent", mailboxId],
 		queryFn: () => getState(mailboxId),
@@ -51,26 +45,49 @@ export default function AgentPanel({
 	return (
 		<aside
 			aria-label="Email agent"
-			className="fixed inset-0 z-40 flex flex-col border-l border-kumo-line bg-kumo-base text-kumo-default md:static md:z-0 md:w-[460px] md:shrink-0"
+			className="inbox-assistant"
+			data-expanded={expanded}
 		>
-			<header className="flex items-center justify-between border-b border-kumo-line px-4 py-3">
-				<h2 className="text-sm font-semibold">Inbox assistant</h2>
-				<div className="flex items-center gap-3">
+			<header className="agent-header">
+				<div className="agent-header-title">
+					<span className="agent-mark">
+						<SparkleIcon size={17} weight="fill" />
+					</span>
+					<h2>Assistant</h2>
+					<span className="agent-header-badge">Inbox</span>
+				</div>
+				<div className="agent-header-actions">
 					<Link
-						className="text-xs text-kumo-subtle hover:underline"
+						className="agent-icon-button"
+						aria-label="Assistant settings"
+						title="Assistant settings"
 						to={`/mailbox/${encodeURIComponent(mailboxId)}/settings?tab=models`}
 						onClick={close}
 					>
-						Settings
+						<GearSixIcon size={17} />
 					</Link>
-					<Button
-						variant="ghost"
-						size="sm"
+					<button
+						className="agent-icon-button agent-expand"
+						type="button"
+						aria-label={expanded ? "Collapse assistant" : "Expand assistant"}
+						title={expanded ? "Collapse" : "Expand"}
+						onClick={() => setExpanded(!expanded)}
+					>
+						{expanded ? (
+							<ArrowsInSimpleIcon size={16} />
+						) : (
+							<ArrowsOutSimpleIcon size={16} />
+						)}
+					</button>
+					<button
+						className="agent-icon-button"
+						type="button"
 						onClick={close}
 						aria-label="Close email agent"
+						title="Close"
 					>
-						Close
-					</Button>
+						<XIcon size={17} />
+					</button>
 				</div>
 			</header>
 			{state.isLoading && (
@@ -196,188 +213,143 @@ function AgentChat({
 						follow.current =
 							el.scrollHeight - el.scrollTop - el.clientHeight < 100;
 				}}
-				className="min-h-0 flex-1 overflow-y-auto p-4"
+				className="agent-conversation"
 				aria-live="polite"
 			>
-				{!messages.length && (
-					<div className="flex min-h-64 flex-col justify-center gap-4 py-8">
-						<div>
-							<h3 className="text-lg font-medium">
-								How can I help with your inbox?
-							</h3>
-							<p className="mt-2 text-sm text-kumo-subtle">
-								Find a conversation, summarize your mail, or prepare a reply.
-							</p>
+				{!messages.length ? (
+					<div className="agent-welcome">
+						<div className="agent-welcome-mark">
+							<SparkleIcon size={28} weight="duotone" />
 						</div>
-						<div className="flex flex-wrap gap-2">
-							{["Summarize my inbox", "Find emails needing a reply"].map(
-								(text) => (
-									<Button
-										key={text}
-										variant="secondary"
-										size="sm"
-										disabled={!modelAvailable || running}
-										onClick={() => void send(text)}
-									>
-										{text}
-									</Button>
-								),
-							)}
+						<p className="agent-eyebrow">A LITTLE LESS INBOX.</p>
+						<h3>
+							Make room for
+							<br />
+							what matters.
+						</h3>
+						<p className="agent-welcome-description">
+							Catch up on conversations, find what you need,
+							<br className="agent-desktop-break" /> and turn your next reply
+							into a first draft.
+						</p>
+						<div className="agent-suggestions">
+							{[
+								{
+									label: "Catch me up",
+									detail: "A quick summary of your inbox",
+									prompt: "Summarize my inbox",
+									Icon: TextAlignLeftIcon,
+								},
+								{
+									label: "Find a conversation",
+									detail: "Search your emails in plain English",
+									prompt:
+										"Help me find a conversation. Ask me what I am looking for.",
+									Icon: MagnifyingGlassIcon,
+								},
+								{
+									label: "What needs a reply?",
+									detail: "Find the messages worth your attention",
+									prompt: "Find emails needing a reply",
+									Icon: EnvelopeSimpleIcon,
+								},
+							].map(({ label, detail, prompt, Icon }) => (
+								<button
+									type="button"
+									key={label}
+									disabled={!modelAvailable || running}
+									onClick={() => void send(prompt)}
+								>
+									<span className="agent-suggestion-icon">
+										<Icon size={18} />
+									</span>
+									<span>
+										<strong>{label}</strong>
+										<small>{detail}</small>
+									</span>
+									<ArrowUpRightIcon size={15} />
+								</button>
+							))}
 						</div>
 					</div>
-				)}
-				{messages.map((message) => (
-					<article
-						key={message.id}
-						className={`mb-6 text-sm ${message.role === "user" ? "ml-8 rounded-xl bg-kumo-tint px-4 py-3" : "space-y-3"}`}
-					>
-						{message.role === "assistant" && (
-							<p className="text-xs font-medium text-kumo-subtle">
-								{models.find((m) => m.id === message.metadata?.model)?.name ??
+				) : (
+					<div className="agent-transcript">
+						<div className="agent-conversation-label">
+							<span />
+							Your inbox, in focus
+							<span />
+						</div>
+						{messages.map((message) => (
+							<AgentMessage
+								key={message.id}
+								message={message}
+								modelName={
+									models.find((m) => m.id === message.metadata?.model)?.name ??
 									message.metadata?.model ??
-									"Assistant"}
-							</p>
-						)}
-						{message.parts.map((part, index) => {
-							if (part.type === "text")
-								return message.role === "user" ? (
-									<p key={index} className="whitespace-pre-wrap break-words">
-										{part.text}
-									</p>
-								) : (
-									<div
-										key={index}
-										className="break-words leading-relaxed [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-kumo-tint [&_pre]:p-3 [&_code]:text-xs [&_a]:text-kumo-link [&_a]:underline [&_table]:block [&_table]:overflow-x-auto [&_td]:border [&_td]:border-kumo-line [&_td]:p-2 [&_th]:border [&_th]:border-kumo-line [&_th]:p-2"
-									>
-										<Markdown
-											remarkPlugins={[remarkGfm]}
-											components={{
-												a: ({ children, ...props }) => (
-													<a
-														{...props}
-														target="_blank"
-														rel="noopener noreferrer"
-													>
-														{children}
-													</a>
-												),
-											}}
-										>
-											{part.text}
-										</Markdown>
-									</div>
-								);
-							if (!isToolOrDynamicToolUIPart(part)) return null;
-							const name = getToolOrDynamicToolName(part);
-							const failed = part.state === "output-error";
-							const done = part.state === "output-available";
-							const draft = done ? draftIdFromOutput(part.output) : undefined;
-							return (
-								<div
-									key={part.toolCallId}
-									className="rounded-lg border border-kumo-line bg-kumo-tint/30 text-xs"
-								>
-									<details>
-										<summary className="cursor-pointer px-3 py-2">
-											<span className="font-medium">
-												{toolLabels[name] ?? name.replaceAll("_", " ")}
-											</span>
-											<span className="ml-2 text-kumo-subtle">
-												{failed ? "Failed" : done ? "Done" : "Working…"}
-											</span>
-										</summary>
-										<div className="space-y-2 border-t border-kumo-line p-3">
-											<p className="text-kumo-subtle">Request</p>
-											<pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">
-												{JSON.stringify(part.input, null, 2)}
-											</pre>
-											{done && (
-												<>
-													<p className="text-kumo-subtle">Result</p>
-													<pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">
-														{JSON.stringify(part.output, null, 2)}
-													</pre>
-												</>
-											)}
-											{failed && (
-												<p role="alert" className="text-red-600">
-													{part.errorText}
-												</p>
-											)}
-										</div>
-									</details>
-									{draft && (
-										<div className="border-t border-kumo-line px-3 py-2">
-											<button
-												className="font-medium text-kumo-link hover:underline"
-												onClick={() => void openDraft(draft)}
-											>
-												Review draft
-											</button>
-										</div>
-									)}
-								</div>
-							);
-						})}
-						{message.metadata?.status === "failed" && (
-							<p className="text-xs text-kumo-subtle">
-								This run did not fully complete. Review its tool results and any
-								saved drafts.
-							</p>
-						)}
-					</article>
-				))}
-				{busy && (
-					<p className="animate-pulse text-xs text-kumo-subtle">
-						{status === "submitted" ? "Thinking…" : "Working…"}
-					</p>
+									"Assistant"
+								}
+								onReview={(id) => void openDraft(id)}
+							/>
+						))}
+					</div>
 				)}
-				{!busy && running && (
-					<p className="text-xs text-kumo-subtle">
-						The assistant is working. Saved results will appear here.
-					</p>
+				{(busy || running) && (
+					<div className="agent-working" role="status">
+						<span className="agent-working-dots">
+							<i />
+							<i />
+							<i />
+						</span>
+						<span>
+							{status === "submitted"
+								? "Thinking"
+								: "Working through your inbox"}
+						</span>
+					</div>
 				)}
 				<div ref={bottom} />
 			</div>
 			<form
-				className="space-y-3 border-t border-kumo-line p-4"
+				className="agent-compose-area"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void send(prompt);
 				}}
 			>
 				{(error || draftError) && (
-					<p role="alert" className="text-sm text-red-600">
+					<p role="alert" className="agent-error">
 						{draftError || error?.message}
 					</p>
 				)}
 				{!modelAvailable && (
-					<p role="alert" className="text-xs text-kumo-subtle">
-						This model is unavailable. Choose an available model or configure
-						its provider in Settings.
+					<p role="alert" className="agent-error">
+						Choose an available model, or connect its provider in Settings.
 					</p>
 				)}
-				{selectedEmailId && (
-					<Button
-						variant="secondary"
-						size="sm"
-						disabled={running || !modelAvailable}
-						onClick={() =>
-							void send(
-								"Read the selected email and its conversation, then save a draft reply for my review.",
-							)
-						}
-					>
-						Draft reply to selected email
-					</Button>
-				)}
-				<div className="rounded-xl border border-kumo-line bg-kumo-base p-2 focus-within:ring-1 focus-within:ring-kumo-line">
+				<div className="agent-composer">
+					{selectedEmailId && (
+						<div className="agent-context">
+							<EnvelopeSimpleIcon size={13} />
+							<span>Selected conversation</span>
+							<button
+								type="button"
+								disabled={running || !modelAvailable}
+								onClick={() =>
+									void send(
+										"Read the selected email and its conversation, then save a draft reply for my review.",
+									)
+								}
+							>
+								Draft reply
+								<ArrowUpRightIcon size={12} />
+							</button>
+						</div>
+					)}
 					<textarea
 						aria-label="Message email agent"
 						rows={3}
 						maxLength={8000}
-						className="block w-full resize-none bg-transparent p-2 text-sm outline-none"
-						placeholder="Ask about your inbox…"
+						placeholder="Ask anything about your inbox…"
 						value={prompt}
 						disabled={running || !modelAvailable}
 						onChange={(event) => setPrompt(event.target.value)}
@@ -392,58 +364,27 @@ function AgentChat({
 							}
 						}}
 					/>
-					<div className="flex items-center justify-between gap-2">
-						<select
-							aria-label="Agent model"
-							className="min-w-0 max-w-[75%] rounded bg-kumo-base p-2 text-xs text-kumo-subtle"
+					<div className="agent-composer-toolbar">
+						<AgentModelPicker
+							models={models}
 							value={selectedModel}
+							defaultModel={state.settings.model}
 							disabled={running}
-							onChange={(event) => setAgentModel(mailboxId, event.target.value)}
-						>
-							<option value="">
-								Default:{" "}
-								{models.find((m) => m.id === state.settings.model)?.name ??
-									state.settings.model}
-							</option>
-							{selectedModel && !models.some((m) => m.id === selectedModel) && (
-								<option value={selectedModel} disabled>
-									{selectedModel} (unavailable)
-								</option>
-							)}
-							{Array.from(new Set(models.map((m) => m.provider))).map(
-								(provider) => (
-									<optgroup key={provider} label={provider}>
-										{models
-											.filter((m) => m.provider === provider)
-											.map((model) => (
-												<option
-													key={model.id}
-													value={model.id}
-													disabled={!model.selectable}
-												>
-													{model.name}
-													{!model.available
-														? " (retired)"
-														: !model.selectable
-															? " (not configured)"
-															: ""}
-												</option>
-											))}
-									</optgroup>
-								),
-							)}
-						</select>
-						<Button
+							onChange={(value) => setAgentModel(mailboxId, value)}
+						/>
+						<button
 							type="submit"
-							size="sm"
+							className="agent-send"
+							aria-label="Send message"
+							title="Send message"
 							disabled={!prompt.trim() || running || !modelAvailable}
 						>
-							{running ? "Working…" : "Send"}
-						</Button>
+							<ArrowUpIcon size={17} weight="bold" />
+						</button>
 					</div>
 				</div>
-				<p className="text-center text-xs text-kumo-subtle">
-					Drafts stay in your inbox for review. The assistant never sends email.
+				<p className="agent-compose-note">
+					You’re in control. Review every draft before sending.
 				</p>
 			</form>
 		</>
