@@ -4,6 +4,7 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
+import { Input } from "@cloudflare/kumo";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
@@ -281,14 +282,16 @@ function ConversationHistory({
 					<XIcon size={17} />
 				</button>
 			</div>
-			<input
-				aria-label="Search conversations"
-				placeholder="Search conversations…"
-				value={search}
-				onChange={(e) => {
-					setSearch(e.target.value);
-				}}
-			/>
+			<div className="agent-history-search">
+				<Input
+					aria-label="Search conversations"
+					placeholder="Search conversations…"
+					value={search}
+					onChange={(e) => {
+						setSearch(e.target.value);
+					}}
+				/>
+			</div>
 			{disabled && (
 				<p className="agent-history-note">
 					Finish or stop the current response before switching chats.
@@ -312,7 +315,7 @@ function ConversationHistory({
 						aria-current={conversation.id === activeId ? "true" : undefined}
 						onClick={() => onSelect(conversation.id)}
 					>
-						<strong>{conversation.title}</strong>
+						<strong title={conversation.title}>{conversation.title}</strong>
 						<span>
 							{new Date(conversation.updated_at).toLocaleDateString(undefined, {
 								month: "short",
