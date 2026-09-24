@@ -80,11 +80,11 @@ export default function ClassifierRuns() {
 			</p>
 		);
 	return (
-		<div className="text-kumo-default">
-			<header className="pb-5 border-b border-kumo-line">
+		<div className="rounded-lg border border-kumo-line bg-kumo-base text-kumo-default overflow-hidden">
+			<header className="p-5 border-b border-kumo-line">
 				<div className="flex justify-between gap-3">
 					<div>
-						<h1 className="text-xl font-semibold">Classifier runs</h1>
+						<h2 className="text-sm font-medium">Classifier runs</h2>
 						<p className="text-sm text-kumo-subtle mt-1">
 							Every Jev request, including retries and batched questions.
 						</p>
@@ -143,7 +143,7 @@ export default function ClassifierRuns() {
 										return next;
 									})
 								}
-								className={`w-full text-left p-4 border-b border-kumo-line cursor-pointer ${selected === run.id ? "bg-kumo-fill" : "hover:bg-kumo-tint"}`}
+								className={`w-full text-left p-5 border-b last:border-b-0 border-kumo-line cursor-pointer ${selected === run.id ? "bg-kumo-fill" : "hover:bg-kumo-tint"}`}
 							>
 								<div className="flex justify-between gap-3 text-xs">
 									<span className="text-kumo-subtle">
