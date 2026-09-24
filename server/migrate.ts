@@ -10,10 +10,10 @@ export async function migrate(db: Database) {
 		[6, "006_classifiers.sql"],
 		[7, "007_classifier_outbox.sql"],
 		[8, "008_classifier_examples.sql"],
-		[10, "010_classifier_provider_runs.sql"],
 		[9, "009_email_agent.sql"],
-		[10, "010_agent_model_catalog.sql"],
+		[10, "010_classifier_provider_runs.sql"],
 		[11, "011_agent_ui_messages.sql"],
+		[12, "012_agent_model_catalog.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),
