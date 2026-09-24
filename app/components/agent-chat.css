@@ -25,10 +25,12 @@
 	width: 640px;
 }
 .agent-header {
+	height: 57px;
+	flex-shrink: 0;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 16px;
+	padding: 0 16px;
 	border-bottom: 1px solid var(--agent-line);
 }
 .agent-header-title,
