@@ -42,7 +42,7 @@ export async function publishOutbox(db: Database, queues: ClassifierQueues) {
 		const rows =
 			await tx`SELECT o.job_token,j.priority,greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay
    FROM classifier_outbox o JOIN conversation_classifications j ON j.token=o.job_token JOIN classifiers c ON c.id=j.classifier_id
-   WHERE (o.published_at IS NULL OR o.published_at<now()-interval '25 hours') AND j.status='pending' AND c.enabled AND c.revision=j.revision
+   WHERE (o.published_at IS NULL OR o.published_at<now()-interval '25 hours') AND j.status='pending' AND (c.enabled OR j.priority=2) AND c.revision=j.revision
    ORDER BY j.priority,o.created_at,o.job_token LIMIT 100 FOR UPDATE OF o SKIP LOCKED`;
 		for (const priority of [0, 1]) {
 			const messages = rows

@@ -1,3 +1,5 @@
+import { rerunApi } from "./rerun-api";
+import { examplesApi } from "./examples-api";
 import { classifierTestApi } from "./test-api";
 import { providerRunsApi } from "./provider-runs-api";
 import { Hono } from "hono";
@@ -25,7 +27,7 @@ export function classifierApi(
 		enabled: boolean;
 		admin: boolean;
 		actor: string;
-		kick?: () => void;
+		kick?: (tokens?: string[]) => void;
 		key?: string;
 		transport?: typeof fetch;
 	},
@@ -45,6 +47,8 @@ export function classifierApi(
 			);
 		await next();
 	});
+	app.route("/", rerunApi(db, options.admin, options.kick));
+	app.route("/examples", examplesApi(db, options.admin, options.actor));
 	app.route("/", classifierTestApi(db, options.key, options.transport));
 	app.route("/provider-runs", providerRunsApi(db, options.admin));
 	app.get("/classifiers", async (c) => {
@@ -204,8 +208,32 @@ export function classifierApi(
 	app.get("/results/:mailbox", async (c) => {
 		const thread = c.req.query("thread");
 		if (thread) id.parse(thread);
+		const rows =
+			await db`SELECT j.mailbox_id,j.thread_id,j.classifier_id,j.revision,j.generation,j.token,j.status,j.answer,j.probability,j.source,j.error,c.question,t.name,t.color,t.id AS tag_id,t.group_id,g.name AS group_name,g.selection AS group_selection,g.instructions AS group_instructions,log.response_body,log.question_key FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id LEFT JOIN tag_groups g ON g.id=t.group_id LEFT JOIN LATERAL (
+ SELECT r.response_body,i.question_key FROM classifier_provider_run_items i JOIN classifier_provider_runs r ON r.id=i.run_id
+ WHERE i.job_token=j.token AND i.classifier_id=j.classifier_id AND r.mailbox_id=j.mailbox_id AND r.thread_id=j.thread_id
+ ORDER BY r.started_at DESC,r.id DESC LIMIT 1
+ ) log ON g.selection='single' WHERE j.mailbox_id=${c.req.param("mailbox")} AND (c.enabled OR j.priority=2) AND j.revision=c.revision AND j.status IN ('review','error') ${thread ? db`AND j.thread_id=${thread}` : db``} AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.updated_at DESC LIMIT 1000`;
 		return c.json(
-			await db`SELECT j.mailbox_id,j.thread_id,j.classifier_id,j.revision,j.generation,j.token,j.status,j.answer,j.probability,j.source,j.error,c.question,t.name,t.color,t.id AS tag_id FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id WHERE j.mailbox_id=${c.req.param("mailbox")} AND c.enabled AND j.revision=c.revision AND j.status IN ('review','error') ${thread ? db`AND j.thread_id=${thread}` : db``} AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.updated_at DESC LIMIT 1000`,
+			rows.map(({ response_body, question_key, ...row }) => {
+				let confidence: number | null = null;
+				try {
+					const answer = JSON.parse(response_body)?.answers?.[question_key];
+					if (
+						row.group_selection === "single" &&
+						row.probability != null &&
+						answer?.type === "choice" &&
+						typeof answer.confidence === "number" &&
+						Number.isFinite(answer.confidence) &&
+						answer.confidence >= 0 &&
+						answer.confidence <= 1
+					)
+						confidence = answer.confidence;
+				} catch {
+					/* Failed or historical requests may have no valid answer. */
+				}
+				return { ...row, confidence };
+			}),
 		);
 	});
 	app.put("/results/:mailbox/:thread/:classifier", async (c) => {
@@ -219,7 +247,13 @@ export function classifierApi(
 		await db.begin(async (tx) => {
 			const [classifier] =
 				await tx`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
-			if (!classifier?.enabled || classifier.revision !== data.revision)
+			const [reviewJob] =
+				await tx`SELECT priority FROM conversation_classifications WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND classifier_id=${classifierId} AND token=${data.token}`;
+			if (
+				!classifier ||
+				(!classifier.enabled && reviewJob?.priority !== 2) ||
+				classifier.revision !== data.revision
+			)
 				fail(409, "Classifier changed; refresh and try again");
 			await tx`SELECT 1 FROM conversations WHERE mailbox_id=${mailbox} AND thread_id=${thread} FOR UPDATE`;
 			const [row] =

@@ -1,3 +1,4 @@
+import { processJob } from "./classification/queue";
 import { agentProviders } from "./agent/providers";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -26,7 +27,25 @@ if (preview) {
 }
 await db`SELECT 1 FROM inbox_migrations LIMIT 1`;
 const previewModule = preview ? await import("./preview/api") : null;
+// Local explicit reruns only; automatic ingestion remains owned by hosted Queues.
+let localReruns = Promise.resolve();
+function rerunLocally(tokens: string[] = []) {
+	const key = process.env.TYPESAFE_API_KEY;
+	if (!key) return;
+	localReruns = localReruns
+		.then(async () => {
+			for (const token of tokens) {
+				const result = await processJob(db, key, token);
+				if ("retry" in result)
+					setTimeout(() => rerunLocally([token]), result.retry * 1000).unref();
+			}
+		})
+		.catch(() => {
+			console.error("Local classification rerun failed");
+		});
+}
 const app = createApi(db, {
+	kickClassifiers: rerunLocally,
 	jevKey: process.env.TYPESAFE_API_KEY,
 	agent: agentProviders(undefined, process.env.AI_GATEWAY_API_KEY),
 

@@ -25,16 +25,60 @@ function pretty(value: string) {
 		return value;
 	}
 }
+// Extract only examples recorded in this historical request, never today's dataset.
+function requestExamples(raw: string) {
+	try {
+		const request = JSON.parse(raw);
+		const marker =
+			"Historical human-labeled examples (guidance only; classify the current state, never these examples):\n";
+		return Object.entries(request.questions ?? {}).flatMap(([key, value]) => {
+			const question = value as {
+				instructions?: unknown;
+				criteria?: Record<string, unknown>;
+			};
+			const examples: unknown[] = [];
+			if (
+				typeof question.instructions === "string" &&
+				question.instructions.includes(marker)
+			) {
+				const parsed = JSON.parse(question.instructions.split(marker).at(-1)!);
+				if (Array.isArray(parsed)) examples.push(...parsed);
+			}
+			for (const [label, criterion] of Object.entries(
+				question.criteria ?? {},
+			)) {
+				if (
+					criterion &&
+					typeof criterion === "object" &&
+					"examples" in criterion &&
+					Array.isArray(criterion.examples)
+				) {
+					examples.push(
+						...criterion.examples.map((conversation: unknown) => ({
+							expected: label,
+							conversation,
+						})),
+					);
+				}
+			}
+			return examples.length ? [{ key, examples }] : [];
+		});
+	} catch {
+		return [];
+	}
+}
 function when(value: string) {
 	return new Date(value).toLocaleString();
 }
 export function RunDetail({
 	id,
+	classifierIds,
 	close,
 	showConversationLink = true,
 	className = "",
 }: {
 	id: string;
+	classifierIds?: string[];
 	close?: () => void;
 	showConversationLink?: boolean;
 	className?: string;
@@ -55,6 +99,7 @@ export function RunDetail({
 				: false,
 	});
 	const run = detail.data;
+	const examples = run ? requestExamples(run.request_body) : [];
 	const raw = run
 		? tab === "request"
 			? run.request_body
@@ -147,51 +192,95 @@ export function RunDetail({
 										{run.error}
 									</p>
 								)}
-								{run.items.map((item) => (
-									<div
-										key={`${item.question_key}-${item.classifier_id}`}
-										className="py-4 border-b border-kumo-line"
-									>
-										<div className="flex justify-between gap-3">
-											<span className="font-medium">
-												{item.classifier_name}
-											</span>
-											<span className="text-xs text-kumo-subtle">
-												{item.question_key} · v{item.revision}
-											</span>
-										</div>
-										<p className="text-sm text-kumo-subtle my-2">
-											{item.question}
-										</p>
-										<div className="flex justify-between text-sm">
-											<span>
-												{item.probability === null
-													? "No answer"
-													: item.answer === null
-														? "Needs review"
-														: item.answer
-															? "Yes"
-															: "No"}
-											</span>
-											<span>
-												{item.probability === null
-													? "—"
-													: `${(item.probability * 100).toFixed(1)}% yes`}
-											</span>
-										</div>
-										<p className="text-xs text-kumo-subtle mt-2">
-											{dispositions[item.disposition]} · attempt {item.attempt}
-										</p>
-										{item.error && (
-											<p className="text-xs text-kumo-danger mt-2">
-												{item.error}
+								{run.items
+									.filter(
+										(item) =>
+											!classifierIds ||
+											classifierIds.includes(item.classifier_id),
+									)
+									.map((item) => (
+										<div
+											key={`${item.question_key}-${item.classifier_id}`}
+											className="py-4 border-b border-kumo-line"
+										>
+											<div className="flex justify-between gap-3">
+												<span className="font-medium">
+													{item.classifier_name}
+												</span>
+												<span className="text-xs text-kumo-subtle">
+													{item.question_key} · v{item.revision}
+												</span>
+											</div>
+											<p className="text-sm text-kumo-subtle my-2">
+												{item.question}
 											</p>
-										)}
-									</div>
-								))}
+											<div className="flex justify-between text-sm">
+												<span>
+													{item.probability === null
+														? "No answer"
+														: item.answer === null
+															? "Needs review"
+															: item.answer
+																? "Yes"
+																: "No"}
+												</span>
+												<span>
+													{item.probability === null
+														? "—"
+														: `${(item.probability * 100).toFixed(1)}% yes`}
+												</span>
+											</div>
+											<p className="text-xs text-kumo-subtle mt-2">
+												{dispositions[item.disposition]} · attempt{" "}
+												{item.attempt}
+											</p>
+											{item.error && (
+												<p className="text-xs text-kumo-danger mt-2">
+													{item.error}
+												</p>
+											)}
+										</div>
+									))}
 							</>
 						) : (
 							<>
+								{tab === "request" && (
+									<section
+										aria-label="Examples sent to Jev"
+										className="mb-5 rounded-lg border border-kumo-line p-3"
+									>
+										<h3 className="text-sm font-medium">
+											Examples sent to Jev
+										</h3>
+										{examples.length ? (
+											examples.map(({ key, examples: entries }) => (
+												<details key={key} className="mt-3" open>
+													<summary className="cursor-pointer text-xs font-medium">
+														{[
+															...new Set(
+																run.items
+																	.filter((item) => item.question_key === key)
+																	.map((item) => item.classifier_name),
+															),
+														].join(", ") || key}{" "}
+														· {entries.length} example
+														{entries.length === 1 ? "" : "s"} · {key}
+													</summary>
+													<div className="mt-2 whitespace-pre-wrap break-words text-xs text-kumo-subtle">
+														{JSON.stringify(entries, null, 2)}
+													</div>
+												</details>
+											))
+										) : (
+											<p className="mt-2 text-xs text-kumo-subtle">
+												No examples were included in this request. This is the
+												request as sent; examples saved later do not change it.
+												The current conversation, test-only examples, and
+												incompatible or oversized examples are excluded.
+											</p>
+										)}
+									</section>
+								)}
 								<div className="flex justify-between items-center gap-3 mb-3">
 									<span className="text-xs text-kumo-subtle">
 										{tab === "request"

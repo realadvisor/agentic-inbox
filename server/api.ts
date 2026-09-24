@@ -76,7 +76,7 @@ export interface ApiOptions {
 	jevTransport?: typeof fetch;
 	classifierPreview?: boolean;
 	classifiersEnabled?: boolean;
-	kickClassifiers?: () => void;
+	kickClassifiers?: (tokens?: string[]) => void;
 	previewRoutes?: Hono;
 	readAttachment: (key: string) => Promise<Uint8Array | null>;
 	// Remote authentication is enforced by the Worker before it constructs this API.

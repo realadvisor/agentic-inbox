@@ -6,6 +6,13 @@ import { useState } from "react";
 import { Button, Dialog } from "@cloudflare/kumo";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { classifierRequest, type Classification } from "~/services/classifiers";
+const percentage = (value: number | null | undefined) =>
+	value == null
+		? "Unavailable"
+		: new Intl.NumberFormat("en", {
+				style: "percent",
+				maximumFractionDigits: 1,
+			}).format(value);
 export function ClassifierReview({ results }: { results: Classification[] }) {
 	const [open, setOpen] = useState(false);
 	const qc = useQueryClient();
@@ -25,6 +32,16 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 		},
 	});
 	const pending = results.filter((r) => r.answer === null);
+	const choices = new Map<string, Classification[]>();
+	const binary = pending.filter((row) => {
+		if (row.group_id && row.group_selection === "single") {
+			const key = `${row.mailbox_id}/${row.thread_id}/${row.group_id}`;
+			choices.set(key, [...(choices.get(key) ?? []), row]);
+			return false;
+		}
+		return true;
+	});
+	const count = choices.size + binary.length;
 	if (!pending.length) return null;
 	return (
 		<span
@@ -35,7 +52,7 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 				className="mt-1.5 text-xs text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5"
 				onClick={() => setOpen(true)}
 			>
-				Needs review{pending.length > 1 ? ` (${pending.length})` : ""}
+				Needs review{count > 1 ? ` (${count})` : ""}
 			</button>
 			<Dialog.Root open={open} onOpenChange={setOpen}>
 				<Dialog size="sm" className="p-6">
@@ -45,7 +62,51 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 					<p className="text-xs text-kumo-subtle mt-2 mb-4">
 						Choose an answer for each question below. Nothing is selected yet.
 					</p>
-					{pending.map((row) => (
+					{[...choices].map(([key, rows]) => (
+						<div key={key} className="py-4 border-t border-kumo-line">
+							<p className="font-medium text-sm">{rows[0].group_name}</p>
+							<p className="text-sm mt-1">Which tag is correct?</p>
+							<p className="text-xs text-kumo-subtle mt-2">
+								Jev confidence:{" "}
+								<span className="font-medium text-kumo-default">
+									{percentage(rows[0].confidence)}
+								</span>
+							</p>
+							<p className="text-xs text-kumo-subtle mt-1">
+								Percentages show each option’s probability. Confidence describes
+								Jev’s certainty in the overall choice.
+							</p>
+							<p className="text-xs text-kumo-subtle mt-2">
+								{rows[0].group_instructions}
+							</p>
+							<p className="text-xs text-kumo-subtle mt-2">
+								Jev could not confidently select one option. Choose the correct
+								tag to resolve this group.
+							</p>
+							<div className="flex flex-wrap gap-2 mt-3">
+								{rows.map((row) => (
+									<Button
+										key={row.classifier_id}
+										size="sm"
+										variant="secondary"
+										disabled={review.isPending}
+										onClick={() => review.mutate({ row, answer: true })}
+									>
+										<span
+											aria-hidden="true"
+											className="size-2 rounded-full"
+											style={{ backgroundColor: row.color }}
+										/>
+										{row.name}
+										<span className="text-kumo-subtle tabular-nums">
+											{percentage(row.probability)}
+										</span>
+									</Button>
+								))}
+							</div>
+						</div>
+					))}
+					{binary.map((row) => (
 						<div
 							key={row.classifier_id}
 							className="py-4 border-t border-kumo-line"
@@ -85,14 +146,17 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 						</div>
 					))}
 					<div className="text-xs text-kumo-subtle border-t border-kumo-line pt-4 space-y-2">
+						{binary.length > 0 && (
+							<p>
+								Automatic decisions: Yes at {CLASSIFICATION_YES_THRESHOLD * 100}
+								% or above; No at {CLASSIFICATION_NO_THRESHOLD * 100}% or below.
+								Probabilities between these thresholds need review.
+							</p>
+						)}
 						<p>
-							Automatic decisions: Yes at {CLASSIFICATION_YES_THRESHOLD * 100}%
-							or above; No at {CLASSIFICATION_NO_THRESHOLD * 100}% or below.
-							Probabilities between these thresholds need review.
-						</p>
-						<p>
-							Your answer saves immediately: Yes applies the tag; No removes it.
-							New messages may trigger classification again.
+							Your answer saves immediately. Choosing an option applies that tag
+							and replaces the previous selection in its group. New messages may
+							trigger classification again.
 						</p>
 					</div>
 					{review.error && (

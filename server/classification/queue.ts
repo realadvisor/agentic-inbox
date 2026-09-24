@@ -1,19 +1,19 @@
+import { curatedQuestion } from "./curated-examples";
 import {
-	groupChoice,
 	interpretAnswer,
 	type JevQuestion,
-	guard,
 	jevQuestion,
 	jevRequest,
 } from "../../shared/jev-request";
 import { captureProviderRequest, type CaptureJob } from "./provider-runs";
 import { batchRequests } from "./batch";
-import { recentExamples, type HumanExample } from "./examples";
+import { type HumanExample } from "./examples";
 import { conversationState } from "./state";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import type { Database } from "../db";
 
 interface Job {
+	priority: number;
 	mailbox_id: string;
 	thread_id: string;
 	classifier_id: string;
@@ -127,7 +127,7 @@ export async function processJob(
 	 AND j.generation=${anchor.generation} AND j.token<>${token}
 	 AND j.status='pending' AND j.available_at<=now()
 	 AND (j.lease_until IS NULL OR j.lease_until<=now())
-	 AND c.enabled AND c.revision=j.revision
+	 AND (c.enabled OR j.priority=2) AND c.revision=j.revision
 	 ORDER BY j.classifier_id`
 		: [];
 
@@ -196,7 +196,8 @@ async function processSingleJob(
 		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending' FOR UPDATE`;
 		if (
 			!job ||
-			!classifier?.enabled ||
+			!classifier ||
+			(!classifier.enabled && job.priority !== 2) ||
 			classifier.revision !== job.revision ||
 			conversation?.generation !== job.generation
 		)
@@ -238,7 +239,7 @@ async function processSingleJob(
 	let failure: JevError | undefined;
 	try {
 		const [eligibility] =
-			await db`SELECT classifier_thread_active(${j.mailbox_id},${j.thread_id}) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
+			await db`SELECT (classifier_thread_active(${j.mailbox_id},${j.thread_id}) OR (${j.priority === 2} AND EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')))) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
 		const [size] =
 			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent')`;
 		if (!eligibility.active || eligibility.manual) result.status = "skipped";
@@ -252,34 +253,26 @@ async function processSingleJob(
 				evaluatedAt,
 			);
 			const [group] =
-				await db`SELECT g.*, (SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL) AS tags FROM tag_groups g JOIN tags t ON t.group_id=g.id WHERE t.id=${j.tag_id} AND g.selection='single'`;
-			const typedQuestion = group
-				? groupChoice(group as TagGroupInput)
-				: undefined;
+				await db`SELECT g.*, (SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL) AS tags FROM tag_groups g JOIN tags t ON t.group_id=g.id WHERE t.id=${j.tag_id}`;
+			const typedQuestion = await curatedQuestion(db, {
+				target: group
+					? { group_id: group.id }
+					: { classifier_id: j.classifier_id },
+				mailbox: j.mailbox_id,
+				thread: j.thread_id,
+				state,
+				group: group as TagGroupInput | undefined,
+				question: j.question,
+				option: j.tag_id,
+				legacy: j.include_reviewed_examples,
+			});
 
-			// Bound added context without truncating evidence or its human label.
-			const exampleBudget = Math.min(
-				12000,
-				24000 -
-					new TextEncoder().encode(JSON.stringify(state) + j.question + guard)
-						.length,
-			);
-			const examples = j.include_reviewed_examples
-				? await recentExamples(
-						db,
-						j.classifier_id,
-						j.mailbox_id,
-						j.thread_id,
-						j.question,
-						exampleBudget,
-					)
-				: [];
 			const answer = await askJev(
 				key,
 				j.question,
 				state,
 				request,
-				examples,
+				[],
 				typedQuestion,
 				j.tag_id,
 			);
@@ -308,7 +301,8 @@ async function processSingleJob(
 				current.token !== j.token ||
 				current.lease_id !== j.lease_id ||
 				current.status !== "pending" ||
-				!classifier?.enabled ||
+				!classifier ||
+				(!classifier.enabled && j.priority !== 2) ||
 				classifier.revision !== j.revision ||
 				conversation?.generation !== j.generation
 			) {

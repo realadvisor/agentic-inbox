@@ -1,4 +1,6 @@
 import ThreadStatus from "./ThreadStatus";
+import { ReclassifyConversation } from "./ReclassifyConversation";
+import { ConversationExample } from "./ConversationExample";
 import { ConversationClassifierDrawer } from "./ConversationClassifierDrawer";
 import { useMailMode } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
@@ -303,6 +305,21 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 						threadIds={[email.thread_id ?? email.id]}
 						tags={email.tags}
 					/>
+					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
+						<ReclassifyConversation
+							key={`rerun/${mailboxId}/${email.thread_id ?? email.id}`}
+							mailboxId={mailboxId}
+							threadId={email.thread_id ?? email.id}
+						/>
+					)}
+					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
+						<ConversationExample
+							tags={email.tags}
+							key={`example/${mailboxId}/${email.thread_id ?? email.id}`}
+							mailboxId={mailboxId}
+							threadId={email.thread_id ?? email.id}
+						/>
+					)}
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
 						<ConversationClassifierDrawer
 							key={`${mailboxId}/${email.thread_id ?? email.id}`}

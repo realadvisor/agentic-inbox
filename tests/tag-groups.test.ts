@@ -228,6 +228,32 @@ test("ambiguous Choice probabilities send every group option to review", async (
 	const logs =
 		await db`SELECT i.disposition FROM classifier_provider_run_items i JOIN classifier_provider_runs r ON r.id=i.run_id WHERE r.thread_id=${thread}`;
 	assert.ok(logs.every((row) => row.disposition === "review"));
+	const reviewRows = await (
+		await call(`/classification/results/${mailbox}?thread=${thread}`)
+	).json();
+	const choice = reviewRows.find(
+		(row: { group_selection: string }) => row.group_selection === "single",
+	);
+	assert.ok(choice.group_name);
+	assert.equal(choice.confidence, 0.1);
+	assert.ok(!("response_body" in choice));
+	assert.ok(choice.group_instructions);
+	const reviewed = await call(
+		`/classification/results/${mailbox}/${thread}/${choice.classifier_id}`,
+		"PUT",
+		{ answer: true, revision: choice.revision, token: choice.token },
+	);
+	assert.equal(reviewed.status, 204);
+	const remaining = await (
+		await call(`/classification/results/${mailbox}?thread=${thread}`)
+	).json();
+	assert.ok(
+		remaining.every(
+			(row: { group_id: string }) => row.group_id !== choice.group_id,
+		),
+	);
+	const assigned = await store.tagsForThreads(mailbox, [thread]);
+	assert.ok(assigned.some((tag) => tag.id === choice.tag_id));
 });
 
 test("renaming and retiring options preserve classifier history and reject duplicates", async () => {
