@@ -10,6 +10,8 @@ export type ComposeMode = "new" | "reply" | "reply-all" | "forward";
 
 export interface ComposeOptions {
 	mode: ComposeMode;
+	aiDraft?: boolean;
+	quickDraft?: boolean;
 	originalEmail?: Email | null;
 	/** When editing a draft, this holds the draft email to pre-fill the composer */
 	draftEmail?: Email | null;

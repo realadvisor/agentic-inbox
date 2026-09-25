@@ -1,194 +1,255 @@
-import { SendLabel } from "~/components/MailMode";
-// Modified for the RealAdvisor local Postgres prototype.
-// Copyright (c) 2026 Cloudflare, Inc.
-// Licensed under the Apache 2.0 license found in the LICENSE file or at:
-//     https://opensource.org/licenses/Apache-2.0
-
-import { Banner, Button, Input } from "@cloudflare/kumo";
+import ComposerAiAssist from "./ComposerAiAssist";
+import { useLayoutEffect, useRef, useState } from "react";
+import { Button } from "@cloudflare/kumo";
 import {
-	FloppyDiskIcon,
-	PaperPlaneTiltIcon,
+	ArrowsOutSimpleIcon,
+	ArrowsInSimpleIcon,
 	XIcon,
+	PaperPlaneTiltIcon,
+	FloppyDiskIcon,
+	TextAaIcon,
+	TrashIcon,
+	ArrowBendUpLeftIcon,
 } from "@phosphor-icons/react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import { useUIStore } from "~/hooks/useUIStore";
+import { useMailbox } from "~/queries/mailboxes";
+import { SendLabel } from "~/components/MailMode";
 import RichTextEditor from "./RichTextEditor";
+import RecipientField from "./RecipientField";
 
-export default function ComposePanel() {
-	const { mailboxId, folder } = useParams<{
-		mailboxId: string;
-		folder: string;
-	}>();
-
-	const {
-		to,
-		setTo,
-		cc,
-		setCc,
-		bcc,
-		setBcc,
-		showCcBcc,
-		setShowCcBcc,
-		subject,
-		setSubject,
-		body,
-		setBody,
-		error,
-		isSavingDraft,
-		isSending,
-		formTitle,
-		handleSaveDraft,
-		handleSend,
-		closeCompose,
-		closePanel,
-	} = useComposeForm(mailboxId, folder);
-
+export default function ComposePanel({ inline = false }: { inline?: boolean }) {
+	const { mailboxId, folder } = useParams();
+	const { data: mailbox } = useMailbox(mailboxId);
+	const { composeOptions } = useUIStore();
+	const form = useComposeForm(mailboxId, folder, true);
+	const [expanded, setExpanded] = useState(false);
+	const [formatting, setFormatting] = useState(false);
+	const panel = useRef<HTMLElement>(null);
+	const formRef = useRef<HTMLFormElement>(null);
+	useLayoutEffect(() => {
+		if (inline && !expanded)
+			panel.current?.scrollIntoView({
+				block: "start",
+				inline: "nearest",
+				behavior: "instant",
+			});
+	}, [inline, expanded]);
+	const busy = form.isSending || form.isSavingDraft;
 	return (
-		<div className="flex flex-col h-full bg-kumo-base">
-			<div className="flex items-center justify-between px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
-				<h2 className="text-base font-semibold text-kumo-default">
-					{formTitle}
-				</h2>
+		<section
+			ref={panel}
+			aria-label="Email composer"
+			className={
+				expanded
+					? "fixed inset-3 md:inset-10 z-50 flex flex-col rounded-xl border border-kumo-line bg-kumo-base shadow-2xl"
+					: "flex flex-col min-h-0 bg-kumo-base " +
+						(inline
+							? "m-3 md:m-5 rounded-xl border border-kumo-line shadow-sm"
+							: "h-full")
+			}
+		>
+			<header className="flex items-center justify-between px-4 py-2 border-b border-kumo-line/60">
+				<div className="flex items-center gap-2 text-sm font-medium">
+					<ArrowBendUpLeftIcon size={17} className="text-kumo-subtle" />
+					{form.formTitle}
+				</div>
 				<div className="flex items-center gap-1">
+					{mailboxId && (
+						<ComposerAiAssist
+							mailboxId={mailboxId}
+							emailId={
+								composeOptions.originalEmail?.id ??
+								composeOptions.draftEmail?.in_reply_to ??
+								undefined
+							}
+							body={form.body}
+							subject={form.subject}
+							recipients={form.to}
+							onApply={form.setBody}
+							disabled={busy}
+							initialOpen={composeOptions.aiDraft}
+							initialQuick={composeOptions.quickDraft}
+						/>
+					)}
 					<Button
+						type="button"
+						size="sm"
 						variant="ghost"
 						shape="square"
+						aria-label={expanded ? "Collapse composer" : "Expand composer"}
+						onClick={() => setExpanded(!expanded)}
+						icon={
+							expanded ? (
+								<ArrowsInSimpleIcon size={16} />
+							) : (
+								<ArrowsOutSimpleIcon size={16} />
+							)
+						}
+					/>
+					<Button
+						type="button"
 						size="sm"
-						icon={<XIcon size={18} />}
-						onClick={closeCompose}
-						disabled={isSending}
+						variant="ghost"
+						shape="square"
 						aria-label="Close compose"
+						disabled={busy}
+						onClick={form.closeCompose}
+						icon={<XIcon size={16} />}
 					/>
 				</div>
-			</div>
-
+			</header>
 			<form
-				onSubmit={(e) => handleSend(e, closePanel)}
-				className="flex flex-col flex-1 min-h-0 overflow-y-auto"
+				ref={formRef}
+				onSubmit={(event) => form.handleSend(event, form.closeCompose)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+						event.preventDefault();
+						if (event.target instanceof HTMLElement) event.target.blur();
+						requestAnimationFrame(() => formRef.current?.requestSubmit());
+					}
+				}}
+				className="flex flex-col flex-1 min-h-0"
 			>
-				<div className="p-4 md:p-6 space-y-4">
-					{error && <Banner variant="error" text={error} />}
-
-					<div className="space-y-3">
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-								To
-							</label>
-							<div className="flex-1 flex items-center gap-2 min-w-0">
-								<Input
-									type="text"
-									placeholder="recipient@example.com"
-									size="sm"
-									value={to}
-									onChange={(e) => setTo(e.target.value)}
-									required
-								/>
-								{!showCcBcc && (
-									<button
+				<div className="flex-1 min-h-0 overflow-y-auto">
+					<div>
+						<div className="flex items-center gap-2 px-4 py-2 border-b border-kumo-line/60 text-xs">
+							<span className="w-10 shrink-0 text-kumo-subtle">From</span>
+							<span className="min-w-0 truncate text-kumo-subtle">
+								{mailbox?.name}{" "}
+								<span className="text-kumo-inactive">
+									&lt;{mailbox?.email}&gt;
+								</span>
+							</span>
+						</div>
+						<RecipientField
+							label="To"
+							value={form.to}
+							onChange={form.setTo}
+							action={
+								!form.showCcBcc ? (
+									<Button
 										type="button"
-										onClick={() => setShowCcBcc(true)}
-										className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium"
+										variant="ghost"
+										size="sm"
+										onClick={() => form.setShowCcBcc(true)}
+										className="!h-6 !px-2 !text-xs text-kumo-subtle"
 									>
-										CC / BCC
-									</button>
-								)}
-							</div>
-						</div>
+										Cc / Bcc
+									</Button>
+								) : undefined
+							}
+						/>
 
-						{showCcBcc && (
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-									CC
-								</label>
-								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
-										value={cc}
-										onChange={(e) => setCc(e.target.value)}
-										placeholder="Separate multiple addresses with commas"
-									/>
-								</div>
-							</div>
+						{form.showCcBcc && (
+							<>
+								<RecipientField
+									label="Cc"
+									value={form.cc}
+									onChange={form.setCc}
+								/>
+								<RecipientField
+									label="Bcc"
+									value={form.bcc}
+									onChange={form.setBcc}
+								/>
+							</>
 						)}
-
-						{showCcBcc && (
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-									BCC
+						{!inline || composeOptions.mode === "forward" ? (
+							<div className="flex items-center gap-2 px-4 border-b border-kumo-line/60 py-2">
+								<label
+									htmlFor="compose-subject"
+									className="w-10 text-xs text-kumo-subtle"
+								>
+									Subject
 								</label>
-								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
-										value={bcc}
-										onChange={(e) => setBcc(e.target.value)}
-										placeholder="Separate multiple addresses with commas"
-									/>
-								</div>
-							</div>
-						)}
-
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-								Subject
-							</label>
-							<div className="flex-1">
-								<Input
-									type="text"
-									placeholder="Email subject"
-									size="sm"
-									value={subject}
-									onChange={(e) => setSubject(e.target.value)}
+								<input
+									id="compose-subject"
+									aria-label="Subject"
 									required
+									value={form.subject}
+									onChange={(e) => form.setSubject(e.target.value)}
+									placeholder="Add a subject"
+									className="flex-1 min-w-0 bg-transparent text-sm outline-none"
 								/>
 							</div>
-						</div>
+						) : null}
 					</div>
 
-					<div className="border border-kumo-line rounded-md overflow-hidden bg-kumo-base">
-						<RichTextEditor value={body} onChange={setBody} />
+					<div className="px-2 pt-3">
+						<RichTextEditor
+							value={form.body}
+							onChange={form.setBody}
+							minimal
+							showToolbar={formatting}
+						/>
 					</div>
+					{form.quotedBody && (
+						<details className="mx-5 mb-4 text-xs text-kumo-subtle">
+							<summary className="cursor-pointer py-2">
+								Show quoted message
+							</summary>
+							<div className="max-h-40 overflow-auto border-l-2 border-kumo-line pl-3 whitespace-pre-wrap">
+								{form.quotedText}
+							</div>
+						</details>
+					)}
 				</div>
-
-				{/* Footer actions */}
-				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
-					<div className="flex items-center justify-between">
+				{form.error && (
+					<p role="alert" className="px-5 py-2 text-sm text-kumo-destructive">
+						{form.error}
+					</p>
+				)}
+				<footer className="flex flex-wrap items-center justify-between gap-2 border-t border-kumo-line/60 px-4 py-2.5">
+					<div className="flex items-center gap-2">
+						<Button
+							type="submit"
+							size="sm"
+							variant="primary"
+							disabled={busy}
+							icon={<PaperPlaneTiltIcon size={16} />}
+						>
+							<SendLabel sending={form.isSending} />
+						</Button>
+						<span className="hidden lg:inline text-xs text-kumo-inactive">
+							⌘ Enter
+						</span>
+					</div>
+					<div className="flex items-center gap-1">
+						<Button
+							type="button"
+							size="sm"
+							variant={formatting ? "secondary" : "ghost"}
+							shape="square"
+							aria-label="Formatting"
+							aria-pressed={formatting}
+							onClick={() => setFormatting(!formatting)}
+							icon={<TextAaIcon size={18} />}
+						/>
+						<Button
+							type="button"
+							variant="secondary"
+							size="sm"
+							icon={<FloppyDiskIcon size={14} />}
+							disabled={busy}
+							onClick={form.handleSaveDraft}
+						>
+							{form.isSavingDraft ? "Saving…" : "Save as Draft"}
+						</Button>
 						<Button
 							type="button"
 							variant="ghost"
 							size="sm"
-							onClick={closeCompose}
-							disabled={isSending}
-						>
-							Discard
-						</Button>
-						<div className="flex items-center gap-2">
-							<Button
-								type="button"
-								variant="secondary"
-								size="sm"
-								loading={isSavingDraft}
-								disabled={isSending}
-								icon={<FloppyDiskIcon size={14} />}
-								onClick={handleSaveDraft}
-							>
-								{isSavingDraft ? "Saving..." : "Save as Draft"}
-							</Button>
-							<Button
-								type="submit"
-								variant="primary"
-								size="sm"
-								loading={isSending}
-								disabled={isSavingDraft || isSending}
-								icon={<PaperPlaneTiltIcon size={14} />}
-							>
-								<SendLabel sending={isSending} />
-							</Button>
-						</div>
+							shape="square"
+							disabled={busy}
+							aria-label="Discard draft"
+							onClick={form.closeCompose}
+							icon={<TrashIcon size={16} />}
+						/>
 					</div>
-				</div>
+				</footer>
 			</form>
-		</div>
+		</section>
 	);
 }

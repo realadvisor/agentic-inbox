@@ -32,11 +32,15 @@ import { useCallback, useEffect } from "react";
 interface RichTextEditorProps {
 	value: string;
 	onChange: (value: string) => void;
+	minimal?: boolean;
+	showToolbar?: boolean;
 }
 
 export default function RichTextEditor({
 	value,
 	onChange,
+	minimal = false,
+	showToolbar = true,
 }: RichTextEditorProps) {
 	const editor = useEditor({
 		extensions: [
@@ -53,7 +57,10 @@ export default function RichTextEditor({
 		editorProps: {
 			attributes: {
 				class:
-					"prose prose-sm max-w-none focus:outline-none min-h-[180px] p-3 text-sm [&_blockquote]:border-l-2 [&_blockquote]:border-kumo-line [&_blockquote]:pl-3 [&_blockquote]:text-kumo-subtle [&_blockquote]:bg-kumo-tint [&_blockquote]:py-1 [&_blockquote]:my-2 [&_blockquote]:text-xs [&_blockquote]:rounded-r-sm",
+					(minimal
+						? "min-h-[230px] px-3 py-3 text-[15px] leading-7 "
+						: "min-h-[180px] p-3 text-sm ") +
+					"prose prose-sm max-w-none focus:outline-none [&_blockquote]:border-l-2 [&_blockquote]:border-kumo-line [&_blockquote]:pl-3 [&_blockquote]:text-kumo-subtle [&_blockquote]:bg-kumo-tint [&_blockquote]:py-1 [&_blockquote]:my-2 [&_blockquote]:text-xs [&_blockquote]:rounded-r-sm",
 			},
 		},
 		onUpdate: ({ editor }) => {
@@ -63,7 +70,7 @@ export default function RichTextEditor({
 
 	useEffect(() => {
 		if (editor && !editor.isDestroyed && value !== editor.getHTML()) {
-			editor.commands.setContent(value);
+			editor.commands.setContent(value, { emitUpdate: false });
 			// Place cursor at the start of the document (above quoted text)
 			const rafId = requestAnimationFrame(() => {
 				if (!editor.isDestroyed) {
@@ -89,9 +96,21 @@ export default function RichTextEditor({
 	if (!editor) return null;
 
 	return (
-		<div className="rounded-lg border border-kumo-line overflow-hidden flex flex-col h-full">
+		<div
+			className={
+				minimal
+					? "flex flex-col"
+					: "rounded-lg border border-kumo-line overflow-hidden flex flex-col h-full"
+			}
+		>
 			{/* Toolbar */}
-			<div className="flex flex-wrap items-center gap-0.5 bg-kumo-recessed px-2 py-1.5 border-b border-kumo-line shrink-0">
+			<div
+				hidden={!showToolbar}
+				className={
+					(showToolbar ? "flex " : "hidden ") +
+					"flex-wrap items-center gap-0.5 bg-kumo-recessed px-2 py-1.5 border-b border-kumo-line shrink-0"
+				}
+			>
 				{/* Text formatting */}
 				<Tooltip content="Bold" side="bottom" asChild>
 					<Button

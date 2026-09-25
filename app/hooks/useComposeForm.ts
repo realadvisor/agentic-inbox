@@ -208,7 +208,11 @@ function buildInitialComposeFields(
 	};
 }
 
-export function useComposeForm(mailboxId?: string, _folder?: string) {
+export function useComposeForm(
+	mailboxId?: string,
+	_folder?: string,
+	separateQuote = false,
+) {
 	const toastManager = useKumoToastManager();
 	const { composeOptions, closePanel, closeCompose } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
@@ -224,6 +228,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const [showCcBcc, setShowCcBcc] = useState(false);
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
+	const [quotedBody, setQuotedBody] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
@@ -266,8 +271,18 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		setBcc(initialFields.bcc);
 		setShowCcBcc(initialFields.showCcBcc);
 		setSubject(initialFields.subject);
-		setBody(initialFields.body);
-	}, [composeOptions, currentMailbox?.email, sigBlock]);
+		const quoteIndex = separateQuote
+			? initialFields.body.indexOf(
+					'<br><blockquote style="border-left: 2px solid #ccc;',
+				)
+			: -1;
+		setBody(
+			quoteIndex >= 0
+				? initialFields.body.slice(0, quoteIndex)
+				: initialFields.body,
+		);
+		setQuotedBody(quoteIndex >= 0 ? initialFields.body.slice(quoteIndex) : "");
+	}, [composeOptions, currentMailbox?.email, sigBlock, separateQuote]);
 
 	const handleSaveDraft = async () => {
 		if (!mailboxId || isSending) return;
@@ -281,7 +296,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 					cc: cc || undefined,
 					bcc: bcc || undefined,
 					subject,
-					body,
+					body: body + quotedBody,
 					in_reply_to:
 						composeOptions.originalEmail?.id ||
 						composeOptions.draftEmail?.in_reply_to ||
@@ -331,8 +346,8 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			bcc: toEmailListValue(bccRecipients),
 			from,
 			subject,
-			html: body,
-			text: htmlToPlainText(body),
+			html: body + quotedBody,
+			text: htmlToPlainText(body + quotedBody),
 		};
 		const draftId = savedDraftId;
 		const mode = composeOptions.mode;
@@ -382,6 +397,8 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		setSubject,
 		body,
 		setBody,
+		quotedBody,
+		quotedText: htmlToPlainText(quotedBody),
 		error,
 		setError,
 		isSavingDraft,

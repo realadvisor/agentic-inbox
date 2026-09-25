@@ -14,7 +14,11 @@ export default function AgentModelPicker({
 	defaultModel,
 	disabled,
 	onChange,
+	context = "chat",
+	portalContainer,
 }: {
+	context?: "chat" | "draft";
+	portalContainer?: HTMLElement | null;
 	models: AgentCatalogModel[];
 	value: string;
 	defaultModel: string;
@@ -57,7 +61,11 @@ export default function AgentModelPicker({
 				<span>{selected?.name || value || "Choose model"}</span>
 				<CaretDownIcon size={11} />
 			</Popover.Trigger>
-			<Popover.Content align="start" className="agent-model-menu">
+			<Popover.Content
+				align="start"
+				className="agent-model-menu"
+				container={portalContainer ?? undefined}
+			>
 				<Popover.Title className="agent-model-title">
 					Choose a model
 				</Popover.Title>
@@ -80,7 +88,11 @@ export default function AgentModelPicker({
 							aria-pressed={!value}
 						>
 							<div>
-								<strong>Use mailbox default</strong>
+								<strong>
+									{context === "draft"
+										? "Use default model"
+										: "Use mailbox default"}
+								</strong>
 								<small>
 									{models.find((m) => m.id === defaultModel)?.name ??
 										defaultModel}
@@ -113,7 +125,7 @@ export default function AgentModelPicker({
 					)}
 				</div>
 				<p className="agent-model-footnote">
-					Applies to this chat. Your default stays unchanged.
+					Applies to this {context}. Your default stays unchanged.
 				</p>
 			</Popover.Content>
 		</Popover>

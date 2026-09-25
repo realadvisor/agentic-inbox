@@ -1,3 +1,10 @@
+import "./composer-ai.css";
+import {
+	ArrowBendUpLeftIcon,
+	LightningIcon,
+	SparkleIcon,
+} from "@phosphor-icons/react";
+import ComposePanel from "./ComposePanel";
 import { ThreadClassifierReview } from "./ClassifierReview";
 import ThreadStatus from "./ThreadStatus";
 import { ReclassifyConversation } from "./ReclassifyConversation";
@@ -10,7 +17,7 @@ import { useMailMode } from "~/components/MailMode";
 //     https://opensource.org/licenses/Apache-2.0
 
 import { TagActions } from "~/components/ConversationTags";
-import { useKumoToastManager } from "@cloudflare/kumo";
+import { Button, useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { Folders } from "shared/folders";
@@ -78,7 +85,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
 	};
-	const { closePanel, startCompose } = useUIStore();
+	const { closePanel, startCompose, isComposing } = useUIStore();
 	const toastManager = useKumoToastManager();
 	const [isSending, setIsSending] = useState(false);
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
@@ -387,6 +394,65 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 							setPreviewImage({ url, filename })
 						}
 					/>
+				)}
+				{isComposing ? (
+					<ComposePanel inline />
+				) : (
+					!isDraftFolder && (
+						<div className="px-5 py-4 border-t border-kumo-line/60 flex items-center gap-2">
+							<Button
+								type="button"
+								size="sm"
+								variant="secondary"
+								icon={<ArrowBendUpLeftIcon size={16} />}
+								onClick={() =>
+									startCompose({
+										mode: "reply",
+										originalEmail: lastReceivedMessage,
+									})
+								}
+							>
+								Reply
+							</Button>
+							<div
+								className="ai-draft-button-group"
+								role="group"
+								aria-label="AI drafting"
+							>
+								<Button
+									type="button"
+									size="sm"
+									variant="ghost"
+									icon={<LightningIcon size={16} />}
+									onClick={() =>
+										startCompose({
+											mode: "reply",
+											originalEmail: lastReceivedMessage,
+											quickDraft: true,
+										})
+									}
+								>
+									Quick Draft
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									variant="ghost"
+									icon={<SparkleIcon size={16} />}
+									title="Add instructions and choose a model"
+									onClick={() =>
+										startCompose({
+											mode: "reply",
+											originalEmail: lastReceivedMessage,
+											aiDraft: true,
+										})
+									}
+								>
+									Advanced
+								</Button>
+							</div>
+						</div>
+					)
 				)}
 			</div>
 

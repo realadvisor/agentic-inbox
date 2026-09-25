@@ -1,3 +1,5 @@
+import type { AgentSettings, AgentCatalog } from "shared/agent";
+import type { ComposerAiInput, ComposerAiResult } from "shared/composer-ai";
 import type {
 	ThreadWorkflow,
 	ThreadState,
@@ -163,6 +165,19 @@ const api = {
 			canManageClassifiers?: boolean;
 		}>("/api/v1/config"),
 
+	getComposerAiConfig: (mailboxId: string) =>
+		get<{ settings: AgentSettings; catalog: AgentCatalog }>(
+			`/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/agent/compose`,
+		),
+	composeWithAi: (
+		mailboxId: string,
+		input: ComposerAiInput,
+		signal?: AbortSignal,
+	) =>
+		request<ComposerAiResult>(
+			`/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/agent/compose`,
+			{ method: "POST", body: JSON.stringify(input), signal },
+		),
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),
 	createMailbox: (email: string, name: string, settings?: unknown) =>
