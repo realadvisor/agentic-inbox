@@ -25,9 +25,9 @@ test("reclassify from the message panel, show progress and remain on the convers
 				polls++;
 				await route.fulfill({
 					json: {
-						pending: polls === 1 ? 2 : 0,
+						pending: polls === 1 ? 2 : polls < 4 ? 1 : 0,
 						complete: polls === 1 ? 0 : 1,
-						review: polls === 1 ? 0 : 1,
+						review: polls < 4 ? 0 : 1,
 						failed: 0,
 						skipped: 0,
 					},
@@ -41,6 +41,7 @@ test("reclassify from the message panel, show progress and remain on the convers
 		await expect(
 			page.getByRole("button", { name: "Reclassifying…", exact: true }),
 		).toBeDisabled();
+		await expect(page.getByText("Reclassifying · 1 finished")).toBeVisible();
 		await expect(
 			page.getByText(/Reclassification finished · 1 need review/),
 		).toBeVisible();

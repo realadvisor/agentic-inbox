@@ -14,7 +14,7 @@ import {
 import { captureProviderRequest, type CaptureJob } from "./provider-runs";
 import { batchRequests } from "./batch";
 import { type HumanExample } from "./examples";
-import { conversationState } from "./state";
+import { conversationState, ConversationSizeError } from "./state";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import type { Database } from "../db";
 
@@ -147,6 +147,16 @@ export async function processJob(
 	const tokens = [token, ...siblings.map((j) => j.token)];
 	const contexts = new Map<number, CaptureJob>();
 	const evaluatedAt = new Date();
+	const states = new Map<string, ReturnType<typeof conversationState>>();
+	const loadState = (job: Job) => {
+		const id = `${job.mailbox_id}/${job.thread_id}/${job.generation}`;
+		let state = states.get(id);
+		if (!state) {
+			state = conversationState(db, job.mailbox_id, job.thread_id, evaluatedAt);
+			states.set(id, state);
+		}
+		return state;
+	};
 	const batch = batchRequests(
 		request,
 		tokens.length,
@@ -174,7 +184,7 @@ export async function processJob(
 				jobToken,
 				batch.forJob(index),
 				(job) => contexts.set(index, job),
-				evaluatedAt,
+				loadState,
 			).finally(() => batch.done(index)),
 		),
 	);
@@ -193,7 +203,7 @@ async function processSingleJob(
 	token: string,
 	request: typeof fetch,
 	onClaim: (job: CaptureJob) => void,
-	evaluatedAt: Date,
+	loadState: (job: Job) => ReturnType<typeof conversationState>,
 ): Promise<DeliveryResult> {
 	const claimed = await db.begin(async (tx) => {
 		const [candidate] = await tx<
@@ -254,18 +264,9 @@ async function processSingleJob(
 	try {
 		const [eligibility] =
 			await db`SELECT (classifier_thread_active(${j.mailbox_id},${j.thread_id}) OR (${j.priority === 2} AND EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')))) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
-		const [size] =
-			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent')`;
 		if (!eligibility.active || eligibility.manual) result.status = "skipped";
-		else if (size.count > 1000 || size.chars > 10_000_000)
-			result.error = "conversation_too_large";
 		else {
-			const state = await conversationState(
-				db,
-				j.mailbox_id,
-				j.thread_id,
-				evaluatedAt,
-			);
+			const state = await loadState(j);
 			const [group] =
 				await db`SELECT g.*, (SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL) AS tags FROM tag_groups g JOIN tags t ON t.group_id=g.id WHERE t.id=${j.tag_id}`;
 			const typedQuestion = await curatedQuestion(db, {
@@ -299,9 +300,11 @@ async function processSingleJob(
 		}
 	} catch (error) {
 		failure =
-			error instanceof JevError
-				? error
-				: new JevError("processing_failed", true);
+			error instanceof ConversationSizeError
+				? new JevError("conversation_too_large", false)
+				: error instanceof JevError
+					? error
+					: new JevError("processing_failed", true);
 	}
 	try {
 		await db.begin(async (tx) => {
@@ -340,8 +343,11 @@ async function processSingleJob(
 			if (failure)
 				result = {
 					...result,
-					status:
-						failure.code === "provider_context_limit" ? "review" : "error",
+					status: ["provider_context_limit", "conversation_too_large"].includes(
+						failure.code,
+					)
+						? "review"
+						: "error",
 					error: failure.code,
 				};
 			const [manual] =
