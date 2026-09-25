@@ -20,7 +20,7 @@ export default function SingleMessageView({
 	onPreviewImage,
 }: SingleMessageViewProps) {
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex flex-col">
 			<div className="px-4 py-4 border-b border-kumo-line md:px-6">
 				<div className="flex items-center justify-between gap-3">
 					<div className="flex items-center gap-2.5 min-w-0">
@@ -42,13 +42,14 @@ export default function SingleMessageView({
 				</div>
 			</div>
 
-			<div className="flex-1 min-h-0">
+			<div className="px-5 py-4">
 				<EmailIframe
+					autoSize
 					body={rewriteInlineImages(
 						email.body || "",
 						mailboxId || "",
 						email.id,
-						email.attachments
+						email.attachments,
 					)}
 				/>
 			</div>

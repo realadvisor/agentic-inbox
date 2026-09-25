@@ -5305,6 +5305,123 @@
 					}
 				]
 			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/agent/compose": {
+			"post": {
+				"tags": ["Agent"],
+				"summary": "Generate an email body suggestion without saving or sending",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"emailId": {
+										"type": "string",
+										"format": "uuid"
+									},
+									"action": {
+										"type": "string",
+										"enum": ["draft", "improve", "shorten", "formalize"],
+										"default": "draft"
+									},
+									"instructions": {
+										"type": "string",
+										"maxLength": 2000
+									},
+									"body": {
+										"type": "string",
+										"maxLength": 16000
+									},
+									"subject": {
+										"type": "string",
+										"maxLength": 1000
+									},
+									"recipients": {
+										"type": "string",
+										"maxLength": 2000
+									},
+									"model": {
+										"type": "string",
+										"maxLength": 200,
+										"description": "Optional model override from the existing agent model catalog; defaults to the mailbox model"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Plain-text email body and model used",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["text", "model"],
+									"properties": {
+										"text": {
+											"type": "string"
+										},
+										"model": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input or unavailable model"
+					},
+					"404": {
+						"description": "Mailbox or source email not found"
+					},
+					"502": {
+						"description": "Model generation failed"
+					},
+					"503": {
+						"description": "Provider not configured"
+					},
+					"504": {
+						"description": "Generation cancelled or timed out"
+					}
+				}
+			},
+			"get": {
+				"tags": ["Agent"],
+				"summary": "Get mailbox writing settings and the shared agent model catalog",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Mailbox settings and provider-aware agent model catalog"
+					},
+					"404": {
+						"description": "Mailbox not found"
+					}
+				}
+			}
 		}
 	},
 	"components": {

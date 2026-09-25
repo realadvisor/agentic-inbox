@@ -1,3 +1,4 @@
+import { composeWithAi } from "./composer";
 import { agentErrorMessage } from "./errors";
 import {
 	getCatalog,
@@ -35,6 +36,28 @@ export interface AgentOptions {
 }
 export function agentApi(db: Database, options: AgentOptions) {
 	const app = new Hono();
+	app.get("/api/v1/mailboxes/:mailboxId/agent/compose", async (c) => {
+		const mailbox = c.req.param("mailboxId");
+		await new InboxStore(db).mailbox(mailbox);
+		return c.json({
+			settings: await getSettings(db, mailbox),
+			catalog: await getCatalog(
+				db,
+				options.sources ?? (options.model ? ["workers"] : []),
+			),
+		});
+	});
+	app.post("/api/v1/mailboxes/:mailboxId/agent/compose", async (c) =>
+		c.json(
+			await composeWithAi(
+				db,
+				options,
+				c.req.param("mailboxId"),
+				await c.req.json(),
+				c.req.raw.signal,
+			),
+		),
+	);
 	const sources =
 		options.sources ?? (options.model ? ["workers" as const] : []);
 	app.get("/api/v1/agent/models", async (c) =>

@@ -14,6 +14,17 @@ This is an intentionally standalone pnpm workspace with its own lockfile: the up
 - Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Live raw MIME is retained privately in R2.
 - Probo, historical imports, and the upstream MCP server are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
 
+## Composer AI assistance
+
+The composer offers Quick Draft, an Advanced prompt/model dialog, and Improve / Shorten / Formal actions through
+Vercel AI SDK `generateText`. It reuses the agent's model catalog, mailbox model
+and writing instructions, and server-side provider credentials. The model picker
+can override the model for the current composer without changing mailbox settings.
+Composer model choices use Vercel AI Gateway when configured via `AI_GATEWAY_API_KEY`, including in the Worker. The agent retains its existing provider setup.
+Generation returns an editable suggestion without saving or sending an email.
+Existing text, including edits made during generation, is retained until the user
+chooses Use suggestion. Draft saving and sending remain manual.
+
 ## Conversation status
 
 Conversations have an Open or Done status, independent of tags and classification.
