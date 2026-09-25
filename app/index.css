@@ -26,3 +26,8 @@ body {
 	margin-top: 0.25em;
 	margin-bottom: 0.25em;
 }
+
+/* Keep email paragraphs visibly separated after AI insertion and editor updates. */
+.ProseMirror > p + p {
+	margin-top: 1em;
+}
