@@ -1,3 +1,6 @@
+import { Checkbox, Radio } from "@cloudflare/kumo";
+import { Textarea as KumoTextarea } from "@cloudflare/kumo";
+import { AppSelect } from "./AppSelect";
 import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
@@ -7,8 +10,7 @@ import api from "~/services/api";
 import { classifierRequest } from "~/services/classifiers";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import { exampleConfig, type CuratedExample } from "../../shared/jev-examples";
-const field =
-	"w-full rounded-lg border border-kumo-line bg-kumo-base p-2 text-sm";
+const field = "w-full";
 type Question = {
 	name: string;
 	question: string;
@@ -291,44 +293,58 @@ export function JevExamples({
 							</div>
 						))}
 					</div>
-					<fieldset disabled={busy}>
-						<legend className="text-xs font-medium mb-2">
-							Expected {group ? "tags" : "answer"}
-						</legend>
-						{options.map((o) => (
-							<label key={o.id} className="flex gap-2 text-xs py-1">
-								<input
-									type={group?.selection === "multiple" ? "checkbox" : "radio"}
-									name="example-label"
+					{group?.selection === "multiple" ? (
+						<fieldset disabled={busy} className="space-y-2">
+							<legend className="text-xs font-medium mb-2">
+								Expected tags
+							</legend>
+							{options.map((o) => (
+								<Checkbox
+									disabled={busy}
+									key={o.id}
+									label={o.name}
 									checked={labels.includes(o.id)}
-									onChange={(e) =>
+									onCheckedChange={(checked) =>
 										setLabels(
-											group?.selection === "multiple"
-												? e.target.checked
-													? [...labels, o.id]
-													: labels.filter((l) => l !== o.id)
-												: [o.id],
+											checked
+												? [...labels, o.id]
+												: labels.filter((l) => l !== o.id),
 										)
 									}
 								/>
-								{o.name}
-							</label>
-						))}
-					</fieldset>
-					<label className="block text-xs">
-						Use this example
-						<select
-							className={field + " mt-1"}
-							value={role}
-							onChange={(e) => setRole(e.target.value as "teach" | "test")}
+							))}
+						</fieldset>
+					) : (
+						<Radio.Group
+							legend={`Expected ${group ? "tag" : "answer"}`}
+							name="example-label"
+							value={labels[0] ?? ""}
+							onValueChange={(value) => setLabels([value])}
+							disabled={busy}
 						>
-							<option value="teach">Teach Jev</option>
-							<option value="test">Test only</option>
-						</select>
-					</label>
+							{options.map((o) => (
+								<Radio.Item key={o.id} value={o.id} label={o.name} />
+							))}
+						</Radio.Group>
+					)}
+					<div className="block text-xs">
+						Use this example
+						<AppSelect
+							disabled={busy}
+							label="Use this example"
+							value={role}
+							options={[
+								{ value: "teach", label: "Teach Jev" },
+								{ value: "test", label: "Test only" },
+							]}
+							onChange={(value) =>
+								setRole(value === "teach" ? "teach" : "test")
+							}
+						/>
+					</div>
 					<label className="block text-xs">
 						Why this label? (optional)
-						<textarea
+						<KumoTextarea
 							className={field + " mt-1"}
 							rows={2}
 							maxLength={1000}

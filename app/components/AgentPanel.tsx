@@ -1,3 +1,4 @@
+import { Textarea as KumoTextarea } from "@cloudflare/kumo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	useInfiniteQuery,
@@ -660,7 +661,7 @@ function AgentChat({
 							</button>
 						</div>
 					)}
-					<textarea
+					<KumoTextarea
 						aria-label="Message email agent"
 						rows={3}
 						maxLength={8000}

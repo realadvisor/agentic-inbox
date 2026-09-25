@@ -10,7 +10,48 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { Database } from "../db";
+import type postgres from "postgres";
 import { finishRuns } from "./queue";
+const runInput = z
+	.object({
+		mailbox_ids: z.array(z.string().email()).min(1).max(50),
+		selection: z.enum(["unprocessed", "all"]),
+		reset: z.boolean().default(false),
+		enable: z.boolean().default(false),
+		received_from: z.string().datetime().optional(),
+		received_before: z.string().datetime().optional(),
+		limit: z.number().int().min(1).max(5000).default(5000),
+	})
+	.strict();
+function validateRunRange(data: z.infer<typeof runInput>) {
+	if (
+		data.received_from &&
+		data.received_before &&
+		data.received_from >= data.received_before
+	)
+		throw new HTTPException(400, {
+			message: "The end date must not be before the start date",
+		});
+	if (data.reset && data.selection !== "all")
+		throw new HTTPException(400, {
+			message: "Choose all conversations to reset corrections",
+		});
+}
+function runTargets(
+	sql: Database | postgres.TransactionSql,
+	data: z.infer<typeof runInput>,
+	classifierId: string,
+	revision: number,
+	lock = false,
+) {
+	return sql`SELECT c.mailbox_id,c.thread_id,c.generation FROM conversations c
+	CROSS JOIN LATERAL (SELECT max(e.date) AS received_at FROM emails e WHERE e.mailbox_id=c.mailbox_id AND e.thread_id=c.thread_id AND e.delivery_status='received') latest
+	WHERE c.mailbox_id IN ${sql(data.mailbox_ids)} AND classifier_thread_active(c.mailbox_id,c.thread_id)
+	${data.received_from ? sql`AND latest.received_at>=${data.received_from}::timestamptz` : sql``}
+	${data.received_before ? sql`AND latest.received_at<${data.received_before}::timestamptz` : sql``}
+	AND (${data.selection === "all"} OR NOT EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.classifier_id=${classifierId} AND j.mailbox_id=c.mailbox_id AND j.thread_id=c.thread_id AND j.revision=${revision} AND j.generation=c.generation AND j.status IN ('complete','review','pending')))
+	ORDER BY latest.received_at DESC,c.mailbox_id,c.thread_id LIMIT ${data.limit} ${lock ? sql`FOR UPDATE OF c` : sql``}`;
+}
 const id = z.string().uuid();
 const input = z
 	.object({
@@ -143,19 +184,40 @@ export function classifierApi(
 	app.put("/classifiers/:id", async (c) =>
 		c.json(await save(id.parse(c.req.param("id")), await c.req.json())),
 	);
+	app.post("/runs/preview", async (c) => {
+		const input = runInput
+			.extend({ classifier_ids: z.array(id).min(1).max(100) })
+			.parse(await c.req.json());
+		validateRunRange(input);
+		const conversations = new Set<string>();
+		const counts: Record<string, number> = {};
+		for (const classifierId of input.classifier_ids) {
+			const [classifier] =
+				await db`SELECT c.revision,to_json(c.mailbox_ids) AS mailbox_ids FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE c.id=${classifierId} AND t.archived_at IS NULL`;
+			if (!classifier) fail(404, "Classifier not found");
+			if (
+				classifier.mailbox_ids.length &&
+				input.mailbox_ids.some((m) => !classifier.mailbox_ids.includes(m))
+			)
+				fail(400, "Mailboxes must be within classifier scope");
+			const targets = await runTargets(
+				db,
+				input,
+				classifierId,
+				classifier.revision,
+			);
+			counts[classifierId] = targets.length;
+			for (const target of targets)
+				conversations.add(
+					JSON.stringify([target.mailbox_id, target.thread_id]),
+				);
+		}
+		return c.json({ count: conversations.size, counts });
+	});
 	app.post("/classifiers/:id/runs", async (c) => {
 		const classifierId = id.parse(c.req.param("id"));
-		const data = z
-			.object({
-				mailbox_ids: z.array(z.string().email()).min(1).max(50),
-				selection: z.enum(["unprocessed", "all"]),
-				reset: z.boolean().default(false),
-				enable: z.boolean().default(false),
-			})
-			.strict()
-			.parse(await c.req.json());
-		if (data.reset && data.selection !== "all")
-			fail(400, "Choose all conversations to reset corrections");
+		const data = runInput.parse(await c.req.json());
+		validateRunRange(data);
 		const run = await db.begin(async (tx) => {
 			const [classifier] =
 				await tx`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
@@ -163,28 +225,24 @@ export function classifierApi(
 			const [tag] =
 				await tx`SELECT group_id,archived_at FROM tags WHERE id=${classifier.tag_id}`;
 			if (!tag || tag.archived_at) fail(404, "Classifier tag not found");
-			if (tag.group_id && !classifier.enabled)
+			if (tag.group_id && data.enable && !classifier.enabled)
 				fail(400, "Enable automatic classification in its tag group first");
 			const [active] =
 				await tx`SELECT * FROM classifier_runs WHERE classifier_id=${classifierId} AND status='running'`;
 			if (active) return active;
-			if (!classifier.enabled && !data.enable)
-				fail(400, "Enable this classifier to run it");
 			if (
 				classifier.mailbox_ids.length &&
 				data.mailbox_ids.some((m) => !classifier.mailbox_ids.includes(m))
 			)
 				fail(400, "Mailboxes must be within classifier scope");
-			const targets =
-				await tx`SELECT c.mailbox_id,c.thread_id,c.generation FROM conversations c WHERE c.mailbox_id IN ${tx(data.mailbox_ids)} AND classifier_thread_active(c.mailbox_id,c.thread_id)
-    AND (${data.selection === "all"} OR NOT EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.classifier_id=${classifierId} AND j.mailbox_id=c.mailbox_id AND j.thread_id=c.thread_id AND j.revision=${classifier.revision} AND j.generation=c.generation AND j.status IN ('complete','review','pending')))
-    ORDER BY c.mailbox_id,c.thread_id LIMIT 5001 FOR UPDATE OF c`;
+			const targets = await runTargets(
+				tx,
+				data,
+				classifierId,
+				classifier.revision,
+				true,
+			);
 			if (!targets.length) fail(400, "No conversations to process");
-			if (targets.length > 5000)
-				fail(
-					400,
-					"This run exceeds 5,000 conversations. Select fewer mailboxes.",
-				);
 			if (data.enable)
 				await tx`UPDATE classifiers SET enabled=true WHERE id=${classifierId}`;
 			const [created] =
@@ -193,8 +251,8 @@ export function classifierApi(
     SELECT ${created.id},t.mailbox_id,t.thread_id,CASE WHEN tag_manually_overridden(t.mailbox_id,t.thread_id,${classifier.tag_id}) OR (${!data.reset} AND EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.mailbox_id=t.mailbox_id AND j.thread_id=t.thread_id AND j.classifier_id=${classifierId} AND j.source='human')) THEN 'skipped' ELSE 'pending' END
     FROM jsonb_to_recordset(${tx.json(targets)}) AS t(mailbox_id text,thread_id uuid,generation integer)`;
 			await tx`INSERT INTO conversation_classifications(mailbox_id,thread_id,classifier_id,revision,generation,run_id,priority)
-    SELECT i.mailbox_id,i.thread_id,${classifierId},${classifier.revision},c.generation,${created.id},1 FROM classifier_run_items i JOIN conversations c USING(mailbox_id,thread_id) WHERE i.run_id=${created.id} AND i.status='pending'
-    ON CONFLICT(mailbox_id,thread_id,classifier_id) DO UPDATE SET revision=excluded.revision,generation=excluded.generation,run_id=excluded.run_id,priority=1,status='pending',token=gen_random_uuid(),answer=NULL,probability=NULL,source='jev',actor=NULL,error=NULL,attempts=0,available_at=now(),lease_until=NULL,updated_at=now()`;
+    SELECT i.mailbox_id,i.thread_id,${classifierId},${classifier.revision},c.generation,${created.id},2 FROM classifier_run_items i JOIN conversations c USING(mailbox_id,thread_id) WHERE i.run_id=${created.id} AND i.status='pending'
+    ON CONFLICT(mailbox_id,thread_id,classifier_id) DO UPDATE SET revision=excluded.revision,generation=excluded.generation,run_id=excluded.run_id,priority=2,status='pending',token=gen_random_uuid(),answer=NULL,probability=NULL,source='jev',actor=NULL,error=NULL,attempts=0,available_at=now(),lease_until=NULL,updated_at=now()`;
 			await tx`DELETE FROM conversation_tags ct USING classifier_run_items i WHERE i.run_id=${created.id} AND i.status='pending' AND ct.mailbox_id=i.mailbox_id AND ct.thread_id=i.thread_id AND ct.tag_id=${classifier.tag_id} AND ct.source='classifier'`;
 			return created;
 		});

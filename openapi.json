@@ -3800,7 +3800,7 @@
 				"operationId": "runClassifier",
 				"summary": "Run on existing conversations",
 				"tags": ["Classifiers"],
-				"description": "Administrator only. Fixed target batch up to 5,000 active conversations. Existing active run is returned on repeated requests. Unprocessed includes failed jobs. Skips manual tag decisions and, unless reset, human classifier corrections. Runs continue server-side after closing the page.",
+				"description": "Administrator only. Explicit reprocessing works even when automatic assignment is disabled and leaves that setting unchanged unless enable is requested. Tag groups must be enabled through their group settings. Fixed target batch up to 5,000 active conversations. Existing active run is returned on repeated requests. Unprocessed includes failed jobs. Skips manual tag decisions and, unless reset, human classifier corrections. Runs continue server-side after closing the page. Optional received-date bounds and limit select the newest matching conversations first.",
 				"parameters": [
 					{
 						"in": "path",
@@ -3866,6 +3866,23 @@
 									"enable": {
 										"type": "boolean",
 										"default": false
+									},
+									"received_from": {
+										"type": "string",
+										"format": "date-time",
+										"description": "Inclusive lower bound on the latest received email in each conversation."
+									},
+									"received_before": {
+										"type": "string",
+										"format": "date-time",
+										"description": "Exclusive upper bound on the latest received email in each conversation."
+									},
+									"limit": {
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 5000,
+										"default": 5000,
+										"description": "Maximum conversations per classifier, newest received email first."
 									}
 								}
 							}
@@ -5440,6 +5457,112 @@
 					},
 					"404": {
 						"description": "Mailbox not found"
+					}
+				}
+			}
+		},
+		"/api/v1/classification/runs/preview": {
+			"post": {
+				"operationId": "previewClassifierRun",
+				"summary": "Count conversations for a historical classifier run",
+				"tags": ["Classifiers"],
+				"description": "Administrator only. Read-only selection preview using the same dates, limits and eligibility as execution. Counts each conversation once across classifiers; counts also provides per-classifier totals. No jobs are enqueued. Live data may change before execution.",
+				"responses": {
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
+					},
+					"200": {
+						"description": "Selection count",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["count", "counts"],
+									"properties": {
+										"count": {
+											"type": "integer"
+										},
+										"counts": {
+											"type": "object",
+											"additionalProperties": {
+												"type": "integer"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["mailbox_ids", "selection", "classifier_ids"],
+								"properties": {
+									"mailbox_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 50,
+										"items": {
+											"type": "string",
+											"format": "email"
+										}
+									},
+									"selection": {
+										"type": "string",
+										"enum": ["unprocessed", "all"]
+									},
+									"reset": {
+										"type": "boolean",
+										"default": false,
+										"description": "Reset human classifier corrections; only with all. Manual tag choices always survive."
+									},
+									"enable": {
+										"type": "boolean",
+										"default": false
+									},
+									"received_from": {
+										"type": "string",
+										"format": "date-time",
+										"description": "Inclusive lower bound on the latest received email in each conversation."
+									},
+									"received_before": {
+										"type": "string",
+										"format": "date-time",
+										"description": "Exclusive upper bound on the latest received email in each conversation."
+									},
+									"limit": {
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 5000,
+										"default": 5000,
+										"description": "Maximum conversations per classifier, newest received email first."
+									},
+									"classifier_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 100,
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										}
+									}
+								}
+							}
+						}
 					}
 				}
 			}

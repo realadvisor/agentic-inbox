@@ -1,3 +1,4 @@
+import { Input as KumoInput, Checkbox as KumoCheckbox } from "@cloudflare/kumo";
 import { classificationError } from "../../shared/jev-budget";
 import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import type { TagGroupInput } from "../../shared/tag-groups";
@@ -101,10 +102,10 @@ export function JevEmailTest({
 				Select up to 5 conversations in {mailboxId}. Tests use your unsaved
 				instructions and never change tags.
 			</p>
-			<input
+			<KumoInput
 				aria-label="Search test emails"
 				placeholder="Search subject, sender or content…"
-				className="w-full rounded-lg border border-kumo-line bg-kumo-base p-2 text-sm"
+				className="w-full"
 				value={search}
 				onChange={(e) => {
 					setSearch(e.target.value);
@@ -121,12 +122,11 @@ export function JevEmailTest({
 					</p>
 				)}
 				{rows.map((email) => (
-					<label
+					<div
 						key={email.thread_id ?? email.id}
 						className="flex cursor-pointer items-start gap-2 border-b border-kumo-line p-2 last:border-0"
 					>
-						<input
-							type="checkbox"
+						<KumoCheckbox
 							className="mt-1"
 							checked={selected.some((e) => e.thread_id === email.thread_id)}
 							disabled={
@@ -135,23 +135,28 @@ export function JevEmailTest({
 								(!selected.some((e) => e.thread_id === email.thread_id) &&
 									selected.length >= 5)
 							}
-							onChange={(e) =>
+							onCheckedChange={(e) =>
 								setSelected(
-									e.target.checked
+									e
 										? [...selected, email]
 										: selected.filter((v) => v.thread_id !== email.thread_id),
 								)
 							}
+							label={
+								<>
+									<span className="min-w-0 text-xs">
+										<span className="block truncate font-medium">
+											{email.subject || "(No subject)"}
+										</span>
+										<span className="block truncate text-kumo-subtle">
+											{email.sender} ·{" "}
+											{new Date(email.date).toLocaleDateString()}
+										</span>
+									</span>
+								</>
+							}
 						/>
-						<span className="min-w-0 text-xs">
-							<span className="block truncate font-medium">
-								{email.subject || "(No subject)"}
-							</span>
-							<span className="block truncate text-kumo-subtle">
-								{email.sender} · {new Date(email.date).toLocaleDateString()}
-							</span>
-						</span>
-					</label>
+					</div>
 				))}
 				{!emails.isPending && !rows.length && (
 					<p className="p-3 text-xs">No conversations found.</p>

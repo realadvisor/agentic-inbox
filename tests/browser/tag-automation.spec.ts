@@ -42,20 +42,40 @@ test("Tags owns existing Jev settings and historical processing stays explicit",
 			dialog.getByRole("textbox", { name: "Tag name", exact: true }),
 		).toBeFocused();
 		await expect(dialog.getByLabel("Instructions for Jev")).toHaveCount(0);
-		await dialog.getByLabel("Assign automatically with Jev").check();
+		await expect(
+			dialog.getByRole("button", {
+				name: "Reprocess conversations",
+				exact: true,
+			}),
+		).toBeEnabled();
+		await dialog
+			.getByRole("checkbox", {
+				name: "Assign automatically with Jev",
+				exact: true,
+			})
+			.check();
 		await expect(dialog.getByLabel("Instructions for Jev")).toHaveValue(
 			question,
 		);
 		await dialog.getByText("More options", { exact: true }).click();
-		await expect(dialog.getByLabel("Use recent human examples")).toBeChecked();
 		await expect(
-			dialog.getByLabel("Automation test", { exact: true }),
+			dialog.getByRole("checkbox", {
+				name: "Use recent human examples",
+				exact: true,
+			}),
 		).toBeChecked();
-		await dialog.getByLabel("Automation test", { exact: true }).uncheck();
+		await expect(
+			dialog.getByRole("checkbox", { name: "Automation test", exact: true }),
+		).toBeChecked();
+		await dialog
+			.getByRole("checkbox", { name: "Automation test", exact: true })
+			.uncheck();
 		await expect(
 			dialog.getByRole("button", { name: "Save tag", exact: true }),
 		).toBeDisabled();
-		await dialog.getByLabel("Automation test", { exact: true }).check();
+		await dialog
+			.getByRole("checkbox", { name: "Automation test", exact: true })
+			.check();
 		await dialog.getByRole("button", { name: "Save tag", exact: true }).click();
 		await expect(dialog).not.toBeVisible();
 		const [saved] =
@@ -71,7 +91,7 @@ test("Tags owns existing Jev settings and historical processing stays explicit",
 		await row.click();
 		await dialog
 			.getByRole("button", {
-				name: "Apply to existing conversations",
+				name: "Reprocess conversations",
 				exact: true,
 			})
 			.click();
@@ -80,8 +100,37 @@ test("Tags owns existing Jev settings and historical processing stays explicit",
 			exact: true,
 		});
 		await expect(
-			run.getByLabel("Automation test", { exact: true }),
+			run.getByRole("checkbox", { name: "Automation test", exact: true }),
 		).toBeChecked();
+		await run.getByRole("button", { name: "Date range", exact: true }).click();
+		await page.getByRole("button", { name: "Go to the next month" }).click();
+		const future = new Date();
+		future.setDate(15);
+		future.setMonth(future.getMonth() + 1);
+		const futureDay = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, "0")}-15`;
+		await page
+			.getByLabel("Date range calendar")
+			.locator(`[data-day="${futureDay}"] button`)
+			.first()
+			.click();
+		await page
+			.getByRole("button", { name: "Apply dates", exact: true })
+			.click();
+		await expect(
+			run.getByRole("status").filter({ hasText: /conversation/i }),
+		).toContainText("0 conversations selected");
+		await expect(
+			run.getByRole("button", { name: "Start run", exact: true }),
+		).toBeDisabled();
+		await run.getByRole("button", { name: "Date range", exact: true }).click();
+		await page.getByRole("button", { name: "All time", exact: true }).click();
+		await page
+			.getByRole("button", { name: "Apply dates", exact: true })
+			.click();
+		await run.getByRole("spinbutton").fill("1");
+		await expect(
+			run.getByRole("status").filter({ hasText: /conversation/i }),
+		).toContainText("1 conversation selected");
 		await run.getByRole("button", { name: "Start run", exact: true }).click();
 		await expect(run).not.toBeVisible();
 		await expect(dialog).toBeVisible();

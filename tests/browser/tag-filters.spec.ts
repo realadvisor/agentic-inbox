@@ -60,12 +60,15 @@ test("combine tag filters, switch all/any and restore selection from URL", async
 		await expect(page.getByText("One filter tag", { exact: true })).toHaveCount(
 			0,
 		);
-		await page.getByLabel("Tag matching").selectOption("any");
+		await page.getByRole("combobox", { name: "Tag matching" }).click();
+		await page.getByRole("option", { name: "Match any", exact: true }).click();
 		await expect(
 			page.getByText("One filter tag", { exact: true }),
 		).toBeVisible();
 		await page.reload();
-		await expect(page.getByLabel("Tag matching")).toHaveValue("any");
+		await expect(
+			page.getByRole("combobox", { name: "Tag matching" }),
+		).toContainText("Match any");
 		await expect(
 			page.getByRole("button", { name: "Tag filter", exact: true }),
 		).toHaveText("Tags");

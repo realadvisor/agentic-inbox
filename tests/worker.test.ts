@@ -127,3 +127,29 @@ test("Live mode never falls back to the prototype password or unsigned identity 
 		503,
 	);
 });
+
+test("Cloud Tasks machine endpoint rejects unauthenticated and forged deliveries before database access", async () => {
+	for (const authorization of [
+		"",
+		"Bearer invalid",
+		`Basic ${btoa(`prototype:${password}`)}`,
+	]) {
+		const response = await worker.fetch(
+			new Request(origin + "/internal/classification-task", {
+				method: "POST",
+				headers: {
+					Authorization: authorization,
+					"X-CloudTasks-TaskRetryCount": "100",
+				},
+				body: JSON.stringify({ version: 1, token: crypto.randomUUID() }),
+			}),
+			{
+				...env,
+				CLASSIFIER_TRANSPORT: "cloud-tasks",
+				CLOUD_TASKS_SERVICE_ACCOUNT: "expected@example.test",
+			},
+			ctx,
+		);
+		assert.equal(response.status, 401);
+	}
+});

@@ -1,3 +1,4 @@
+import { Input as KumoInput } from "@cloudflare/kumo";
 import { type ReactNode, useRef, useState } from "react";
 import { XIcon } from "@phosphor-icons/react";
 import { splitEmailList } from "~/lib/utils";
@@ -62,7 +63,7 @@ export default function RecipientField({
 							</button>
 						</span>
 					))}
-					<input
+					<KumoInput
 						ref={inputRef}
 						id={`recipient-${label}`}
 						aria-label={label}
@@ -98,7 +99,7 @@ export default function RecipientField({
 							}
 						}}
 						placeholder={addresses.length ? "Add…" : "Add an email address…"}
-						className="min-w-20 w-20 flex-1 bg-transparent py-1 text-xs outline-none placeholder:text-kumo-inactive"
+						className="min-w-20 w-20 flex-1 placeholder:text-kumo-inactive"
 						aria-invalid={!!error}
 					/>
 				</div>

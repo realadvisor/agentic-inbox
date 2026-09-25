@@ -182,10 +182,37 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await detail.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(detail.locator("pre")).toHaveText("rate limited");
 	await page.getByRole("button", { name: "Date range", exact: true }).click();
+	const datePopup = page.getByRole("dialog", {
+		name: "Choose date range",
+		exact: true,
+	});
+	await expect(datePopup).toBeVisible();
+	const monthGrids = datePopup.getByRole("grid");
+	await expect(monthGrids).toHaveCount(2);
+	const firstMonth = await monthGrids.nth(0).boundingBox();
+	const secondMonth = await monthGrids.nth(1).boundingBox();
+	expect(Math.abs(firstMonth!.y - secondMonth!.y)).toBeLessThan(2);
+	expect(secondMonth!.x).toBeGreaterThan(firstMonth!.x);
+
+	// Fixed popup content must paint above the sticky search header.
+	await expect
+		.poll(() =>
+			datePopup.evaluate((popup) => {
+				const box = popup.getBoundingClientRect();
+				const topElement = document.elementFromPoint(
+					box.left + box.width / 2,
+					box.top + 20,
+				);
+				return topElement !== null && popup.contains(topElement);
+			}),
+		)
+		.toBe(true);
 	await page.getByRole("button", { name: "Today", exact: true }).click();
+	await page.getByRole("button", { name: "Apply dates", exact: true }).click();
 	await expect(page).toHaveURL(/from=/);
 	await page.getByRole("button", { name: "Date range", exact: true }).click();
 	await page.getByRole("button", { name: "All time", exact: true }).click();
+	await page.getByRole("button", { name: "Apply dates", exact: true }).click();
 	await expect(page).not.toHaveURL(/from=/);
 	await list.getByRole("button").click();
 	await page.setViewportSize({ width: 390, height: 844 });
@@ -203,6 +230,11 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await expect(
 		page.getByRole("button", { name: "Apply dates", exact: true }),
 	).toBeVisible();
+	await expect(
+		page
+			.getByRole("dialog", { name: "Choose date range", exact: true })
+			.getByRole("grid"),
+	).toHaveCount(1);
 	await page.screenshot({
 		path: ".local/classifier-runs-date-picker.png",
 		fullPage: true,
@@ -375,4 +407,110 @@ test("blocked attempts show a reason without fake request or response tabs", asy
 			.getByText("Conversation and instructions exceed Jev’s context limit.")
 			.first(),
 	).toBeVisible();
+});
+
+test("Runs starts a scoped reprocessing batch with a whole tag group", async ({
+	page,
+}) => {
+	const response = await page.request.post(`${origin}/api/v1/tag-groups`, {
+		data: {
+			name: "Reprocess priority",
+			selection: "single",
+			instructions: "Choose priority.",
+			enabled: true,
+			tags: ["Low", "High"].map((name) => ({
+				id: crypto.randomUUID(),
+				name,
+				color: "#2563eb",
+			})),
+		},
+	});
+	expect(response.ok()).toBeTruthy();
+	const group = await response.json();
+	await page.goto(
+		`${origin}/mailbox/${mailbox}/settings?tab=runs&status=failed`,
+	);
+	await page
+		.getByRole("button", { name: "Reprocess emails", exact: true })
+		.click();
+	const dialog = page.getByRole("dialog", {
+		name: "Reprocess emails",
+		exact: true,
+	});
+	await expect(
+		dialog.getByRole("checkbox", { name: "Run logs", exact: true }),
+	).toBeChecked();
+	await dialog
+		.getByRole("combobox", { name: "Conversations", exact: true })
+		.click();
+	await page
+		.getByRole("option", { name: "Not yet processed", exact: true })
+		.click();
+	await dialog
+		.getByRole("combobox", { name: "Conversations", exact: true })
+		.click();
+	await page
+		.getByRole("option", { name: "All active conversations", exact: true })
+		.click();
+	await dialog.getByRole("button", { name: "Date range", exact: true }).click();
+	const calendar = page.getByLabel("Date range calendar", { exact: true });
+	await expect(calendar.getByRole("textbox")).toHaveCount(0);
+	await calendar.locator("[data-day] button").nth(10).click();
+	await calendar.locator("[data-day] button").nth(12).click();
+	await page.screenshot({
+		path: ".local/kumo-range-desktop.png",
+		animations: "disabled",
+	});
+	await page.getByRole("button", { name: "Apply dates", exact: true }).click();
+	await expect(
+		dialog.getByRole("button", { name: "Date range", exact: true }),
+	).not.toContainText("All time");
+	await dialog.getByRole("button", { name: "Date range", exact: true }).click();
+	await page.getByRole("button", { name: "All time", exact: true }).click();
+	await page.getByRole("button", { name: "Apply dates", exact: true }).click();
+	await expect(
+		dialog.getByRole("button", { name: "Date range", exact: true }),
+	).toContainText("All time");
+	await dialog.getByRole("button", { name: "Date range", exact: true }).click();
+	await page.getByRole("button", { name: "Today", exact: true }).click();
+	await page
+		.getByRole("dialog", { name: "Choose date range", exact: true })
+		.getByRole("button", { name: "Cancel", exact: true })
+		.click();
+	await expect(
+		dialog.getByRole("button", { name: "Date range", exact: true }),
+	).toContainText("All time");
+	const choices = dialog.getByRole("group", { name: "Tags and groups" });
+	await expect(
+		choices.getByRole("checkbox", { name: "Reprocess priority", exact: true }),
+	).toBeChecked();
+	for (const checkbox of await choices.getByRole("checkbox").all())
+		await checkbox.uncheck();
+	await expect(
+		dialog.getByRole("button", { name: "Start reprocessing", exact: true }),
+	).toBeDisabled();
+	await choices
+		.getByRole("checkbox", { name: "Reprocess priority", exact: true })
+		.check();
+	await dialog.getByRole("button", { name: "Date range", exact: true }).click();
+	await page.getByRole("button", { name: "All time", exact: true }).click();
+	await page.getByRole("button", { name: "Apply dates", exact: true }).click();
+	await dialog.getByRole("spinbutton").fill("1");
+	await expect(
+		dialog.getByRole("status").filter({ hasText: /conversation/i }),
+	).toContainText("1 conversation selected");
+	await dialog
+		.getByRole("button", { name: "Start reprocessing", exact: true })
+		.click();
+	await expect(dialog).not.toBeVisible();
+	await expect(
+		page.getByText(
+			"Reprocessing started. Progress appears below; you can leave this page.",
+		),
+	).toBeVisible();
+	await expect(page).not.toHaveURL(/status=failed/);
+	const jobs =
+		await db`SELECT r.id, count(i.*)::int total FROM classifier_runs r JOIN classifiers c ON c.id=r.classifier_id JOIN tags t ON t.id=c.tag_id JOIN classifier_run_items i ON i.run_id=r.id WHERE t.group_id=${group.id} GROUP BY r.id`;
+	expect(jobs).toHaveLength(2);
+	expect(jobs.every((r) => r.total === 1)).toBe(true);
 });

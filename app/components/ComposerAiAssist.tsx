@@ -1,3 +1,4 @@
+import { Textarea as KumoTextarea } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 import AgentModelPicker from "./AgentModelPicker";
 import "./agent-chat.css";
@@ -222,7 +223,7 @@ export default function ComposerAiAssist({
 						</button>
 					</div>
 
-					<textarea
+					<KumoTextarea
 						aria-label="AI instructions"
 						value={instructions}
 						rows={4}

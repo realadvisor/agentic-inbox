@@ -51,7 +51,12 @@ test("existing settings edit groups and conversation badges replace single selec
 		await dialog.getByRole("button", { name: "Add", exact: true }).click();
 		await dialog.getByLabel("New tag name").fill("High");
 		await dialog.getByLabel("New tag name").press("Enter");
-		await dialog.getByLabel("Assign automatically with Jev").check();
+		await dialog
+			.getByRole("checkbox", {
+				name: "Assign automatically with Jev",
+				exact: true,
+			})
+			.check();
 		await dialog
 			.getByLabel("Instructions for Jev")
 			.fill("High for action today, otherwise Low.");
@@ -165,7 +170,7 @@ test("existing settings edit groups and conversation badges replace single selec
 			.click();
 		await dialog
 			.getByRole("button", {
-				name: "Apply to existing conversations",
+				name: "Reprocess conversations",
 				exact: true,
 			})
 			.click();
@@ -176,7 +181,9 @@ test("existing settings edit groups and conversation badges replace single selec
 		for (const checkbox of await runDialog.getByRole("checkbox").all()) {
 			if (await checkbox.isChecked()) await checkbox.uncheck();
 		}
-		await runDialog.getByLabel("Tag groups preview", { exact: true }).check();
+		await runDialog
+			.getByRole("checkbox", { name: "Tag groups preview", exact: true })
+			.check();
 		await runDialog
 			.getByRole("button", { name: "Start run", exact: true })
 			.click();

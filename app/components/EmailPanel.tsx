@@ -309,20 +309,21 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 			{mailboxId && (
 				<div className="px-5 py-3 border-b border-kumo-line flex flex-wrap items-center gap-2">
-					{(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
-						mode.data?.canManageClassifiers && (
-							<ThreadClassifierReview
-								key={`review/${mailboxId}/${email.thread_id ?? email.id}`}
-								mailboxId={mailboxId}
-								threadId={email.thread_id ?? email.id}
-							/>
-						)}
-					<ScoreChips scores={email.scores} />
 					<TagActions
 						mailboxId={mailboxId}
 						threadIds={[email.thread_id ?? email.id]}
 						tags={email.tags}
-					/>
+					>
+						{(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
+							mode.data?.canManageClassifiers && (
+								<ThreadClassifierReview
+									key={`review/${mailboxId}/${email.thread_id ?? email.id}`}
+									mailboxId={mailboxId}
+									threadId={email.thread_id ?? email.id}
+								/>
+							)}
+						<ScoreChips scores={email.scores} />
+					</TagActions>
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
 						<ReclassifyConversation
 							key={`rerun/${mailboxId}/${email.thread_id ?? email.id}`}

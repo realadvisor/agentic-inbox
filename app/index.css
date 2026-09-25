@@ -31,3 +31,9 @@ body {
 .ProseMirror > p + p {
 	margin-top: 1em;
 }
+
+/* Kumo positions popovers in a body portal. Raise the positioner itself above
+   dialogs; raising only its child cannot escape the fixed stacking context. */
+div:has(> .date-range-popup) {
+	z-index: 120;
+}

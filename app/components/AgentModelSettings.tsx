@@ -1,3 +1,7 @@
+import {
+	Textarea as KumoTextarea,
+	Checkbox as KumoCheckbox,
+} from "@cloudflare/kumo";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Loader } from "@cloudflare/kumo";
@@ -245,19 +249,18 @@ export default function AgentModelSettings({
 				<div className="space-y-4 p-5">
 					<label className="block text-sm font-medium">
 						Writing instructions
-						<textarea
+						<KumoTextarea
 							aria-label="Agent writing instructions"
 							rows={4}
 							maxLength={8000}
-							className="mt-2 w-full rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kumo-brand"
+							className="mt-2 w-full font-normal"
 							placeholder="Tone, business context, and how to handle requests…"
 							value={instructions ?? settings.system_prompt}
 							onChange={(event) => setInstructions(event.target.value)}
 						/>
 					</label>
-					<label className="flex items-start gap-2 text-sm">
-						<input
-							type="checkbox"
+					<div className="flex items-start gap-2 text-sm">
+						<KumoCheckbox
 							className="mt-1"
 							checked={automatic ?? settings.auto_draft}
 							disabled={
@@ -265,10 +268,10 @@ export default function AgentModelSettings({
 								(!(automatic ?? settings.auto_draft) &&
 									(!state.data.autoDraftAvailable || !defaultModel?.selectable))
 							}
-							onChange={(event) => setAutomatic(event.target.checked)}
+							onCheckedChange={(event) => setAutomatic(event)}
+							label={<>Automatically draft replies to new emails</>}
 						/>
-						Automatically draft replies to new emails
-					</label>
+					</div>
 					<p className="text-xs text-kumo-subtle">
 						Applies to future incoming mail. Drafts wait for your review and are
 						never sent automatically.

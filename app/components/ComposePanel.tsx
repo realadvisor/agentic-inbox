@@ -1,3 +1,4 @@
+import { Input as KumoInput } from "@cloudflare/kumo";
 import ComposerAiAssist from "./ComposerAiAssist";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@cloudflare/kumo";
@@ -166,14 +167,14 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 								>
 									Subject
 								</label>
-								<input
+								<KumoInput
 									id="compose-subject"
 									aria-label="Subject"
 									required
 									value={form.subject}
 									onChange={(e) => form.setSubject(e.target.value)}
 									placeholder="Add a subject"
-									className="flex-1 min-w-0 bg-transparent text-sm outline-none"
+									className="flex-1 min-w-0"
 								/>
 							</div>
 						) : null}

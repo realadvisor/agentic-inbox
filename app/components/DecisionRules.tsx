@@ -1,3 +1,4 @@
+import { Input as KumoInput } from "@cloudflare/kumo";
 import {
 	decisionRules,
 	defaultDecisionRules,
@@ -45,7 +46,7 @@ export function DecisionRules({
 							{key === "margin" ? " (percentage points)" : ""}
 						</span>
 						<span className="flex items-center gap-1">
-							<input
+							<KumoInput
 								aria-label={label}
 								type="number"
 								required
@@ -56,7 +57,7 @@ export function DecisionRules({
 								onChange={(e) =>
 									onChange({ ...rules, [key]: Number(e.target.value) / 100 })
 								}
-								className="w-20 rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
+								className="w-20"
 							/>
 							{key === "margin" ? "pp" : "%"}
 						</span>

@@ -66,6 +66,10 @@
 	"vars": {
 		"MAIL_MODE": "live",
 		"CLASSIFIERS_ENABLED": "true",
+		"CLASSIFIER_TRANSPORT": "cloud-tasks",
+		"CLOUD_TASKS_PROJECT": "realadvisor-prod",
+		"CLOUD_TASKS_LOCATION": "europe-west1",
+		"CLOUD_TASKS_SERVICE_ACCOUNT": "inbox-classifications@realadvisor-prod.iam.gserviceaccount.com",
 		"MAILBOX_ADMINS": "jonas@realadvisor.com",
 		"MAILBOX_CREATION_ENABLED": "true",
 		"INBOUND_ENABLED": "true",
