@@ -78,6 +78,15 @@ test("Choice review asks for one tag rather than separate yes/no answers", async
 			dialog.getByRole("button", { name: "Close", exact: true }),
 		).toBeInViewport();
 		await page.setViewportSize({ width: 1280, height: 900 });
+		await dialog.getByRole("button", { name: "Close", exact: true }).click();
+		await page.getByText("Review this choice", { exact: true }).click();
+		await expect(
+			page.getByRole("button", { name: "Needs review", exact: true }),
+		).toHaveCount(2);
+		await page
+			.getByRole("button", { name: "Needs review", exact: true })
+			.last()
+			.click();
 
 		await expect(dialog.getByText("Jev confidence: 42%")).toBeVisible();
 		await expect(dialog.getByText("33%", { exact: true })).toHaveCount(3);

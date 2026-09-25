@@ -2,7 +2,7 @@ import { classificationError } from "../../shared/jev-budget";
 import { decisionRules } from "../../shared/decision-rules";
 import { useState } from "react";
 import { Button, Dialog } from "@cloudflare/kumo";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifierRequest, type Classification } from "~/services/classifiers";
 const percentage = (value: number | null | undefined) =>
 	value == null
@@ -11,7 +11,35 @@ const percentage = (value: number | null | undefined) =>
 				style: "percent",
 				maximumFractionDigits: 1,
 			}).format(value);
-export function ClassifierReview({ results }: { results: Classification[] }) {
+export function ThreadClassifierReview({
+	mailboxId,
+	threadId,
+}: {
+	mailboxId: string;
+	threadId: string;
+}) {
+	const results = useQuery({
+		queryKey: ["classification-results", mailboxId, threadId],
+		queryFn: () =>
+			classifierRequest<Classification[]>(
+				`/results/${encodeURIComponent(mailboxId)}?thread=${encodeURIComponent(threadId)}`,
+			),
+		refetchInterval: 5000,
+	});
+	return (
+		<ClassifierReview
+			results={(results.data ?? []).filter((row) => row.thread_id === threadId)}
+			compact
+		/>
+	);
+}
+export function ClassifierReview({
+	results,
+	compact = false,
+}: {
+	results: Classification[];
+	compact?: boolean;
+}) {
 	const [open, setOpen] = useState(false);
 	const qc = useQueryClient();
 	const review = useMutation({
@@ -23,9 +51,14 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 			),
 		onSuccess: async () => {
 			await Promise.all(
-				["classification-results", "emails", "tags"].map((key) =>
-					qc.invalidateQueries({ queryKey: [key] }),
-				),
+				[
+					"classification-results",
+					"emails",
+					"email",
+					"thread",
+					"tags",
+					"conversation-provider-runs",
+				].map((key) => qc.invalidateQueries({ queryKey: [key] })),
 			);
 		},
 	});
@@ -47,7 +80,8 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 			onKeyDown={(e) => e.stopPropagation()}
 		>
 			<button
-				className="mt-1.5 text-xs text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5"
+				type="button"
+				className={`${compact ? "" : "mt-1.5 "}text-xs text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5`}
 				onClick={() => setOpen(true)}
 			>
 				Needs review{count > 1 ? ` (${count})` : ""}
