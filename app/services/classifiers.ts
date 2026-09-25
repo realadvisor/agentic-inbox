@@ -1,3 +1,4 @@
+import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import api from "./api";
 let config: ReturnType<typeof api.getConfig> | undefined;
 export interface ClassifierRun {
@@ -10,6 +11,7 @@ export interface ClassifierRun {
 	failed?: number;
 }
 export interface Classifier {
+	decision_rules?: Partial<Rules>;
 	group_id?: string | null;
 	id: string;
 	tag_id: string;
@@ -24,6 +26,7 @@ export interface Classifier {
 	errors?: number;
 }
 export interface Classification {
+	decision_rules?: Partial<Rules>;
 	confidence?: number | null;
 	group_id?: string | null;
 	group_name?: string | null;

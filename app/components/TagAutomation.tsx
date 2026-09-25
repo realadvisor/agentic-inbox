@@ -1,3 +1,5 @@
+import { DecisionRules } from "./DecisionRules";
+import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Dialog } from "@cloudflare/kumo";
@@ -25,6 +27,7 @@ export function useTagClassifiers() {
 	return { ...query, available, canManage };
 }
 export type AutomationDraft = {
+	decision_rules?: Partial<Rules>;
 	enabled: boolean;
 	question: string;
 	mailbox_ids: string[];
@@ -33,6 +36,7 @@ export type AutomationDraft = {
 export function automationDraft(c?: Classifier): AutomationDraft {
 	return {
 		enabled: c?.enabled ?? false,
+		decision_rules: c?.decision_rules,
 		question: c?.question ?? "",
 		mailbox_ids: c?.mailbox_ids ?? [],
 		include_reviewed_examples: c?.include_reviewed_examples ?? false,
@@ -85,6 +89,12 @@ export function AutomationFields({
 							placeholder="Should this conversation receive this tag? Describe when it applies."
 						/>
 					</label>
+					<DecisionRules
+						value={value.decision_rules}
+						onChange={(decision_rules) =>
+							onChange({ ...value, decision_rules })
+						}
+					/>
 					<details>
 						<summary className="cursor-pointer text-xs text-kumo-subtle">
 							More options

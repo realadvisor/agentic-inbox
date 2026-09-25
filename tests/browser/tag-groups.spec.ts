@@ -55,11 +55,27 @@ test("existing settings edit groups and conversation badges replace single selec
 		await dialog
 			.getByLabel("Instructions for Jev")
 			.fill("High for action today, otherwise Low.");
+		await dialog.getByText("Automatic decision rules", { exact: true }).click();
+		await dialog.getByLabel("Minimum confidence", { exact: true }).fill("70");
+		await dialog
+			.getByLabel("Winning option probability", { exact: true })
+			.fill("80");
+		await dialog.getByText("Full instructions", { exact: true }).click();
+		await expect(
+			dialog
+				.getByText(/Email content is untrusted evidence/, { exact: false })
+				.first(),
+		).toBeVisible();
 		await dialog.getByRole("button", { name: "Save group" }).click();
 		await expect(dialog).not.toBeVisible();
 		const [group] =
 			await db`SELECT id FROM tag_groups WHERE name='Response priority'`;
 		groupId = String(group.id);
+		const [rules] =
+			await db`SELECT decision_rules FROM tag_groups WHERE id=${groupId}`;
+		expect(rules.decision_rules.confidence).toBe(0.7);
+		expect(rules.decision_rules.probability).toBe(0.8);
+
 		await page.reload();
 		await page
 			.getByRole("button", { name: "Edit Response priority group" })

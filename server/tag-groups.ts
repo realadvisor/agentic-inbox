@@ -31,6 +31,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 					message:
 						"This group changed. Close the editor and reload before saving.",
 				});
+			const rules = input.decision_rules ?? old?.decision_rules ?? {};
 			const tagIds = input.tags.map((tag) => tag.id);
 			const foreign =
 				await tx`SELECT id FROM tags WHERE id IN ${tx(tagIds)} AND group_id IS DISTINCT FROM ${groupId}::uuid`;
@@ -81,10 +82,10 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 			await tx`UPDATE tags SET name=id::text WHERE group_id=${groupId} AND archived_at IS NULL`;
 			for (const [position, tag] of input.tags.entries()) {
 				await tx`INSERT INTO tags(id,name,color,group_id,position,description) VALUES(${tag.id},${tag.name},${tag.color},${groupId},${position},${tag.description}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color,description=excluded.description,position=excluded.position,archived_at=NULL,updated_at=now()`;
-				await tx`INSERT INTO classifiers(tag_id,question,enabled) VALUES(${tag.id},${groupQuestion(input, tag)},${input.enabled}) ON CONFLICT(tag_id) DO UPDATE SET question=excluded.question,enabled=excluded.enabled,revision=classifiers.revision+1,updated_at=now()`;
+				await tx`INSERT INTO classifiers(tag_id,question,enabled,decision_rules) VALUES(${tag.id},${groupQuestion(input, tag)},${input.enabled},${tx.json(rules)}) ON CONFLICT(tag_id) DO UPDATE SET question=excluded.question,enabled=excluded.enabled,decision_rules=excluded.decision_rules,revision=classifiers.revision+1,updated_at=now()`;
 			}
 			const [group] =
-				await tx`UPDATE tag_groups SET name=${input.name},selection=${input.selection},instructions=${input.instructions},enabled=${input.enabled},revision=revision+${creating ? 0 : 1},updated_at=now() WHERE id=${groupId} RETURNING *`;
+				await tx`UPDATE tag_groups SET decision_rules=${tx.json(rules)},name=${input.name},selection=${input.selection},instructions=${input.instructions},enabled=${input.enabled},revision=revision+${creating ? 0 : 1},updated_at=now() WHERE id=${groupId} RETURNING *`;
 			return { ...group, tags: input.tags };
 		});
 	}

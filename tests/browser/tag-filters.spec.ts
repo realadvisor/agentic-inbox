@@ -68,7 +68,7 @@ test("combine tag filters, switch all/any and restore selection from URL", async
 		await expect(page.getByLabel("Tag matching")).toHaveValue("any");
 		await expect(
 			page.getByRole("button", { name: "Tag filter", exact: true }),
-		).toContainText("2 tags");
+		).toHaveText("Tags");
 		await page
 			.getByRole("button", {
 				name: `Remove tag filter Filter ${ids[0]}`,
@@ -78,6 +78,10 @@ test("combine tag filters, switch all/any and restore selection from URL", async
 		await expect(page.getByText("One filter tag", { exact: true })).toHaveCount(
 			0,
 		);
+		await expect(page.getByLabel("Tag matching")).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: "Tag filter", exact: true }),
+		).toHaveText("Tags");
 		await page.getByRole("button", { name: "Tag filter", exact: true }).click();
 		await page
 			.getByRole("button", { name: "All conversations", exact: true })

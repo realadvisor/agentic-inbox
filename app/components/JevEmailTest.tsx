@@ -1,3 +1,4 @@
+import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import { useState } from "react";
 import { useParams } from "react-router";
@@ -6,7 +7,12 @@ import { Button } from "@cloudflare/kumo";
 import api from "~/services/api";
 import type { Email } from "~/types";
 
-type Question = { name: string; question: string; classifier_id?: string };
+type Question = {
+	name: string;
+	question: string;
+	classifier_id?: string;
+	decision_rules?: Partial<Rules>;
+};
 type Response = Awaited<ReturnType<typeof api.testClassifier>>;
 export function JevEmailTest({
 	questions,
