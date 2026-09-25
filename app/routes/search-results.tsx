@@ -235,7 +235,7 @@ export default function SearchResultsRoute() {
 					)}
 				</div>
 				{totalCount > SEARCH_PAGE_SIZE && (
-					<div className="flex justify-center py-3 border-t border-kumo-line shrink-0">
+					<div className="flex justify-center px-4 py-3 md:px-5 border-t border-kumo-line shrink-0">
 						<Pagination
 							page={currentPage}
 							setPage={setPage}
