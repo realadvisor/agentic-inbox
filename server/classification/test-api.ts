@@ -1,3 +1,4 @@
+import { decisionRulesSchema } from "../../shared/decision-rules";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -21,6 +22,7 @@ const input = z
 			.array(
 				z
 					.object({
+						decision_rules: decisionRulesSchema.optional(),
 						name: z.string().trim().min(1).max(80),
 						question: z.string().trim().min(1).max(8000),
 						classifier_id: z.string().uuid().optional(),
@@ -137,6 +139,8 @@ export function classifierTestApi(
 						[],
 						typedQuestion,
 						q.option,
+						data.group?.decision_rules ??
+							("decision_rules" in q ? q.decision_rules : undefined),
 					);
 					return {
 						name: q.name,

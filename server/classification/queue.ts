@@ -1,3 +1,4 @@
+import type { DecisionRules } from "../../shared/decision-rules";
 import { curatedQuestion } from "./curated-examples";
 import {
 	interpretAnswer,
@@ -43,6 +44,7 @@ export async function askJev(
 	examples: HumanExample[] = [],
 	typedQuestion?: JevQuestion,
 	option?: string,
+	rules?: Partial<DecisionRules>,
 ) {
 	let response: Response;
 	try {
@@ -92,6 +94,7 @@ export async function askJev(
 				typedQuestion ?? jevQuestion(question, examples),
 				value?.answers?.match,
 				option,
+				rules,
 			),
 			model: value?.model ?? "jev-latest",
 		};
@@ -212,6 +215,7 @@ async function processSingleJob(
 			attempts: job.attempts + 1,
 			lease_id,
 			question: classifier.question,
+			decision_rules: classifier.decision_rules as Partial<DecisionRules>,
 			tag_id: classifier.tag_id,
 			include_reviewed_examples: classifier.include_reviewed_examples,
 		};
@@ -275,6 +279,7 @@ async function processSingleJob(
 				[],
 				typedQuestion,
 				j.tag_id,
+				j.decision_rules,
 			);
 			result = {
 				...answer,

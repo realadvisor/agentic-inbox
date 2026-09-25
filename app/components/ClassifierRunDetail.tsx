@@ -138,7 +138,7 @@ export function RunDetail({
 						<p className="text-xs text-kumo-subtle mt-2">
 							{statusLabels[run.status]} ·{" "}
 							{run.http_status ? `HTTP ${run.http_status}` : "No HTTP response"}{" "}
-							· {run.duration_ms ?? "—"} ms
+							· Jev request: {run.duration_ms ?? "—"} ms
 						</p>
 						<p className="text-xs text-kumo-subtle mt-2">
 							Model: {run.returned_model ?? run.requested_model}

@@ -1,8 +1,10 @@
+import type { DecisionRules } from "../../shared/decision-rules";
 import { z } from "zod";
 import type { Database } from "../db";
 import { interpretAnswer, type JevQuestion } from "../../shared/jev-request";
 
 export interface CaptureJob {
+	decision_rules?: Partial<DecisionRules>;
 	option?: string;
 	question_key?: string;
 	mailbox_id: string;
@@ -44,8 +46,21 @@ export async function captureProviderRequest(
 	const runId = crypto.randomUUID();
 	await db.begin(async (tx) => {
 		await tx`INSERT INTO classifier_provider_runs(id,mailbox_id,thread_id,subject,requested_model,request_body) VALUES(${runId},${jobs[0].mailbox_id},${jobs[0].thread_id},${payload.state.messages?.at(-1)?.subject ?? "Conversation"},${payload.model},${body})`;
-		for (const [index, j] of jobs.entries())
-			await tx`INSERT INTO classifier_provider_run_items(run_id,question_key,classifier_id,classifier_name,question,revision,generation,job_token,lease_id,attempt) VALUES(${runId},${j.question_key ?? keys[index]},${j.classifier_id},${j.classifier_name},${j.question},${j.revision},${j.generation},${j.token},${j.lease_id},${j.attempts})`;
+		await tx`INSERT INTO classifier_provider_run_items ${tx(
+			jobs.map((j, index) => ({
+				run_id: runId,
+				decision_rules: tx.json(j.decision_rules ?? {}),
+				question_key: j.question_key ?? keys[index],
+				classifier_id: j.classifier_id,
+				classifier_name: j.classifier_name,
+				question: j.question,
+				revision: j.revision,
+				generation: j.generation,
+				job_token: j.token,
+				lease_id: j.lease_id,
+				attempt: j.attempts,
+			})),
+		)}`;
 	});
 	const start = Date.now();
 	let response: Response;
@@ -62,6 +77,7 @@ export async function captureProviderRequest(
 		await db`UPDATE classifier_provider_runs SET status='failed',finished_at=now(),duration_ms=${Date.now() - start},error=${code} WHERE id=${runId}`;
 		throw error;
 	}
+	const providerDurationMs = Date.now() - start;
 	let parsed: z.infer<typeof responseSchema> | undefined;
 	try {
 		parsed = responseSchema.parse(JSON.parse(raw));
@@ -73,24 +89,36 @@ export async function captureProviderRequest(
 		: !parsed
 			? "invalid_provider_response"
 			: null;
-	await db.begin(async (tx) => {
-		for (const [index, j] of jobs.entries()) {
-			const key = j.question_key ?? keys[index];
-			if (response.ok && parsed) {
-				try {
-					const answer = interpretAnswer(
-						payload.questions[key],
-						parsed.answers[key],
-						j.option,
-					);
-					await tx`UPDATE classifier_provider_run_items SET probability=${answer.probability},answer=${answer.answer} WHERE run_id=${runId} AND job_token=${j.token}`;
-				} catch {
-					error = "invalid_provider_answer";
-				}
+	const answers: {
+		token: string;
+		probability: number;
+		answer: boolean | null;
+	}[] = [];
+	for (const [index, j] of jobs.entries()) {
+		const key = j.question_key ?? keys[index];
+		if (response.ok && parsed) {
+			try {
+				const answer = interpretAnswer(
+					payload.questions[key],
+					parsed.answers[key],
+					j.option,
+					j.decision_rules,
+				);
+				answers.push({
+					token: j.token,
+					probability: answer.probability,
+					answer: answer.answer,
+				});
+			} catch {
+				error = "invalid_provider_answer";
 			}
 		}
+	}
 
-		await tx`UPDATE classifier_provider_runs SET status=${error ? "failed" : "succeeded"},finished_at=now(),duration_ms=${Date.now() - start},http_status=${response.status},returned_model=${parsed?.model ?? null},response_body=${raw},error=${error} WHERE id=${runId}`;
+	await db.begin(async (tx) => {
+		if (answers.length)
+			await tx`UPDATE classifier_provider_run_items i SET probability=a.probability,answer=a.answer FROM jsonb_to_recordset(${tx.json(answers)}) AS a(token uuid,probability double precision,answer boolean) WHERE i.run_id=${runId} AND i.job_token=a.token`;
+		await tx`UPDATE classifier_provider_runs SET status=${error ? "failed" : "succeeded"},finished_at=clock_timestamp(),duration_ms=${providerDurationMs},http_status=${response.status},returned_model=${parsed?.model ?? null},response_body=${raw},error=${error} WHERE id=${runId}`;
 	});
 	// Rebuild the consumed response so existing parsing/retry behavior stays intact.
 	return new Response(

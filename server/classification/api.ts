@@ -1,3 +1,7 @@
+import {
+	decisionRulesSchema,
+	decisionRules,
+} from "../../shared/decision-rules";
 import { rerunApi } from "./rerun-api";
 import { examplesApi } from "./examples-api";
 import { classifierTestApi } from "./test-api";
@@ -15,6 +19,7 @@ const input = z
 		mailbox_ids: z.array(z.string().email()).max(50),
 		enabled: z.boolean(),
 		include_reviewed_examples: z.boolean().optional(),
+		decision_rules: decisionRulesSchema.optional(),
 		revision: z.number().int().positive().optional(),
 	})
 	.strict();
@@ -93,7 +98,7 @@ export function classifierApi(
 					await tx`SELECT count(*)::int AS count FROM classifiers`;
 				if (count >= 50) fail(400, "A maximum of 50 classifiers is supported");
 				const [created] =
-					await tx`INSERT INTO classifiers(question,tag_id,mailbox_ids,enabled,include_reviewed_examples) VALUES(${values.question},${values.tag_id},ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),${values.enabled},${data.include_reviewed_examples ?? false}) RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
+					await tx`INSERT INTO classifiers(question,tag_id,mailbox_ids,enabled,include_reviewed_examples,decision_rules) VALUES(${values.question},${values.tag_id},ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),${values.enabled},${data.include_reviewed_examples ?? false},${tx.json(data.decision_rules ?? {})}) RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 				return { ...created, ...tag, run: null };
 			}
 			const [old] =
@@ -111,6 +116,10 @@ export function classifierApi(
 			if (old.question !== data.question || old.tag_id !== data.tag_id)
 				await tx`DELETE FROM classifier_examples WHERE classifier_id=${classifierId}`;
 			const changed =
+				JSON.stringify(decisionRules(old.decision_rules)) !==
+					JSON.stringify(
+						decisionRules(data.decision_rules ?? old.decision_rules),
+					) ||
 				old.question !== data.question ||
 				old.tag_id !== data.tag_id ||
 				JSON.stringify([...old.mailbox_ids].sort()) !==
@@ -121,7 +130,7 @@ export function classifierApi(
 				await tx`DELETE FROM conversation_tags WHERE tag_id=${old.tag_id} AND source='classifier'`;
 			}
 			const [updated] =
-				await tx`UPDATE classifiers SET question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},include_reviewed_examples=${data.include_reviewed_examples ?? old.include_reviewed_examples},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
+				await tx`UPDATE classifiers SET decision_rules=${tx.json(data.decision_rules ?? old.decision_rules)},question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},include_reviewed_examples=${data.include_reviewed_examples ?? old.include_reviewed_examples},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 			// Enabling does not implicitly classify historical mail. Preserve existing jobs on a no-op edit.
 			if (!changed && data.enabled)
 				await tx`UPDATE conversation_classifications SET revision=${updated.revision},token=gen_random_uuid(),lease_until=NULL WHERE classifier_id=${classifierId}`;
@@ -209,7 +218,7 @@ export function classifierApi(
 		const thread = c.req.query("thread");
 		if (thread) id.parse(thread);
 		const rows =
-			await db`SELECT j.mailbox_id,j.thread_id,j.classifier_id,j.revision,j.generation,j.token,j.status,j.answer,j.probability,j.source,j.error,c.question,t.name,t.color,t.id AS tag_id,t.group_id,g.name AS group_name,g.selection AS group_selection,g.instructions AS group_instructions,log.response_body,log.question_key FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id LEFT JOIN tag_groups g ON g.id=t.group_id LEFT JOIN LATERAL (
+			await db`SELECT j.mailbox_id,j.thread_id,j.classifier_id,j.revision,j.generation,j.token,j.status,j.answer,j.probability,j.source,j.error,c.decision_rules,c.question,t.name,t.color,t.id AS tag_id,t.group_id,g.name AS group_name,g.selection AS group_selection,g.instructions AS group_instructions,log.response_body,log.question_key FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id LEFT JOIN tag_groups g ON g.id=t.group_id LEFT JOIN LATERAL (
  SELECT r.response_body,i.question_key FROM classifier_provider_run_items i JOIN classifier_provider_runs r ON r.id=i.run_id
  WHERE i.job_token=j.token AND i.classifier_id=j.classifier_id AND r.mailbox_id=j.mailbox_id AND r.thread_id=j.thread_id
  ORDER BY r.started_at DESC,r.id DESC LIMIT 1

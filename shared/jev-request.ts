@@ -1,8 +1,5 @@
+import { decisionRules, type DecisionRules } from "./decision-rules";
 import type { TagGroupInput } from "./tag-groups";
-import {
-	CLASSIFICATION_YES_THRESHOLD,
-	CLASSIFICATION_NO_THRESHOLD,
-} from "./classification";
 export interface JevExample {
 	answer: boolean;
 	messages: unknown;
@@ -67,7 +64,9 @@ export function interpretAnswer(
 	question: JevQuestion,
 	raw: unknown,
 	option?: string,
+	rules?: Partial<DecisionRules>,
 ) {
+	const thresholds = decisionRules(rules);
 	const a = raw as {
 		type?: string;
 		noul?: number;
@@ -83,9 +82,9 @@ export function interpretAnswer(
 		return {
 			probability: a.noul,
 			answer:
-				a.noul >= CLASSIFICATION_YES_THRESHOLD
+				a.noul >= thresholds.yes
 					? true
-					: a.noul <= CLASSIFICATION_NO_THRESHOLD
+					: a.noul <= thresholds.no
 						? false
 						: null,
 		};
@@ -110,9 +109,9 @@ export function interpretAnswer(
 		throw new Error("invalid_provider_answer");
 	const accepted =
 		a.choice !== "insufficient_evidence" &&
-		a.confidence >= CHOICE_MIN_CONFIDENCE &&
-		sorted[0] >= CHOICE_MIN_PROBABILITY &&
-		sorted[0] - (sorted[1] ?? 0) >= CHOICE_MIN_MARGIN;
+		a.confidence >= thresholds.confidence &&
+		sorted[0] >= thresholds.probability &&
+		sorted[0] - (sorted[1] ?? 0) >= thresholds.margin;
 	return {
 		probability: a.probabilities[option ?? a.choice],
 		answer: accepted ? (option ? a.choice === option : true) : null,

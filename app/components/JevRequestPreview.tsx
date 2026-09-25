@@ -1,3 +1,4 @@
+import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import { JevExamples } from "./JevExamples";
 import { JevEmailTest } from "./JevEmailTest";
 import { useState } from "react";
@@ -11,7 +12,12 @@ export function JevRequestPreview({
 	group,
 	groupId,
 }: {
-	questions: { name: string; question: string; classifier_id?: string }[];
+	questions: {
+		name: string;
+		question: string;
+		classifier_id?: string;
+		decision_rules?: Partial<Rules>;
+	}[];
 	selection?: string;
 	group?: TagGroupInput;
 	groupId?: string;
@@ -71,6 +77,25 @@ export function JevRequestPreview({
 				group={group}
 				groupId={groupId}
 			/>
+			<details className="border-t border-kumo-line">
+				<summary className="cursor-pointer p-4 text-xs font-medium">
+					Full instructions
+				</summary>
+				<div className="space-y-4 px-4 pb-4">
+					{Object.entries(request.questions).map(([key, question]) => (
+						<div key={key}>
+							<p className="text-xs font-medium mb-2">{key}</p>
+							<div className="whitespace-pre-wrap break-words text-xs text-kumo-subtle">
+								{question.instructions}
+							</div>
+						</div>
+					))}
+					<p className="text-xs text-kumo-subtle">
+						Includes shared email-handling rules and your instructions. Selected
+						teaching examples appear in the actual conversation request.
+					</p>
+				</div>
+			</details>
 			<details>
 				<summary className="cursor-pointer p-4 text-xs font-medium">
 					Request template

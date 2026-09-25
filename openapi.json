@@ -4747,6 +4747,9 @@
 												"classifier_id": {
 													"type": "string",
 													"format": "uuid"
+												},
+												"decision_rules": {
+													"$ref": "#/components/schemas/DecisionRules"
 												}
 											}
 										}
@@ -5793,6 +5796,9 @@
 					"include_reviewed_examples": {
 						"type": "boolean",
 						"description": "Use up to six recent human-labeled snapshots from the same mailbox and question as Jev examples. Defaults to false on create; omission preserves the value on update. Does not rerun completed classifications."
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
 					}
 				}
 			},
@@ -5877,6 +5883,9 @@
 					"include_reviewed_examples": {
 						"type": "boolean",
 						"description": "Use up to six recent human-labeled snapshots from the same mailbox and question as Jev examples. Defaults to false on create; omission preserves the value on update. Does not rerun completed classifications."
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
 					}
 				}
 			},
@@ -6059,6 +6068,9 @@
 								}
 							}
 						}
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
 					}
 				}
 			},
@@ -6128,6 +6140,46 @@
 					"id": {
 						"type": "string",
 						"format": "uuid"
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
+					}
+				}
+			},
+			"DecisionRules": {
+				"type": "object",
+				"additionalProperties": false,
+				"description": "Post-response decision thresholds. No must be strictly below Yes. Omitted values use defaults. Choice must pass confidence, winning probability and margin; insufficient evidence always needs review.",
+				"properties": {
+					"yes": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.85
+					},
+					"no": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.15
+					},
+					"confidence": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.6
+					},
+					"probability": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.75
+					},
+					"margin": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.2
 					}
 				}
 			}

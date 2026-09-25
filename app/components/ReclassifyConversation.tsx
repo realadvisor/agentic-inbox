@@ -24,7 +24,7 @@ export function ReclassifyConversation({
 		queryKey: ["thread-reclassification", mailboxId, threadId, attempt],
 		queryFn: () => classifierRequest<Status>(path),
 		enabled: attempt > 0,
-		refetchInterval: (q) => (q.state.data?.pending ? 1500 : false),
+		refetchInterval: (q) => (q.state.data?.pending ? 500 : false),
 	});
 	const run = useMutation({
 		mutationFn: () =>

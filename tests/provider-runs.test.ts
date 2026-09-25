@@ -224,3 +224,24 @@ test("retention deletes bodies and items; interrupted application stays explicit
 		0,
 	);
 });
+
+test("provider duration excludes slow result persistence", async () => {
+	const { thread, token } = await prepare(2);
+	await db.unsafe(
+		`CREATE FUNCTION delay_provider_log() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.probability IS NULL AND NEW.probability IS NOT NULL THEN PERFORM pg_sleep(0.15); END IF; RETURN NEW; END; $$`,
+	);
+	await db.unsafe(
+		`CREATE TRIGGER delay_provider_log BEFORE UPDATE ON classifier_provider_run_items FOR EACH ROW EXECUTE FUNCTION delay_provider_log()`,
+	);
+	try {
+		await processJob(db, "fake", token, yes);
+		const [run] =
+			await db`SELECT duration_ms,extract(epoch FROM (finished_at-started_at))*1000 AS total_ms FROM classifier_provider_runs WHERE thread_id=${thread}`;
+		assert.ok(Number(run.total_ms) - run.duration_ms >= 250);
+	} finally {
+		await db.unsafe(
+			`DROP TRIGGER delay_provider_log ON classifier_provider_run_items`,
+		);
+		await db.unsafe(`DROP FUNCTION delay_provider_log()`);
+	}
+});

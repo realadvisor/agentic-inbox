@@ -1,3 +1,4 @@
+import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -8,7 +9,12 @@ import type { TagGroupInput } from "../../shared/tag-groups";
 import { exampleConfig, type CuratedExample } from "../../shared/jev-examples";
 const field =
 	"w-full rounded-lg border border-kumo-line bg-kumo-base p-2 text-sm";
-type Question = { name: string; question: string; classifier_id?: string };
+type Question = {
+	name: string;
+	question: string;
+	classifier_id?: string;
+	decision_rules?: Partial<Rules>;
+};
 type TestResponse = Awaited<ReturnType<typeof api.testClassifier>>;
 export function JevExamples({
 	group,
@@ -73,6 +79,7 @@ export function JevExamples({
 			.join(", ") || "No tags";
 	const signature = JSON.stringify({
 		config,
+		rules: group?.decision_rules ?? questions[0]?.decision_rules,
 		examples: examples.map((e) => [e.id, e.updated_at]),
 	});
 	const tests = examples.filter((e) => e.role === "test");
