@@ -1,3 +1,4 @@
+import { ThreadClassifierReview } from "./ClassifierReview";
 import ThreadStatus from "./ThreadStatus";
 import { ReclassifyConversation } from "./ReclassifyConversation";
 import { ConversationExample } from "./ConversationExample";
@@ -300,6 +301,14 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 			{mailboxId && (
 				<div className="px-5 py-3 border-b border-kumo-line flex flex-wrap items-center gap-2">
+					{(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
+						mode.data?.canManageClassifiers && (
+							<ThreadClassifierReview
+								key={`review/${mailboxId}/${email.thread_id ?? email.id}`}
+								mailboxId={mailboxId}
+								threadId={email.thread_id ?? email.id}
+							/>
+						)}
 					<TagActions
 						mailboxId={mailboxId}
 						threadIds={[email.thread_id ?? email.id]}
