@@ -4046,8 +4046,8 @@
 		"/api/v1/classification/provider-runs": {
 			"get": {
 				"tags": ["Classifiers"],
-				"summary": "List provider requests (inbox administrators only)",
-				"description": "Newest first, one entry per actual Jev request, including retries. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
+				"summary": "List classification attempts and Jev request logs",
+				"description": "Newest first: Jev requests plus classification attempts without request logs. kind distinguishes request from attempt; historical marks recovered current states. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -4079,7 +4079,16 @@
 						"required": false,
 						"schema": {
 							"type": "string",
-							"enum": ["running", "succeeded", "failed", "interrupted"]
+							"enum": [
+								"running",
+								"succeeded",
+								"failed",
+								"interrupted",
+								"queued",
+								"review",
+								"blocked",
+								"skipped"
+							]
 						}
 					},
 					{

@@ -188,7 +188,9 @@ test("logs are admin-only, paginated without duplicates, and summaries exclude b
 		}
 		cursor = page.next_cursor;
 	} while (cursor);
-	assert.equal(seen.size, all.length);
+	const [unlogged] =
+		await db`SELECT count(*)::int AS count FROM classification_attempts a WHERE NOT EXISTS(SELECT 1 FROM classifier_provider_run_items i WHERE i.job_token=a.job_token AND i.attempt=a.attempt)`;
+	assert.equal(seen.size, all.length + unlogged.count);
 	const failed = await (await app.request("/?status=failed")).json();
 	assert.ok(
 		failed.runs.every((r: { status: string }) => r.status === "failed"),
@@ -297,4 +299,57 @@ test("recovered batches retain the rejected attempt in the audit trail", async (
 	const results =
 		await db`SELECT status FROM conversation_classifications WHERE thread_id=${thread}`;
 	assert.ok(results.every((r) => r.status === "complete"));
+});
+
+test("queued and blocked attempts appear without a provider call and remain inspectable", async () => {
+	const { thread, token } = await prepare();
+	const queued = await (
+		await app.request(
+			"/?" +
+				new URLSearchParams({
+					thread,
+					status: "queued",
+					classifier: classifierIds[0],
+				}),
+		)
+	).json();
+	assert.equal(queued.runs.length, 1);
+	const id = queued.runs[0].id;
+	const queuedDetail = await (await app.request("/" + id)).json();
+	assert.equal(queuedDetail.request_body, null);
+	assert.equal(queuedDetail.kind, "attempt");
+	await db`UPDATE emails SET body=${"x".repeat(35000)} WHERE thread_id=${thread}`;
+	const [job] =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread}`;
+	let calls = 0;
+	await processJob(db, "fake", job.token, async () => {
+		calls++;
+		return Response.json({});
+	});
+	assert.equal(calls, 0);
+	const blocked = await (
+		await app.request("/?" + new URLSearchParams({ thread, status: "blocked" }))
+	).json();
+	assert.equal(blocked.runs.length, 1);
+	assert.equal(blocked.runs[0].error, "provider_context_limit");
+	const detail = await (await app.request("/" + blocked.runs[0].id)).json();
+	assert.equal(detail.request_body, null);
+	assert.equal(detail.items[0].error, "provider_context_limit");
+	// Previous activity survives the new message/token.
+	assert.equal((await app.request("/" + id)).status, 200);
+	assert.notEqual(token, job.token);
+});
+
+test("an attempt links its physical request without duplicating the run list", async () => {
+	const { thread, token } = await prepare();
+	const before = await (await app.request("/?thread=" + thread)).json();
+	const id = before.runs[0].id;
+	await processJob(db, "fake", token, yes);
+	const after = await (await app.request("/?thread=" + thread)).json();
+	assert.equal(after.runs.length, 1);
+	assert.equal(after.runs[0].kind, "request");
+	const detail = await (await app.request("/" + id)).json();
+	assert.equal(detail.status, "succeeded");
+	assert.equal(detail.requests.length, 1);
+	assert.equal(detail.requests[0].id, after.runs[0].id);
 });

@@ -1,3 +1,4 @@
+import { classificationError } from "../../shared/jev-budget";
 import { RunDetail } from "./ClassifierRunDetail";
 import { ClassifierRunFilters } from "~/components/ClassifierRunFilters";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -9,6 +10,10 @@ import { classifierRequest, type Classifier } from "~/services/classifiers";
 import type { ProviderRunPage } from "../../shared/provider-runs";
 
 const statusLabels = {
+	queued: "Queued",
+	review: "Needs review",
+	blocked: "Blocked before sending",
+	skipped: "Skipped",
 	running: "Running",
 	succeeded: "Succeeded",
 	failed: "Failed",
@@ -49,6 +54,7 @@ export default function ClassifierRuns() {
 	const runs = useInfiniteQuery({
 		queryKey: ["provider-runs", filterKey],
 		initialPageParam: null as string | null,
+		refetchInterval: 5000,
 		enabled: allowed,
 		queryFn: ({ pageParam }) => {
 			const query = new URLSearchParams(filterKey);
@@ -86,7 +92,7 @@ export default function ClassifierRuns() {
 					<div>
 						<h2 className="text-sm font-medium">Classifier runs</h2>
 						<p className="text-sm text-kumo-subtle mt-1">
-							Every Jev request, including retries and batched questions.
+							Classification attempts, including blocked jobs and Jev requests.
 						</p>
 					</div>
 					<Button variant="secondary" onClick={() => void runs.refetch()}>
@@ -124,8 +130,7 @@ export default function ClassifierRuns() {
 						<div className="p-8">
 							<h2 className="font-medium">No classifier runs yet</h2>
 							<p className="text-sm text-kumo-subtle mt-2">
-								Only requests made after logging was enabled appear here. Try
-								changing your filters.
+								No attempts match these filters. Try changing your filters.
 							</p>
 						</div>
 					)}
@@ -156,12 +161,18 @@ export default function ClassifierRuns() {
 												: "text-kumo-default"
 										}
 									>
+										{run.historical ? "Recovered status · " : ""}
 										{statusLabels[run.status]}
 									</span>
 								</div>
 								<div className="font-medium text-sm mt-2 break-words">
 									{run.subject}
 								</div>
+								{run.error && (
+									<p className="text-xs text-kumo-danger mt-1">
+										{classificationError(run.error)}
+									</p>
+								)}
 								<div className="text-xs text-kumo-subtle mt-1 break-words">
 									{run.mailbox_id} ·{" "}
 									{run.classifiers.map((c) => c.name).join(" + ")}
@@ -171,9 +182,11 @@ export default function ClassifierRuns() {
 										{run.classifiers.length} question
 										{run.classifiers.length === 1 ? "" : "s"} ·{" "}
 										{run.duration_ms === null
-											? run.status === "running"
-												? "In progress"
-												: "—"
+											? run.status === "queued"
+												? "Waiting to process"
+												: run.status === "running"
+													? "In progress"
+													: "—"
 											: `${run.duration_ms} ms`}
 									</span>
 									<span>
