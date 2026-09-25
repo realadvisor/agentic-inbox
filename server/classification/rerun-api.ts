@@ -49,19 +49,19 @@ export function rerunApi(
 				throw new HTTPException(400, {
 					message: "Configure Jev for a tag or group in Settings → Tags first.",
 				});
+			const previous =
+				await tx`SELECT c.id,tag_manually_overridden(${mailbox},${thread},c.tag_id) AS overridden,j.source,j.status,j.priority,j.revision,j.generation,j.token,j.run_id FROM classifiers c LEFT JOIN conversation_classifications j ON j.classifier_id=c.id AND j.mailbox_id=${mailbox} AND j.thread_id=${thread} WHERE c.id IN ${tx(classifiers.map((c) => c.id))}`;
 			const tokens: string[] = [];
 			let protectedCount = 0;
+			const fresh = [];
 			for (const classifier of classifiers) {
-				const [manual] =
-					await tx`SELECT tag_manually_overridden(${mailbox},${thread},${classifier.tag_id}) AS overridden`;
-				const [old] =
-					await tx`SELECT * FROM conversation_classifications WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND classifier_id=${classifier.id}`;
-				if (manual.overridden || old?.source === "human") {
+				const old = previous.find((j) => j.id === classifier.id)!;
+				if (old.overridden || old.source === "human") {
 					protectedCount++;
 					continue;
 				}
 				if (
-					old?.status === "pending" &&
+					old.status === "pending" &&
 					old.priority === 2 &&
 					old.revision === classifier.revision &&
 					old.generation === conversation.generation
@@ -69,13 +69,15 @@ export function rerunApi(
 					tokens.push(old.token);
 					continue;
 				}
-				if (old?.run_id)
-					await tx`UPDATE classifier_run_items SET status='skipped' WHERE run_id=${old.run_id} AND mailbox_id=${mailbox} AND thread_id=${thread} AND status='pending'`;
-				// Priority 2 marks an explicit single-thread rerun, including archived/sent threads.
-				const [job] =
-					await tx`INSERT INTO conversation_classifications(mailbox_id,thread_id,classifier_id,revision,generation,priority) VALUES(${mailbox},${thread},${classifier.id},${classifier.revision},${conversation.generation},2) ON CONFLICT(mailbox_id,thread_id,classifier_id) DO UPDATE SET revision=excluded.revision,generation=excluded.generation,priority=2,run_id=NULL,status='pending',token=gen_random_uuid(),answer=NULL,probability=NULL,source='jev',actor=NULL,model=NULL,error=NULL,attempts=0,available_at=now(),lease_until=NULL,lease_id=NULL,updated_at=now() RETURNING token`;
-				tokens.push(job.token);
-				await tx`DELETE FROM conversation_tags WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND tag_id=${classifier.tag_id} AND source='classifier'`;
+				fresh.push(classifier);
+			}
+			if (fresh.length) {
+				const ids = fresh.map((c) => c.id);
+				await tx`UPDATE classifier_run_items i SET status='skipped' FROM conversation_classifications j WHERE j.mailbox_id=${mailbox} AND j.thread_id=${thread} AND j.classifier_id IN ${tx(ids)} AND i.run_id=j.run_id AND i.mailbox_id=j.mailbox_id AND i.thread_id=j.thread_id AND i.status='pending'`;
+				const jobs =
+					await tx`INSERT INTO conversation_classifications ${tx(fresh.map((c) => ({ mailbox_id: mailbox, thread_id: thread, classifier_id: c.id, revision: c.revision, generation: conversation.generation, priority: 2 })))} ON CONFLICT(mailbox_id,thread_id,classifier_id) DO UPDATE SET revision=excluded.revision,generation=excluded.generation,priority=2,run_id=NULL,status='pending',token=gen_random_uuid(),answer=NULL,probability=NULL,source='jev',actor=NULL,model=NULL,error=NULL,attempts=0,available_at=now(),lease_until=NULL,lease_id=NULL,updated_at=now() RETURNING token`;
+				tokens.push(...jobs.map((j) => j.token));
+				await tx`DELETE FROM conversation_tags WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND tag_id IN ${tx(fresh.map((c) => c.tag_id))} AND source='classifier'`;
 			}
 			return { tokens, protected: protectedCount };
 		});
