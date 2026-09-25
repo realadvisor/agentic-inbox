@@ -93,10 +93,14 @@ test("AI composer generates, previews replacement and protects text written duri
 			.getByRole("button", { name: "Quick Draft", exact: true })
 			.click();
 		await expect.poll(() => !!finish).toBe(true);
+		await expect(composer.getByRole("status")).toHaveText(
+			"Drafting your email…",
+		);
 		await editor.fill("Typed while Quick Draft was running.");
 		finish!();
 		await expect(editor).toContainText("Hello Sophie");
 		await expect(editor).toContainText("Typed while Quick Draft was running.");
+		await expect(composer.getByRole("status")).toHaveCount(0);
 		await expect(dialog).toHaveCount(0);
 		finish = undefined;
 

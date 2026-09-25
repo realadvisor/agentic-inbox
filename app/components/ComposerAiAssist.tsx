@@ -21,6 +21,7 @@ export default function ComposerAiAssist({
 	subject,
 	recipients,
 	onApply,
+	onGeneratingChange,
 	disabled = false,
 	initialOpen = false,
 	initialQuick = false,
@@ -31,6 +32,7 @@ export default function ComposerAiAssist({
 	subject: string;
 	recipients: string;
 	onApply: (html: string) => void;
+	onGeneratingChange?: (generating: boolean) => void;
 	disabled?: boolean;
 	initialOpen?: boolean;
 	initialQuick?: boolean;
@@ -58,6 +60,9 @@ export default function ComposerAiAssist({
 	const [open, setOpen] = useState(initialOpen);
 	const [instructions, setInstructions] = useState("");
 	const [loading, setLoading] = useState(false);
+	useEffect(() => {
+		onGeneratingChange?.(loading);
+	}, [loading, onGeneratingChange]);
 	const [error, setError] = useState("");
 	const [suggestion, setSuggestion] = useState("");
 	const [generated, setGenerated] = useState(false);

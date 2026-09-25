@@ -26,6 +26,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 	const form = useComposeForm(mailboxId, folder, true);
 	const [expanded, setExpanded] = useState(false);
 	const [formatting, setFormatting] = useState(false);
+	const [generating, setGenerating] = useState(false);
 	const panel = useRef<HTMLElement>(null);
 	const formRef = useRef<HTMLFormElement>(null);
 	useLayoutEffect(() => {
@@ -68,6 +69,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							subject={form.subject}
 							recipients={form.to}
 							onApply={form.setBody}
+							onGeneratingChange={setGenerating}
 							disabled={busy}
 							initialOpen={composeOptions.aiDraft}
 							initialQuick={composeOptions.quickDraft}
@@ -177,7 +179,16 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 						) : null}
 					</div>
 
-					<div className="px-2 pt-3">
+					<div className="px-2 pt-3" aria-busy={generating}>
+						{generating && (
+							<div
+								role="status"
+								className="flex items-center gap-2 px-3 py-2 text-xs text-kumo-subtle"
+							>
+								<span className="composer-ai-spinner" aria-hidden="true" />
+								Drafting your email…
+							</div>
+						)}
 						<RichTextEditor
 							value={form.body}
 							onChange={form.setBody}
