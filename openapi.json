@@ -985,6 +985,15 @@
 							"type": "string",
 							"enum": ["open", "done"]
 						}
+					},
+					{
+						"name": "score_group",
+						"in": "query",
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"description": "Order by this ordered-scale group score descending, including review results; unscored conversations last."
 					}
 				],
 				"responses": {
@@ -5861,7 +5870,7 @@
 					},
 					"group_selection": {
 						"type": "string",
-						"enum": ["single", "multiple"],
+						"enum": ["single", "multiple", "score"],
 						"nullable": true
 					}
 				}
@@ -6152,7 +6161,7 @@
 					},
 					"selection": {
 						"type": "string",
-						"enum": ["single", "multiple"]
+						"enum": ["single", "multiple", "score"]
 					},
 					"instructions": {
 						"type": "string",
@@ -6219,7 +6228,7 @@
 					},
 					"selection": {
 						"type": "string",
-						"enum": ["single", "multiple"]
+						"enum": ["single", "multiple", "score"]
 					},
 					"instructions": {
 						"type": "string",
@@ -6275,7 +6284,7 @@
 			"DecisionRules": {
 				"type": "object",
 				"additionalProperties": false,
-				"description": "Post-response decision thresholds. No must be strictly below Yes. Omitted values use defaults. Choice must pass confidence, winning probability and margin; insufficient evidence always needs review.",
+				"description": "Post-response decision thresholds. No must be strictly below Yes. Omitted values use defaults. Choice must pass confidence, winning probability and margin; insufficient evidence always needs review. Score uses score_boundaries to select a level and confidence to require review; probability and margin do not apply to Score.",
 				"properties": {
 					"yes": {
 						"type": "number",
@@ -6306,6 +6315,17 @@
 						"minimum": 0,
 						"maximum": 1,
 						"default": 0.2
+					},
+					"score_boundaries": {
+						"type": "array",
+						"maxItems": 9,
+						"items": {
+							"type": "number",
+							"minimum": 0,
+							"exclusiveMinimum": true,
+							"maximum": 9
+						},
+						"description": "Score only: one strictly increasing boundary per gap, below the maximum level index. Equality selects the higher level. Defaults to midpoint boundaries."
 					}
 				}
 			}

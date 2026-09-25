@@ -112,7 +112,7 @@ export function batchRequests(
 			const q = item.body.questions.match as { type?: string };
 			const signature = JSON.stringify(q);
 			const key = group.length === 1 ? "match" : `q${index}`;
-			if (q.type !== "choice") return key;
+			if (q.type !== "choice" && q.type !== "score") return key;
 			const existing = seen.get(signature);
 			if (existing) return existing;
 			seen.set(signature, key);

@@ -13,7 +13,7 @@ export function DecisionRules({
 	choice?: boolean;
 }) {
 	const rules = decisionRules(value);
-	const fields: [keyof Rules, string][] = choice
+	const fields: [Exclude<keyof Rules, "score_boundaries">, string][] = choice
 		? [
 				["confidence", "Minimum confidence"],
 				["probability", "Winning option probability"],
@@ -30,7 +30,7 @@ export function DecisionRules({
 			</summary>
 			<p className="mt-2 text-xs text-kumo-subtle">
 				{choice
-					? "All three conditions must pass to apply a choice. Insufficient evidence always needs review."
+					? "All three conditions must pass to apply a level or choice. Uncertain results need review."
 					: "Probabilities between these thresholds need human review. Manual tags are preserved."}{" "}
 				These rules apply after Jev answers.
 			</p>

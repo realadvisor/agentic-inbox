@@ -72,6 +72,33 @@ function requestExamples(raw: string) {
 		return [];
 	}
 }
+function scoreAnswers(raw: string | null) {
+	try {
+		const answers = JSON.parse(raw ?? "{}").answers ?? {};
+		return Object.entries(answers).flatMap(([key, value]) => {
+			const a = value as {
+				type?: string;
+				score?: number;
+				confidence?: number;
+				probabilities?: Record<string, number>;
+			};
+			return a.type === "score" &&
+				typeof a.score === "number" &&
+				typeof a.confidence === "number"
+				? [
+						{
+							key,
+							score: a.score,
+							confidence: a.confidence,
+							probabilities: a.probabilities ?? {},
+						},
+					]
+				: [];
+		});
+	} catch {
+		return [];
+	}
+}
 function when(value: string) {
 	return new Date(value).toLocaleString();
 }
@@ -207,6 +234,37 @@ export function RunDetail({
 										{classificationError(run.error)}
 									</p>
 								)}
+								{scoreAnswers(run.response_body)
+									.filter((a) =>
+										run.items.some(
+											(i) =>
+												i.question_key === a.key &&
+												(!classifierIds ||
+													classifierIds.includes(i.classifier_id)),
+										),
+									)
+									.map((a) => (
+										<section
+											key={a.key}
+											aria-label="Score result"
+											className="mb-4 rounded-lg border border-kumo-line p-3"
+										>
+											<p className="text-sm font-medium">
+												Score {a.score.toFixed(2)} /{" "}
+												{Object.keys(a.probabilities).length - 1}
+											</p>
+											<p className="mt-1 text-xs text-kumo-subtle">
+												Confidence {Math.round(a.confidence * 100)}% · {a.key}
+											</p>
+											<div className="mt-3 flex gap-4 text-xs">
+												{Object.entries(a.probabilities).map(([level, p]) => (
+													<span key={level}>
+														Level {level}: {Math.round(p * 100)}%
+													</span>
+												))}
+											</div>
+										</section>
+									))}
 								{run.items
 									.filter(
 										(item) =>

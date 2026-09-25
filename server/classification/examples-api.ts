@@ -138,7 +138,11 @@ export function examplesApi(db: Database, admin: boolean, actor: string) {
 			const names: string[] = [];
 			for (const target of targets.values()) {
 				const owner = await exampleOwner(conn, target);
-				if (owner.group?.selection === "single" && target.labels.length !== 1)
+				if (
+					(owner.group?.selection === "single" ||
+						owner.group?.selection === "score") &&
+					target.labels.length !== 1
+				)
 					throw new HTTPException(409, {
 						message:
 							"Choose one tag in each single-selection group before saving.",
@@ -183,7 +187,9 @@ export function examplesApi(db: Database, admin: boolean, actor: string) {
 				allowed.push("insufficient_evidence");
 			if (
 				labels.some((l) => !allowed.includes(l)) ||
-				((!owner.group || owner.group.selection === "single") &&
+				((!owner.group ||
+					owner.group.selection === "single" ||
+					owner.group.selection === "score") &&
 					labels.length !== 1)
 			)
 				throw new HTTPException(400, {

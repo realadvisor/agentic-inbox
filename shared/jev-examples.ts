@@ -32,7 +32,9 @@ export function exampleConfig(group?: TagGroupInput, question = "") {
 					selection: group.selection,
 					instructions: group.instructions.trim(),
 					tags: [...group.tags]
-						.sort((a, b) => a.id.localeCompare(b.id))
+						.sort((a, b) =>
+							group.selection === "score" ? 0 : a.id.localeCompare(b.id),
+						)
 						.map((t) => ({
 							id: t.id,
 							name: t.name.trim(),

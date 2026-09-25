@@ -138,7 +138,7 @@ export function JevExamples({
 				});
 				const failed = data.results.some((r) => r.error || !r.result);
 				const abstained =
-					group?.selection === "single" &&
+					(group?.selection === "single" || group?.selection === "score") &&
 					data.results[0]?.result?.choice === "insufficient_evidence";
 				const uncertain =
 					!abstained && data.results.some((r) => r.result?.answer === null);

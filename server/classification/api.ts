@@ -222,26 +222,35 @@ export function classifierApi(
  SELECT r.response_body,i.question_key FROM classifier_provider_run_items i JOIN classifier_provider_runs r ON r.id=i.run_id
  WHERE i.job_token=j.token AND i.classifier_id=j.classifier_id AND r.mailbox_id=j.mailbox_id AND r.thread_id=j.thread_id
  ORDER BY r.started_at DESC,r.id DESC LIMIT 1
- ) log ON g.selection='single' WHERE j.mailbox_id=${c.req.param("mailbox")} AND (c.enabled OR j.priority=2) AND j.revision=c.revision AND j.status IN ('review','error') ${thread ? db`AND j.thread_id=${thread}` : db``} AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.updated_at DESC LIMIT 1000`;
+ ) log ON g.selection IN ('single','score') WHERE j.mailbox_id=${c.req.param("mailbox")} AND (c.enabled OR j.priority=2) AND j.revision=c.revision AND j.status IN ('review','error') ${thread ? db`AND j.thread_id=${thread}` : db``} AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.updated_at DESC LIMIT 1000`;
 		return c.json(
 			rows.map(({ response_body, question_key, ...row }) => {
 				let confidence: number | null = null;
+				let score: number | null = null;
 				try {
 					const answer = JSON.parse(response_body)?.answers?.[question_key];
 					if (
-						row.group_selection === "single" &&
+						(row.group_selection === "single" ||
+							row.group_selection === "score") &&
 						row.probability != null &&
-						answer?.type === "choice" &&
+						(answer?.type === "choice" || answer?.type === "score") &&
 						typeof answer.confidence === "number" &&
 						Number.isFinite(answer.confidence) &&
 						answer.confidence >= 0 &&
 						answer.confidence <= 1
-					)
+					) {
 						confidence = answer.confidence;
+						if (
+							answer.type === "score" &&
+							typeof answer.score === "number" &&
+							Number.isFinite(answer.score)
+						)
+							score = answer.score;
+					}
 				} catch {
 					/* Failed or historical requests may have no valid answer. */
 				}
-				return { ...row, confidence };
+				return { ...row, confidence, score };
 			}),
 		);
 	});

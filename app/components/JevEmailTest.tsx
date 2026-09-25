@@ -212,7 +212,7 @@ export function JevEmailTest({
 			{report?.items.map(({ email, data, error }) => {
 				const needsReview =
 					data?.results.some((r) => r.error || r.result?.answer === null) ||
-					(selection === "single" &&
+					(selection !== "multiple" &&
 						(data?.results.filter((r) => r.result?.answer === true).length ??
 							0) > 1);
 				return (
@@ -240,13 +240,60 @@ export function JevEmailTest({
 										: "Test predictions"}
 									{stale ? " (out of date)" : ""}
 								</p>
+								{data.results[0]?.result?.model === "local-demo-fixture" && (
+									<p className="text-xs font-medium text-kumo-subtle">
+										Local demo · simulated response, not a live Jev prediction
+									</p>
+								)}
 								{data.results[0]?.result?.confidence !== undefined && (
 									<p className="text-xs text-kumo-subtle">
-										Choice confidence:{" "}
+										{selection === "score"
+											? `Score ${data.results[0].result.score?.toFixed(2)} / ${data.results.length - 1} · Confidence: `
+											: "Choice confidence: "}
 										{Math.round(data.results[0].result.confidence * 100)}%.{" "}
 										{data.results[0].result.choice === "insufficient_evidence"
 											? "Insufficient evidence — review required."
 											: "Probabilities below show support for each tag."}
+									</p>
+								)}
+								{selection === "score" && (
+									<div
+										className="flex h-1.5 overflow-hidden rounded-full bg-kumo-line"
+										aria-label="Level probability distribution"
+									>
+										{selection === "score" &&
+											data.results[0]?.result?.choice && (
+												<p className="text-xs">
+													{needsReview ? "Proposed level" : "Selected level"}:{" "}
+													{
+														group?.tags.find(
+															(t) => t.id === data.results[0].result?.choice,
+														)?.name
+													}{" "}
+													· based on score boundaries
+												</p>
+											)}
+										{data.results.map((r, i) => (
+											<div
+												key={i}
+												title={`${r.name}: ${Math.round((r.result?.probability ?? 0) * 100)}%`}
+												style={{
+													width: `${(r.result?.probability ?? 0) * 100}%`,
+													backgroundColor: group?.tags[i]?.color,
+												}}
+											/>
+										))}
+									</div>
+								)}
+								{selection === "score" && data.results[0]?.result?.choice && (
+									<p className="text-xs">
+										{needsReview ? "Proposed level" : "Selected level"}:{" "}
+										{
+											group?.tags.find(
+												(t) => t.id === data.results[0].result?.choice,
+											)?.name
+										}{" "}
+										· based on score boundaries
 									</p>
 								)}
 								{data.results.map((r, i) => (
@@ -274,7 +321,8 @@ export function JevEmailTest({
 								</summary>
 								<p className="my-2 text-xs text-kumo-subtle">
 									Questions share the same conversation. Single-selection groups
-									use one Choice question.
+									use one Choice question; ordered scales use one Score
+									question.
 								</p>
 								<pre
 									aria-label={`Jev requests for ${email.subject}`}
