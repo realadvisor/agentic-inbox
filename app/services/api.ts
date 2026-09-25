@@ -145,6 +145,8 @@ const api = {
 					probability: number;
 					answer: boolean | null;
 					confidence?: number;
+					score?: number;
+					model?: string;
 					choice?: string;
 					probabilities?: Record<string, number>;
 				};

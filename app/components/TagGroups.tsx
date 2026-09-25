@@ -1,3 +1,8 @@
+import {
+	decisionRules,
+	scoreBoundaries,
+	scoreRange,
+} from "../../shared/decision-rules";
 import { DecisionRules } from "./DecisionRules";
 import { JevRequestPreview } from "./JevRequestPreview";
 import { groupQuestion } from "../../shared/tag-groups";
@@ -11,6 +16,7 @@ import {
 	CaretRightIcon,
 	TagIcon,
 	StackIcon,
+	ChartBarIcon,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
@@ -127,10 +133,50 @@ export function TagGroups({
 							<div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
 								<span className="text-sm font-medium">{group.name}</span>
 								<span className="text-xs text-kumo-subtle">
-									{group.selection === "single" ? "Choose one" : "Choose any"}
+									{group.selection === "score"
+										? "Ordered scale"
+										: group.selection === "single"
+											? "Choose one"
+											: "Choose any"}
 								</span>
 							</div>
-							<TagChips tags={group.tags} />
+							{group.selection === "score" ? (
+								<div
+									className="flex flex-wrap items-center gap-x-1.5 gap-y-2"
+									aria-label={`${group.name}: ordered scale from ${group.tags[0]?.name} to ${group.tags.at(-1)?.name}`}
+								>
+									{group.tags.map((tag, index) => {
+										const edges = scoreBoundaries(
+											group.tags.length,
+											group.decision_rules,
+										);
+										const range =
+											index === 0
+												? `< ${edges[0]}`
+												: index === group.tags.length - 1
+													? `≥ ${edges[index - 1]}`
+													: `${edges[index - 1]}–<${edges[index]}`;
+										return (
+											<span
+												key={tag.id}
+												className="inline-flex items-center gap-1.5"
+												title={`${tag.name}: score ${scoreRange(index, group.tags.length, group.decision_rules)}. An exact boundary belongs to the higher level.`}
+											>
+												{index > 0 && (
+													<CaretRightIcon
+														size={12}
+														className="shrink-0 text-kumo-subtle opacity-50"
+														aria-hidden="true"
+													/>
+												)}
+												<TagChips tags={[tag]} details={{ [tag.id]: range }} />
+											</span>
+										);
+									})}
+								</div>
+							) : (
+								<TagChips tags={group.tags} />
+							)}
 						</div>
 						<span className="text-right text-xs text-kumo-subtle">
 							{group.enabled ? "Automatic" : "Manual"}
@@ -200,7 +246,7 @@ function Editor({
 	close: () => void;
 	onSaving: (saving: boolean) => void;
 }) {
-	const [draft, setDraft] = useState<TagGroupInput>(() =>
+	const [draft, updateDraft] = useState<TagGroupInput>(() =>
 		current
 			? {
 					name: current.name,
@@ -231,6 +277,17 @@ function Editor({
 	const save = useTagMutation((data: TagGroupInput) =>
 		current ? api.updateTagGroup(current.id, data) : api.createTagGroup(data),
 	);
+	function setDraft(next: TagGroupInput) {
+		if (
+			next.tags.length !== draft.tags.length &&
+			next.decision_rules?.score_boundaries
+		)
+			next = {
+				...next,
+				decision_rules: { ...next.decision_rules, score_boundaries: undefined },
+			};
+		updateDraft(next);
+	}
 	function add() {
 		const name = newTag.trim();
 		if (!name) return;
@@ -283,7 +340,7 @@ function Editor({
 						disabled={save.isPending || remove.isPending}
 						className="min-w-0 space-y-5"
 					>
-						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+						<div className="space-y-4">
 							<Input
 								label="Group name"
 								autoFocus
@@ -292,33 +349,115 @@ function Editor({
 								value={draft.name}
 								onChange={(e) => setDraft({ ...draft, name: e.target.value })}
 							/>
-							<label className="block text-sm font-medium">
-								Selection
-								<select
-									aria-label="Selection"
-									value={draft.selection}
-									onChange={(e) =>
-										setDraft({
-											...draft,
-											selection:
-												e.target.value === "single" ? "single" : "multiple",
-										})
-									}
-									className="mt-2 block w-full rounded-md border border-kumo-line bg-kumo-base p-2"
-								>
-									<option value="single">One tag</option>
-									<option value="multiple">Multiple tags</option>
-								</select>
-							</label>
+							<fieldset>
+								<legend className="mb-2 text-sm font-medium">Selection</legend>
+								<div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+									{(
+										[
+											{
+												value: "single",
+												label: "One tag",
+												description: "Choose one matching tag.",
+												icon: TagIcon,
+											},
+											{
+												value: "multiple",
+												label: "Multiple tags",
+												description: "Apply any matching tags.",
+												icon: StackIcon,
+											},
+											{
+												value: "score",
+												label: "Ordered scale",
+												description: "Score from lowest to highest.",
+												icon: ChartBarIcon,
+											},
+										] as const
+									).map(({ value, label, description, icon: Icon }) => (
+										<label key={value} className="relative cursor-pointer">
+											<input
+												type="radio"
+												name="group-selection"
+												value={value}
+												checked={draft.selection === value}
+												onChange={() =>
+													setDraft({ ...draft, selection: value })
+												}
+												className="peer sr-only"
+												aria-label={label}
+											/>
+											<span className="flex h-full gap-3 rounded-lg border border-kumo-line bg-kumo-base p-3 transition-colors hover:bg-kumo-tint peer-checked:border-blue-600 peer-checked:bg-blue-50/60 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-blue-600 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 sm:flex-col sm:gap-2 dark:peer-checked:bg-blue-950/30">
+												<Icon
+													size={20}
+													weight={
+														draft.selection === value ? "fill" : "regular"
+													}
+													className={
+														draft.selection === value
+															? "shrink-0 text-blue-600"
+															: "shrink-0 text-kumo-subtle"
+													}
+													aria-hidden="true"
+												/>
+												<span>
+													<span className="block text-sm font-medium">
+														{label}
+													</span>
+													<span className="mt-1 block text-xs leading-relaxed text-kumo-subtle">
+														{description}
+													</span>
+												</span>
+											</span>
+										</label>
+									))}
+								</div>
+							</fieldset>
 						</div>
 						<div>
-							<div className="mb-2 text-sm font-medium">Tags</div>
+							<div className="mb-2 text-sm font-medium">
+								{draft.selection === "score"
+									? "Levels · lowest to highest"
+									: "Tags"}
+							</div>
+							{draft.selection === "score" && (
+								<p className="mb-3 text-xs text-kumo-subtle">
+									Define 2–10 levels with clear descriptions. Jev scores the
+									scale; uncertain results need review.
+								</p>
+							)}
 							<div className="space-y-2">
 								{draft.tags.map((tag, index) => (
 									<div
 										key={tag.id}
 										className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-kumo-line bg-kumo-base p-2"
 									>
+										{draft.selection === "score" && (
+											<div className="flex items-center gap-1 text-xs text-kumo-subtle">
+												<span className="w-4 tabular-nums">{index}</span>
+												{[-1, 1].map((delta) => (
+													<button
+														key={delta}
+														type="button"
+														aria-label={`Move ${tag.name} ${delta < 0 ? "down the scale" : "up the scale"}`}
+														disabled={
+															index + delta < 0 ||
+															index + delta >= draft.tags.length
+														}
+														className="rounded px-1.5 py-1 hover:bg-kumo-tint disabled:opacity-30"
+														onClick={() => {
+															const tags = [...draft.tags];
+															[tags[index], tags[index + delta]] = [
+																tags[index + delta],
+																tags[index],
+															];
+															setDraft({ ...draft, tags });
+														}}
+													>
+														{delta < 0 ? "↑" : "↓"}
+													</button>
+												))}
+											</div>
+										)}
 										<label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-kumo-subtle">
 											<input
 												type="color"
@@ -360,6 +499,9 @@ function Editor({
 										/>
 										<button
 											type="button"
+											disabled={
+												draft.selection === "score" && draft.tags.length <= 2
+											}
 											aria-label={`Remove ${tag.name} tag`}
 											className="rounded p-1 text-kumo-subtle"
 											onClick={() =>
@@ -372,6 +514,7 @@ function Editor({
 											<XIcon size={16} />
 										</button>
 										<textarea
+											required={draft.selection === "score"}
 											aria-label={`Tag ${index + 1} description`}
 											placeholder="When should this tag apply? Include important exceptions."
 											value={tag.description}
@@ -448,13 +591,118 @@ function Editor({
 									</span>
 								</label>
 							}
-							<DecisionRules
-								choice={draft.selection === "single"}
-								value={draft.decision_rules}
-								onChange={(decision_rules) =>
-									setDraft({ ...draft, decision_rules })
-								}
-							/>
+							{draft.selection === "score" ? (
+								<section
+									className="space-y-3 rounded-lg border border-kumo-line p-3"
+									aria-label="Score boundaries"
+								>
+									<h3 className="text-sm font-medium">Score boundaries</h3>
+									<p className="text-xs text-kumo-subtle">
+										The numeric score selects a level. An exact boundary belongs
+										to the higher level.
+									</p>
+									{draft.tags.map((tag, index) => (
+										<div
+											key={tag.id}
+											className="flex items-center justify-between gap-3 text-sm"
+										>
+											<span>{tag.name}</span>
+											{index === 0 ? (
+												<span className="text-xs text-kumo-subtle">
+													Starts at 0
+												</span>
+											) : (
+												<label className="flex items-center gap-2 text-xs text-kumo-subtle">
+													From
+													<input
+														aria-label={`${tag.name} starts at`}
+														type="number"
+														min={0.01}
+														max={draft.tags.length - 1 - 0.01}
+														step="any"
+														required
+														value={
+															scoreBoundaries(
+																draft.tags.length,
+																draft.decision_rules,
+															)[index - 1] ?? index - 0.5
+														}
+														onChange={(e) => {
+															const edges = scoreBoundaries(
+																draft.tags.length,
+																draft.decision_rules,
+															);
+															edges[index - 1] = e.target.valueAsNumber;
+															setDraft({
+																...draft,
+																decision_rules: {
+																	...decisionRules(draft.decision_rules),
+																	score_boundaries: edges,
+																},
+															});
+														}}
+														className="w-20 rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
+													/>
+												</label>
+											)}
+										</div>
+									))}
+									<label className="flex items-center justify-between gap-3 text-sm">
+										Review below confidence
+										<span className="flex items-center gap-1">
+											<input
+												aria-label="Review below confidence"
+												type="number"
+												min={0}
+												max={100}
+												required
+												value={Math.round(
+													decisionRules(draft.decision_rules).confidence * 100,
+												)}
+												onChange={(e) =>
+													setDraft({
+														...draft,
+														decision_rules: {
+															...decisionRules(draft.decision_rules),
+															confidence: e.target.valueAsNumber / 100,
+														},
+													})
+												}
+												className="w-20 rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
+											/>
+											%
+										</span>
+									</label>
+									<p className="text-xs text-kumo-subtle">
+										Low-confidence scores remain visible and sortable, but their
+										proposed level needs review before a tag is applied.
+									</p>
+									<button
+										type="button"
+										className="text-xs underline"
+										onClick={() =>
+											setDraft({
+												...draft,
+												decision_rules: {
+													...decisionRules(draft.decision_rules),
+													score_boundaries: undefined,
+													confidence: 0.6,
+												},
+											})
+										}
+									>
+										Restore midpoint boundaries and 60% confidence
+									</button>
+								</section>
+							) : (
+								<DecisionRules
+									choice={draft.selection === "single"}
+									value={draft.decision_rules}
+									onChange={(decision_rules) =>
+										setDraft({ ...draft, decision_rules })
+									}
+								/>
+							)}
 							<p className="text-xs text-kumo-subtle">
 								Saving does not process existing conversations. Manual choices
 								stay.

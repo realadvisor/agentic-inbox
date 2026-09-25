@@ -26,7 +26,7 @@ export interface Mailbox {
 export interface Tag {
 	group_id?: string | null;
 	group_name?: string | null;
-	group_selection?: "single" | "multiple" | null;
+	group_selection?: "single" | "multiple" | "score" | null;
 	id: string;
 	name: string;
 	color: string;
@@ -39,7 +39,16 @@ export interface ConversationTag extends Tag {
 	updated_at: string;
 }
 
+export interface ConversationScore {
+	group_id: string;
+	name: string;
+	score: number;
+	maximum: number;
+	confidence: number;
+	needs_review: boolean;
+}
 export interface Email {
+	scores?: ConversationScore[];
 	thread_status?: import("shared/thread-status").ThreadStatus;
 	delivery_status?:
 		| "received"

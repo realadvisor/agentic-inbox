@@ -65,7 +65,9 @@ export async function curatedQuestion(
 	const { target, mailbox, thread, state, group, question, option } = options;
 	const config = exampleConfig(group, question);
 	let base: JevQuestion =
-		group?.selection === "single" ? groupChoice(group) : jevQuestion(question);
+		group?.selection === "single" || group?.selection === "score"
+			? groupChoice(group)
+			: jevQuestion(question);
 	const rows = await listExamples(db, target, mailbox);
 	const seen = new Set([evidenceKey(state)]);
 	const selected: CuratedExample[] = [];
@@ -139,11 +141,13 @@ function withExamples(
 	const evidence = examples.map((e) => ({
 		conversation: e.state,
 		expected:
-			base.type === "choice"
-				? e.labels[0]
-				: option
-					? e.labels.includes(option)
-					: e.labels.includes("yes"),
+			base.type === "score"
+				? base.criteria[base.levelIds.indexOf(e.labels[0])]
+				: base.type === "choice"
+					? e.labels[0]
+					: option
+						? e.labels.includes(option)
+						: e.labels.includes("yes"),
 		explanation: e.note,
 	}));
 	return {

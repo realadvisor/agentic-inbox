@@ -1,3 +1,4 @@
+import { ScoreChips } from "~/components/ScoreChips";
 import { statusLabels, type ThreadStatus } from "shared/thread-status";
 import { StatusBadge } from "~/components/ThreadStatus";
 // Modified for the RealAdvisor local Postgres prototype.
@@ -188,6 +189,7 @@ export default function EmailListRoute() {
 	} = useUIStore();
 	const [page, setPage] = useState(1);
 	const [searchParams, setSearchParams] = useSearchParams();
+	const scoreGroup = searchParams.get("score_group") ?? "";
 	const rawStatus = searchParams.get("status");
 	const status: ThreadStatus | "all" =
 		rawStatus === "done" || rawStatus === "open" || rawStatus === "all"
@@ -211,7 +213,7 @@ export default function EmailListRoute() {
 			else next.delete("tag_ids");
 			return next;
 		});
-	const viewKey = `${mailboxId}/${folder}/${tagId}/${tagMatch}/${needsReview}/${status}`;
+	const viewKey = `${mailboxId}/${folder}/${tagId}/${tagMatch}/${needsReview}/${status}/${scoreGroup}`;
 	const prevFolderRef = useRef<string | undefined>(undefined);
 	const viewChanged = prevFolderRef.current !== viewKey;
 	const currentPage = viewChanged ? 1 : page;
@@ -219,7 +221,16 @@ export default function EmailListRoute() {
 	const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
 	useEffect(() => {
 		setSelectedThreads([]);
-	}, [mailboxId, folder, page, tagId, tagMatch, needsReview, status]);
+	}, [
+		mailboxId,
+		folder,
+		page,
+		tagId,
+		tagMatch,
+		needsReview,
+		status,
+		scoreGroup,
+	]);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -235,8 +246,9 @@ export default function EmailListRoute() {
 			limit: String(PAGE_SIZE),
 			...(tagId ? { tag_ids: tagId, tag_match: tagMatch } : {}),
 			...(needsReview ? { needs_review: "true" } : {}),
+			...(scoreGroup ? { score_group: scoreGroup } : {}),
 		}),
-		[folder, currentPage, tagId, tagMatch, needsReview, status],
+		[folder, currentPage, tagId, tagMatch, needsReview, status, scoreGroup],
 	);
 
 	const { data: emailData, isFetching: isRefreshing } = useEmails(
@@ -383,6 +395,35 @@ export default function EmailListRoute() {
 			</div>
 
 			<div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-kumo-line text-sm">
+				{catalog.data?.some((t) => t.group_selection === "score") && (
+					<select
+						aria-label="Sort conversations"
+						value={scoreGroup}
+						onChange={(e) => {
+							setSearchParams((current) => {
+								const next = new URLSearchParams(current);
+								if (e.target.value) next.set("score_group", e.target.value);
+								else next.delete("score_group");
+								return next;
+							});
+							setPage(1);
+						}}
+						className="h-7 max-w-56 rounded-md border border-kumo-line bg-kumo-base px-2 text-xs"
+					>
+						<option value="">Newest first</option>
+						{[
+							...new Map(
+								catalog.data
+									.filter((t) => t.group_selection === "score")
+									.map((t) => [t.group_id, t]),
+							).values(),
+						].map((t) => (
+							<option key={t.group_id} value={t.group_id!}>
+								{t.group_name} · highest score
+							</option>
+						))}
+					</select>
+				)}
 				<TagPicker
 					tags={catalog.data ?? []}
 					value={tagId}
@@ -645,9 +686,10 @@ export default function EmailListRoute() {
 												)}
 											/>
 										)}
-										{!!email.tags?.length && (
+										{(!!email.tags?.length || !!email.scores?.length) && (
 											<div className="mt-1.5 flex">
 												<TagChips tags={email.tags} />
+												<ScoreChips scores={email.scores} />
 											</div>
 										)}
 									</div>

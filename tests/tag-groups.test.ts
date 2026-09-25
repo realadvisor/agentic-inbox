@@ -598,3 +598,139 @@ test("unsaved group tests send one Choice and preserve descriptions without savi
 		0,
 	);
 });
+
+test("ordered scales persist order, batch one Score, and protect manual selections", async () => {
+	const tags = ["Low", "Medium", "High"].map((name, i) => ({
+		id: crypto.randomUUID(),
+		name,
+		color: "#2563eb",
+		description: `Impact level ${i}: ${name}.`,
+	}));
+	const response = await call("/tag-groups", "POST", {
+		name: "Importance score test",
+		selection: "score",
+		instructions: "Judge business impact.",
+		enabled: true,
+		decision_rules: { score_boundaries: [0.4, 1.6], confidence: 0.65 },
+		tags,
+	});
+	assert.equal(response.status, 201);
+	const saved: TagGroup = await response.json();
+	assert.deepEqual(saved.decision_rules?.score_boundaries, [0.4, 1.6]);
+	const thread = await message();
+	const [job] =
+		await db`SELECT j.token FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id WHERE j.thread_id=${thread} AND c.tag_id=${tags[0].id}`;
+	let scores = 0;
+	await processJob(db, "test-key", job.token, async (_url, init) => {
+		const body = JSON.parse(String(init?.body));
+		return Response.json({
+			answers: Object.fromEntries(
+				Object.entries(body.questions).map(([key, value]) => {
+					const q = value as { type: string; criteria: unknown };
+					if (q.type === "score") {
+						scores++;
+						assert.deepEqual(
+							q.criteria,
+							tags.map((t) => t.description),
+						);
+						assert.equal("levelIds" in q, false);
+						return [
+							key,
+							{
+								type: "score",
+								score: 1.9,
+								confidence: 0.95,
+								probabilities: { 0: 0.02, 1: 0.06, 2: 0.92 },
+							},
+						];
+					}
+					if (q.type === "choice")
+						return [
+							key,
+							{
+								type: "choice",
+								choice: "insufficient_evidence",
+								confidence: 0.99,
+								probabilities: Object.fromEntries(
+									Object.keys(q.criteria as object).map((id) => [
+										id,
+										id === "insufficient_evidence" ? 1 : 0,
+									]),
+								),
+							},
+						];
+					return [key, { type: "noul", noul: 0.5 }];
+				}),
+			),
+		});
+	});
+	assert.equal(scores, 1);
+	const scored = await store.scoresForThreads(mailbox, [thread]);
+	assert.equal(scored.find((s) => s.group_id === saved.id)?.score, 1.9);
+	assert.equal(
+		scored.find((s) => s.group_id === saved.id)?.needs_review,
+		false,
+	);
+	const reviewThread = await message();
+	await db`UPDATE conversation_classifications j SET status='review',score=1,confidence=.15,answer=NULL FROM classifiers c WHERE j.classifier_id=c.id AND c.tag_id IN ${db(tags.map((t) => t.id))} AND j.thread_id=${reviewThread}`;
+	const list = await store.list(mailbox, {
+		threaded: "true",
+		score_group: saved.id,
+		limit: "1",
+	});
+	assert.equal(list.emails[0].thread_id, thread);
+	const second = await store.list(mailbox, {
+		threaded: "true",
+		score_group: saved.id,
+		limit: "1",
+		page: "2",
+	});
+	assert.equal(second.emails[0].thread_id, reviewThread);
+	assert.equal(
+		second.emails[0].scores?.find((s) => s.group_id === saved.id)?.needs_review,
+		true,
+	);
+
+	let assigned = (await store.tagsForThreads(mailbox, [thread])).filter(
+		(t) => t.group_id === saved.id,
+	);
+	assert.deepEqual(
+		assigned.map((t) => t.id),
+		[tags[2].id],
+	);
+	await setConversationTags(db, mailbox, [thread], tags[0].id, "add", "human");
+	assert.equal(
+		(await store.scoresForThreads(mailbox, [thread])).filter(
+			(s) => s.group_id === saved.id,
+		).length,
+		0,
+	);
+	assigned = (await store.tagsForThreads(mailbox, [thread])).filter(
+		(t) => t.group_id === saved.id,
+	);
+	assert.deepEqual(
+		assigned.map((t) => t.id),
+		[tags[0].id],
+	);
+	const reordered = await call("/tag-groups/" + saved.id, "PUT", {
+		...input(saved),
+		tags: [...tags].reverse(),
+	});
+	assert.equal(reordered.status, 200);
+	assert.equal(
+		(await store.scoresForThreads(mailbox, [reviewThread])).filter(
+			(s) => s.group_id === saved.id,
+		).length,
+		0,
+	);
+	assert.deepEqual(
+		(await reordered.json()).tags.map((t: { id: string }) => t.id),
+		tags.map((t) => t.id).reverse(),
+	);
+	assert.deepEqual(
+		(await store.tagsForThreads(mailbox, [thread]))
+			.filter((t) => t.group_id === saved.id)
+			.map((t) => t.id),
+		[tags[0].id],
+	);
+});

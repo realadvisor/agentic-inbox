@@ -6,6 +6,7 @@ import {
 } from "@phosphor-icons/react";
 import ComposePanel from "./ComposePanel";
 import { ThreadClassifierReview } from "./ClassifierReview";
+import { ScoreChips } from "./ScoreChips";
 import ThreadStatus from "./ThreadStatus";
 import { ReclassifyConversation } from "./ReclassifyConversation";
 import { ConversationExample } from "./ConversationExample";
@@ -316,6 +317,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 								threadId={email.thread_id ?? email.id}
 							/>
 						)}
+					<ScoreChips scores={email.scores} />
 					<TagActions
 						mailboxId={mailboxId}
 						threadIds={[email.thread_id ?? email.id]}

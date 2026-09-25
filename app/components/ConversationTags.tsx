@@ -18,11 +18,13 @@ export function TagChips({
 	onRemove,
 	removeLabel = "Remove tag",
 	disabled,
+	details,
 }: {
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	onRemove?: (id: string) => void;
 	removeLabel?: string;
 	disabled?: boolean;
+	details?: Record<string, string>;
 }) {
 	return (
 		<span className="inline-flex max-w-full flex-wrap gap-1.5">
@@ -55,6 +57,11 @@ export function TagChips({
 					<span className="truncate" title={tag.name}>
 						{tag.group_name ? `${tag.group_name}: ${tag.name}` : tag.name}
 					</span>
+					{details?.[tag.id] && (
+						<span className="shrink-0 border-l border-current/15 pl-1.5 text-[11px] font-normal tabular-nums opacity-75">
+							{details[tag.id]}
+						</span>
+					)}
 					{onRemove && (
 						<button
 							type="button"
@@ -288,12 +295,20 @@ export function TagActions({
 			{!bulk && (
 				<>
 					<TagChips
-						tags={tags?.filter((tag) => tag.group_selection !== "single")}
+						tags={tags?.filter(
+							(tag) =>
+								tag.group_selection !== "single" &&
+								tag.group_selection !== "score",
+						)}
 						disabled={mutation.isPending}
 						onRemove={(id) => change(id, "remove")}
 					/>
 					{tags
-						?.filter((tag) => tag.group_selection === "single")
+						?.filter(
+							(tag) =>
+								tag.group_selection === "single" ||
+								tag.group_selection === "score",
+						)
 						.map((tag) => (
 							<TagPicker
 								key={tag.id}

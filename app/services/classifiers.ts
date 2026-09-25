@@ -28,9 +28,10 @@ export interface Classifier {
 export interface Classification {
 	decision_rules?: Partial<Rules>;
 	confidence?: number | null;
+	score?: number | null;
 	group_id?: string | null;
 	group_name?: string | null;
-	group_selection?: "single" | "multiple" | null;
+	group_selection?: "single" | "multiple" | "score" | null;
 	group_instructions?: string | null;
 	mailbox_id: string;
 	thread_id: string;

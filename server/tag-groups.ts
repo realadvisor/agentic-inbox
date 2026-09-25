@@ -32,6 +32,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 						"This group changed. Close the editor and reload before saving.",
 				});
 			const rules = input.decision_rules ?? old?.decision_rules ?? {};
+			tagGroupInput.parse({ ...input, decision_rules: rules });
 			const tagIds = input.tags.map((tag) => tag.id);
 			const foreign =
 				await tx`SELECT id FROM tags WHERE id IN ${tx(tagIds)} AND group_id IS DISTINCT FROM ${groupId}::uuid`;
@@ -69,7 +70,10 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 				await tx`UPDATE classifiers SET enabled=false,revision=revision+1 WHERE tag_id IN ${tx(ids)}`;
 				await tx`UPDATE tags SET archived_at=now() WHERE id IN ${tx(ids)}`;
 			}
-			if (old?.selection === "multiple" && input.selection === "single") {
+			if (
+				old?.selection === "multiple" &&
+				(input.selection === "single" || input.selection === "score")
+			) {
 				const conflicts =
 					await tx`SELECT ct.thread_id FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id WHERE t.group_id=${groupId} AND ct.removed_at IS NULL GROUP BY ct.mailbox_id,ct.thread_id HAVING count(*)>1 LIMIT 1`;
 				if (conflicts.length)
