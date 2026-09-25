@@ -1413,3 +1413,145 @@ test("grouped deliveries park and dead-letter every remaining classifier", async
 		2,
 	);
 });
+
+test("historical run date preview is read-only and selects the newest conversations within its limit", async () => {
+	await reset();
+	const dates = [
+		"2026-09-09T23:59:59Z",
+		"2026-09-10T00:00:00Z",
+		"2026-09-10T23:59:59Z",
+		"2026-09-11T00:00:00Z",
+	];
+	const threads: string[] = [];
+	for (const date of dates) {
+		const thread = await message();
+		threads.push(thread);
+		await db`UPDATE emails SET date=${date} WHERE thread_id=${thread}`;
+	}
+	const before =
+		await db`SELECT token FROM conversation_classifications ORDER BY token`;
+	const data = {
+		mailbox_ids: [mailbox],
+		selection: "all",
+		received_from: "2026-09-10T00:00:00Z",
+		received_before: "2026-09-11T00:00:00Z",
+		limit: 1,
+	};
+	const preview = await call("/runs/preview", "POST", {
+		...data,
+		classifier_ids: [classifierId],
+	});
+	assert.equal(preview.status, 200, await preview.clone().text());
+	assert.equal((await preview.json()).count, 1);
+	assert.deepEqual(
+		await db`SELECT token FROM conversation_classifications ORDER BY token`,
+		before,
+	);
+	assert.equal((await db`SELECT id FROM classifier_runs`).length, 0);
+	const response = await call(
+		`/classifiers/${classifierId}/runs`,
+		"POST",
+		data,
+	);
+	assert.equal(response.status, 201, await response.clone().text());
+	const run = await response.json();
+	assert.deepEqual(
+		(
+			await db`SELECT thread_id FROM classifier_run_items WHERE run_id=${run.id}`
+		).map((r) => r.thread_id),
+		[threads[2]],
+	);
+});
+
+test("historical run preview validates bounds and counts conversations once across classifiers", async () => {
+	await reset();
+	const sibling = await siblingClassifier("Date range sibling?");
+	await message();
+	const data = {
+		mailbox_ids: [mailbox],
+		selection: "all",
+		classifier_ids: [classifierId, sibling.id],
+	};
+	const preview = await call("/runs/preview", "POST", data);
+	assert.equal((await preview.json()).count, 1);
+	for (const invalid of [
+		{ limit: 0 },
+		{ limit: 5001 },
+		{
+			received_from: "2026-09-11T00:00:00Z",
+			received_before: "2026-09-10T00:00:00Z",
+		},
+	]) {
+		assert.equal(
+			(await call("/runs/preview", "POST", { ...data, ...invalid })).status,
+			400,
+		);
+	}
+	await db`UPDATE emails SET folder_id='archive'`;
+	assert.equal(
+		(await (await call("/runs/preview", "POST", data)).json()).count,
+		0,
+	);
+});
+
+test("manual historical reprocessing works with automatic classification disabled", async () => {
+	await reset();
+	await db`UPDATE classifiers SET enabled=false WHERE id=${classifierId}`;
+	const thread = await message();
+	const response = await call(`/classifiers/${classifierId}/runs`, "POST", {
+		mailbox_ids: [mailbox],
+		selection: "all",
+		limit: 1,
+	});
+	assert.equal(response.status, 201, await response.clone().text());
+	const pending = await job(thread);
+	assert.equal(pending.priority, 2);
+	await processJob(db, "test", pending.token, yes);
+	assert.equal((await job(thread)).status, "complete");
+	assert.equal(
+		(await db`SELECT enabled FROM classifiers WHERE id=${classifierId}`)[0]
+			.enabled,
+		false,
+	);
+});
+
+test("Cloud Tasks retries preserve waiting jobs and record exhausted processing attempts", async () => {
+	await reset();
+	const thread = await message();
+	const row = await job(thread);
+	let acks = 0,
+		retries = 0,
+		requests = 0;
+	const batch = {
+		queue: queueNames.live,
+		messages: [
+			{
+				body: { version: 1, token: row.token },
+				ack() {
+					acks++;
+				},
+				retry() {
+					retries++;
+				},
+			},
+		],
+	};
+	const provider: typeof fetch = async () => {
+		requests++;
+		return new Response("", { status: 503 });
+	};
+	await consumeBatch(db, "test", batch, provider, 4);
+	assert.equal((await job(thread)).attempts, 1);
+	await consumeBatch(db, "test", batch, provider, 4);
+	assert.equal((await job(thread)).attempts, 1);
+	assert.equal(requests, 1);
+	assert.equal(retries, 2);
+	await db`UPDATE conversation_classifications SET attempts=4 WHERE token=${row.token}`;
+	await consumeBatch(db, "test", batch, provider, 4);
+	assert.equal((await job(thread)).status, "error");
+	assert.equal(acks, 1);
+	assert.equal(requests, 1);
+	await consumeBatch(db, "test", batch, provider, 4);
+	assert.equal(acks, 2);
+	assert.equal(requests, 1);
+});

@@ -1,3 +1,4 @@
+import { Input as KumoInput } from "@cloudflare/kumo";
 import { useState } from "react";
 import { Popover } from "@cloudflare/kumo";
 import {
@@ -71,7 +72,7 @@ export default function AgentModelPicker({
 				</Popover.Title>
 				<div className="agent-model-search">
 					<MagnifyingGlassIcon size={15} />
-					<input
+					<KumoInput
 						autoFocus
 						aria-label="Search chat models"
 						placeholder="Search models…"

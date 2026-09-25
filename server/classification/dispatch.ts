@@ -96,6 +96,7 @@ export async function consumeBatch(
 	key: string,
 	batch: QueueBatch,
 	request: typeof fetch = fetch,
+	maxProcessingAttempts?: number,
 ) {
 	if (
 		!Object.values(queueNames).includes(batch.queue as typeof queueNames.live)
@@ -110,9 +111,23 @@ export async function consumeBatch(
 		}
 		try {
 			let retry: number | undefined;
-			for (const token of messageTokens(parsed.data)) {
+			const tokens = messageTokens(parsed.data);
+			const exhaustedTokens = new Set<string>();
+			if (maxProcessingAttempts !== undefined) {
+				const exhausted =
+					await db`SELECT token FROM conversation_classifications WHERE token IN ${db(tokens)} AND status='pending' AND attempts>=${maxProcessingAttempts}`;
+				for (const job of exhausted) exhaustedTokens.add(job.token);
+			}
+			// Retire exhausted siblings before processJob atomically claims the
+			// remaining questions in the conversation.
+			tokens.sort(
+				(a, b) =>
+					Number(exhaustedTokens.has(b)) - Number(exhaustedTokens.has(a)),
+			);
+			for (const token of tokens) {
+				const exhausted = exhaustedTokens.has(token);
 				const result =
-					batch.queue === queueNames.dead
+					batch.queue === queueNames.dead || exhausted
 						? await failDelivery(db, token)
 						: await processJob(db, key, token, request);
 				if ("retry" in result)

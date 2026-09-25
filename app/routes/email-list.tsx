@@ -1,4 +1,6 @@
 import { ScoreChips } from "~/components/ScoreChips";
+import { Checkbox as KumoCheckbox } from "@cloudflare/kumo";
+import { AppSelect } from "~/components/AppSelect";
 import { statusLabels, type ThreadStatus } from "shared/thread-status";
 import { StatusBadge } from "~/components/ThreadStatus";
 // Modified for the RealAdvisor local Postgres prototype.
@@ -442,22 +444,23 @@ export default function EmailListRoute() {
 				{tagId && (
 					<>
 						{tagId.split(",").length > 1 && (
-							<select
-								aria-label="Tag matching"
+							<AppSelect
+								compact
+								label="Tag matching"
 								value={tagMatch}
-								onChange={(e) => {
+								options={[
+									{ value: "all", label: "Match all" },
+									{ value: "any", label: "Match any" },
+								]}
+								onChange={(value) => {
 									setSearchParams((current) => {
 										const next = new URLSearchParams(current);
-										next.set("tag_match", e.target.value);
+										next.set("tag_match", value);
 										return next;
 									});
 									setPage(1);
 								}}
-								className="h-[22px] rounded-md border border-kumo-line bg-kumo-base px-1.5 text-xs text-kumo-subtle"
-							>
-								<option value="all">Match all</option>
-								<option value="any">Match any</option>
-							</select>
+							/>
 						)}
 						<TagChips
 							removeLabel="Remove tag filter"
@@ -484,16 +487,15 @@ export default function EmailListRoute() {
 
 				{catalog.error && <span role="alert">{catalog.error.message}</span>}
 				{emails.length > 0 && (
-					<label className="flex items-center gap-2">
-						<input
-							type="checkbox"
+					<div className="flex items-center gap-2">
+						<KumoCheckbox
 							aria-label="Select all conversations on page"
 							checked={emails.every((email) =>
 								selectedThreads.includes(email.thread_id ?? email.id),
 							)}
-							onChange={(e) =>
+							onCheckedChange={(e) =>
 								setSelectedThreads(
-									e.target.checked
+									e
 										? [
 												...new Set(
 													emails.map((email) => email.thread_id ?? email.id),
@@ -502,9 +504,9 @@ export default function EmailListRoute() {
 										: [],
 								)
 							}
+							label={<>Select page</>}
 						/>
-						Select page
-					</label>
+					</div>
 				)}
 				{selectedThreads.length > 0 && mailboxId && (
 					<>
@@ -582,17 +584,16 @@ export default function EmailListRoute() {
 										isPanelOpen ? "md:px-4 md:py-2.5" : ""
 									} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
 								>
-									<input
-										type="checkbox"
+									<KumoCheckbox
 										aria-label={`Select conversation ${email.subject}`}
 										checked={selectedThreads.includes(
 											email.thread_id ?? email.id,
 										)}
 										onClick={(e) => e.stopPropagation()}
-										onChange={(e) => {
+										onCheckedChange={(e) => {
 											const thread = email.thread_id ?? email.id;
 											setSelectedThreads((current) =>
-												e.target.checked
+												e
 													? [...new Set([...current, thread])]
 													: current.filter((id) => id !== thread),
 											);

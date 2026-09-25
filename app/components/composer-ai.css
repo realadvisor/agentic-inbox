@@ -39,13 +39,6 @@
 	resize: vertical;
 	min-height: 62px;
 	max-height: 180px;
-	padding: 8px 12px;
-	border: 0;
-	outline: none;
-	background: transparent;
-	color: var(--text-color-kumo-default);
-	font: inherit;
-	font-size: 13px;
 	line-height: 21px;
 }
 .composer-ai-dialog textarea::placeholder {

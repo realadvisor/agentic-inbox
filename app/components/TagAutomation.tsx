@@ -1,3 +1,10 @@
+import { DateRangeField } from "./DateRangeField";
+import {
+	Checkbox as KumoCheckbox,
+	Textarea as KumoTextarea,
+	Input as KumoInput,
+} from "@cloudflare/kumo";
+import { AppSelect } from "./AppSelect";
 import { DecisionRules } from "./DecisionRules";
 import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import { useState, useEffect } from "react";
@@ -8,8 +15,7 @@ import { useTagMutation } from "~/queries/tags";
 import { useMailboxes } from "~/queries/mailboxes";
 import { useMailMode } from "./MailMode";
 import { classifierRequest, type Classifier } from "~/services/classifiers";
-const field =
-	"w-full rounded-lg border border-kumo-line bg-kumo-base p-2.5 text-sm";
+const field = "w-full";
 export function useTagClassifiers() {
 	const mode = useMailMode();
 	const available = !!(
@@ -67,19 +73,19 @@ export function AutomationFields({
 			disabled={disabled}
 			className="space-y-4 border-t border-kumo-line pt-4"
 		>
-			<label className="flex items-center gap-2 text-sm font-medium">
-				<input
-					type="checkbox"
+			<div className="flex items-center gap-2 text-sm font-medium">
+				<KumoCheckbox
+					disabled={disabled}
 					checked={value.enabled}
-					onChange={(e) => onChange({ ...value, enabled: e.target.checked })}
+					onCheckedChange={(e) => onChange({ ...value, enabled: e })}
+					label={<>Assign automatically with Jev</>}
 				/>
-				Assign automatically with Jev
-			</label>
+			</div>
 			{value.enabled && (
 				<>
 					<label className="block text-sm font-medium">
 						Instructions for Jev
-						<textarea
+						<KumoTextarea
 							required
 							maxLength={4000}
 							rows={10}
@@ -100,42 +106,41 @@ export function AutomationFields({
 							More options
 						</summary>
 						<div className="mt-3 space-y-3">
-							<label className="block text-sm">
+							<div className="block text-sm">
 								Mailboxes
-								<select
-									className={field + " mt-1"}
+								<AppSelect
+									disabled={disabled}
+									label="Mailboxes"
 									value={scope}
-									onChange={(e) => {
-										setScope(e.target.value);
-										if (e.target.value === "all")
+									options={[
+										{ value: "all", label: "All mailboxes" },
+										{ value: "selected", label: "Selected mailboxes" },
+									]}
+									onChange={(scope) => {
+										setScope(scope);
+										if (scope === "all")
 											onChange({ ...value, mailbox_ids: [] });
 									}}
-								>
-									<option value="all">All mailboxes</option>
-									<option value="selected">Selected mailboxes</option>
-								</select>
-							</label>
+								/>
+							</div>
 							{scope === "selected" && (
 								<div className="space-y-2">
 									{mailboxes.data?.map((m) => (
-										<label
-											key={m.id}
-											className="flex items-center gap-2 text-sm"
-										>
-											<input
-												type="checkbox"
+										<div key={m.id} className="flex items-center gap-2 text-sm">
+											<KumoCheckbox
+												disabled={disabled}
 												checked={value.mailbox_ids.includes(m.id)}
-												onChange={(e) =>
+												onCheckedChange={(e) =>
 													onChange({
 														...value,
-														mailbox_ids: e.target.checked
+														mailbox_ids: e
 															? [...value.mailbox_ids, m.id]
 															: value.mailbox_ids.filter((id) => id !== m.id),
 													})
 												}
+												label={<>{m.name}</>}
 											/>
-											{m.name}
-										</label>
+										</div>
 									))}
 									{!value.mailbox_ids.length && (
 										<p role="alert" className="text-xs text-kumo-danger">
@@ -144,19 +149,19 @@ export function AutomationFields({
 									)}
 								</div>
 							)}
-							<label className="flex items-start gap-2 text-sm">
-								<input
-									type="checkbox"
+							<div className="flex items-start gap-2 text-sm">
+								<KumoCheckbox
+									disabled={disabled}
 									checked={value.include_reviewed_examples}
-									onChange={(e) =>
+									onCheckedChange={(e) =>
 										onChange({
 											...value,
-											include_reviewed_examples: e.target.checked,
+											include_reviewed_examples: e,
 										})
 									}
+									label={<>Use recent human examples</>}
 								/>
-								Use recent human examples
-							</label>
+							</div>
 							<p className="text-xs text-kumo-subtle">
 								Includes up to six recently reviewed conversations from the same
 								mailbox in Jev requests.
@@ -180,6 +185,7 @@ export function ExistingConversations({
 	disabled?: boolean;
 }) {
 	const [running, setRunning] = useState(false);
+	const mode = useMailMode();
 	const cancel = useTagMutation(async () => {
 		for (const c of classifiers.filter((c) => c.run?.status === "running"))
 			await classifierRequest("/classifiers/" + c.id + "/cancel", "POST", {});
@@ -206,12 +212,19 @@ export function ExistingConversations({
 					disabled ||
 					active ||
 					!classifiers.length ||
-					classifiers.some((c) => !c.enabled)
+					(!!mode.data?.classifierPreview &&
+						classifiers.some((c) => !c.enabled))
 				}
 				onClick={() => setRunning(true)}
 			>
-				Apply to existing conversations
+				Reprocess conversations
 			</Button>
+			{active && (
+				<p className="text-xs text-kumo-subtle">
+					A run is already in progress. Wait for it to finish or cancel it
+					below.
+				</p>
+			)}
 			{active && (
 				<Button
 					type="button"
@@ -230,7 +243,7 @@ export function ExistingConversations({
 			)}
 			{classifiers.some((c) => !c.enabled) && !disabled && (
 				<p className="text-xs text-kumo-subtle">
-					Enable Jev assignment and save before starting a run.
+					Uses the saved configuration. Automatic assignment stays off.
 				</p>
 			)}
 			{cancel.error && (
@@ -250,40 +263,122 @@ export function ExistingConversations({
 		</div>
 	);
 }
-function RunDialog({
-	classifiers,
+export function RunDialog({
+	classifiers: availableClassifiers,
+	chooseClassifiers = false,
+	initialMailbox,
+	groupNames = {},
 	close,
 	done,
 }: {
 	classifiers: Classifier[];
+	chooseClassifiers?: boolean;
+	initialMailbox?: string;
+	groupNames?: Record<string, string>;
 	close: () => void;
-	done: () => void;
+	done: (mailboxes: string[]) => void;
 }) {
+	const [chosen, setChosen] = useState(() =>
+		availableClassifiers
+			.filter(
+				(c) =>
+					!chooseClassifiers ||
+					(c.enabled &&
+						c.run?.status !== "running" &&
+						(!initialMailbox ||
+							!c.mailbox_ids.length ||
+							c.mailbox_ids.includes(initialMailbox))),
+			)
+			.map((c) => c.id),
+	);
+	const classifiers = availableClassifiers.filter((c) => chosen.includes(c.id));
+	const choices = Array.from(
+		new Set(availableClassifiers.map((c) => c.group_id ?? c.id)),
+	).map((id) => {
+		const members = availableClassifiers.filter(
+			(c) => (c.group_id ?? c.id) === id,
+		);
+		return {
+			id,
+			members,
+			name: groupNames[id] ?? members.map((c) => c.name).join(" / "),
+			running: members.some((c) => c.run?.status === "running"),
+		};
+	});
 	const mailboxes = useMailboxes();
 	const mode = useMailMode();
-	const [selected, setSelected] = useState<string[] | null>(null);
-	const [selection, setSelection] = useState("unprocessed");
+	const [selected, setSelected] = useState<string[] | null>(
+		initialMailbox ? [initialMailbox] : null,
+	);
+	const [selection, setSelection] = useState(
+		chooseClassifiers ? "all" : "unprocessed",
+	);
 	const [reset, setReset] = useState(false);
+	const [from, setFrom] = useState("");
+	const [to, setTo] = useState("");
+	const [limit, setLimit] = useState("5000");
+
 	const allowed = (mailboxes.data ?? []).filter((m) =>
 		classifiers.every(
 			(c) => !c.mailbox_ids.length || c.mailbox_ids.includes(m.id),
 		),
 	);
-	const targets = selected ?? allowed.map((m) => m.id);
+	const targets = (selected ?? allowed.map((m) => m.id)).filter((id) =>
+		allowed.some((m) => m.id === id),
+	);
 	const [started, setStarted] = useState<string[]>([]);
+	const validRange =
+		(!from || !to || from <= to) &&
+		Number.isInteger(Number(limit)) &&
+		Number(limit) >= 1 &&
+		Number(limit) <= 5000;
+	const start = from ? new Date(from + "T00:00:00") : null;
+	const end = to ? new Date(to + "T00:00:00") : null;
+	if (end) end.setDate(end.getDate() + 1);
+	const filters = {
+		mailbox_ids: targets,
+		selection,
+		reset,
+		enable: false,
+		received_from: start?.toISOString(),
+		received_before: end?.toISOString(),
+		limit: Number(limit),
+	};
+	const preview = useQuery({
+		queryKey: ["classifier-run-preview", classifiers.map((c) => c.id), filters],
+		queryFn: () =>
+			classifierRequest<{ count: number; counts: Record<string, number> }>(
+				"/runs/preview",
+				"POST",
+				{
+					...filters,
+					classifier_ids: classifiers.map((c) => c.id),
+				},
+			),
+		enabled:
+			!mode.data?.classifierPreview &&
+			targets.length > 0 &&
+			classifiers.length > 0 &&
+			validRange &&
+			started.length === 0,
+	});
 	const run = useMutation({
 		mutationFn: async () => {
 			for (const classifier of classifiers) {
-				if (started.includes(classifier.id)) continue;
+				if (
+					started.includes(classifier.id) ||
+					preview.data?.counts[classifier.id] === 0
+				)
+					continue;
 				await classifierRequest(
 					"/classifiers/" + classifier.id + "/runs",
 					"POST",
-					{ mailbox_ids: targets, selection, reset, enable: false },
+					filters,
 				);
 				setStarted((ids) => [...ids, classifier.id]);
 			}
 		},
-		onSuccess: done,
+		onSuccess: () => done(targets),
 	});
 	return (
 		<Dialog.Root
@@ -298,12 +393,16 @@ function RunDialog({
 				size="sm"
 			>
 				<Dialog.Title className="text-base font-semibold">
-					Run on existing conversations
+					{chooseClassifiers
+						? "Reprocess emails"
+						: "Run on existing conversations"}
 				</Dialog.Title>
 				<p className="text-sm text-kumo-subtle mt-2 mb-5">
-					{classifiers.length === 1
-						? classifiers[0].name
-						: "All tags in this group"}{" "}
+					{chooseClassifiers
+						? "Choose tags and groups to reprocess"
+						: classifiers.length === 1
+							? classifiers[0].name
+							: "All tags in this group"}{" "}
 					· Active conversations only
 				</p>
 				<form
@@ -311,64 +410,175 @@ function RunDialog({
 					onSubmit={(e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						if (!run.isPending) run.mutate();
+						if (
+							!run.isPending &&
+							validRange &&
+							(mode.data?.classifierPreview ||
+								started.length > 0 ||
+								(!preview.isFetching && !!preview.data?.count))
+						)
+							run.mutate();
 					}}
 				>
 					<fieldset
 						disabled={run.isPending || started.length > 0}
 						className="space-y-5"
 					>
+						{chooseClassifiers && (
+							<fieldset className="space-y-2">
+								<legend className="text-sm mb-2">Tags and groups</legend>
+								{choices.map((choice) => (
+									<div
+										key={choice.id}
+										className="flex items-center gap-2 text-sm"
+									>
+										<KumoCheckbox
+											disabled={
+												choice.running || run.isPending || started.length > 0
+											}
+											checked={choice.members.every((c) =>
+												chosen.includes(c.id),
+											)}
+											onCheckedChange={(e) =>
+												setChosen((ids) =>
+													e
+														? [
+																...new Set([
+																	...ids,
+																	...choice.members.map((c) => c.id),
+																]),
+															]
+														: ids.filter(
+																(id) =>
+																	!choice.members.some((c) => c.id === id),
+															),
+												)
+											}
+											label={
+												<>
+													{choice.name}
+													{choice.running
+														? " — already running"
+														: !choice.members.some((c) => c.enabled)
+															? " — manual"
+															: ""}
+												</>
+											}
+										/>
+									</div>
+								))}
+							</fieldset>
+						)}
 						<div>
 							<div className="text-sm mb-2">Mailboxes</div>
 							<div className="flex flex-wrap gap-4">
 								{allowed.map((m) => (
-									<label key={m.id} className="flex gap-2 items-center text-sm">
-										<input
-											type="checkbox"
+									<div key={m.id} className="flex gap-2 items-center text-sm">
+										<KumoCheckbox
+											disabled={run.isPending || started.length > 0}
 											checked={targets.includes(m.id)}
-											onChange={(e) =>
+											onCheckedChange={(e) =>
 												setSelected(
-													e.target.checked
+													e
 														? [...targets, m.id]
 														: targets.filter((x) => x !== m.id),
 												)
 											}
+											label={<>{m.name}</>}
 										/>
-										{m.name}
-									</label>
+									</div>
 								))}
 							</div>
 						</div>
-						<label className="block text-sm">
+						<div className="block text-sm">
 							Conversations
-							<select
-								className={field + " mt-1.5"}
+							<AppSelect
+								disabled={run.isPending || started.length > 0}
+								label="Conversations"
 								value={selection}
-								onChange={(e) => {
-									setSelection(e.target.value);
+								options={[
+									{ value: "unprocessed", label: "Not yet processed" },
+									{ value: "all", label: "All active conversations" },
+								]}
+								onChange={(value) => {
+									setSelection(value);
 									setReset(false);
 								}}
-							>
-								<option value="unprocessed">Not yet processed</option>
-								<option value="all">All active conversations</option>
-							</select>
-						</label>
-						<label className="flex items-start gap-2 text-sm">
-							<input
-								className="mt-1"
-								type="checkbox"
-								checked={reset}
-								disabled={selection !== "all"}
-								onChange={(e) => setReset(e.target.checked)}
 							/>
-							<span>
-								Reset manual classifier corrections
-								<small className="block text-kumo-subtle">
-									Ordinary manual tags stay. Choose all active to reset
-									corrections.
-								</small>
-							</span>
-						</label>
+						</div>
+						{!mode.data?.classifierPreview && (
+							<>
+								<div>
+									<span className="block text-sm mb-1.5">Received dates</span>
+									<DateRangeField
+										disabled={run.isPending || started.length > 0}
+										from={from}
+										to={to}
+										onChange={(from, to) => {
+											setFrom(from);
+											setTo(to);
+										}}
+									/>
+									<p className="text-xs text-kumo-subtle mt-2">
+										Latest received email, in your local time. Leave dates empty
+										for all time.
+									</p>
+								</div>
+								<label className="block text-sm">
+									Maximum conversations per classifier
+									<KumoInput
+										type="number"
+										min={1}
+										max={5000}
+										step={1}
+										className={field + " mt-1.5"}
+										value={limit}
+										onChange={(e) => setLimit(e.target.value)}
+									/>
+									<small className="block text-kumo-subtle mt-2">
+										Newest matching conversations first. Up to 5,000.
+									</small>
+								</label>
+								<div
+									role="status"
+									aria-live="polite"
+									className="rounded-lg bg-kumo-control p-3 text-sm"
+								>
+									{!validRange
+										? "Choose a valid date range and a count between 1 and 5,000."
+										: !classifiers.length
+											? "Select at least one tag or group."
+											: !targets.length
+												? "Select a mailbox to see the count."
+												: preview.isFetching
+													? "Counting conversations…"
+													: preview.error
+														? preview.error.message
+														: `${preview.data?.count ?? 0} conversation${preview.data?.count === 1 ? "" : "s"} selected. Manual tags stay; reviewed answers stay unless reset below.`}
+								</div>
+							</>
+						)}
+						<div className="flex items-start gap-2 text-sm">
+							<KumoCheckbox
+								className="mt-1"
+								checked={reset}
+								disabled={
+									selection !== "all" || run.isPending || started.length > 0
+								}
+								onCheckedChange={(e) => setReset(e)}
+								label={
+									<>
+										<span>
+											Reset manual classifier corrections
+											<small className="block text-kumo-subtle">
+												Ordinary manual tags stay. Choose all active to reset
+												corrections.
+											</small>
+										</span>
+									</>
+								}
+							/>
+						</div>
 						<p className="text-xs text-kumo-subtle">
 							{mode.data?.classifierPreview
 								? "Preview runs use stored fixture answers."
@@ -390,10 +600,20 @@ function RunDialog({
 						<Button
 							type="submit"
 							variant="primary"
-							disabled={!targets.length || run.isPending}
+							disabled={
+								!classifiers.length ||
+								!targets.length ||
+								!validRange ||
+								run.isPending ||
+								(!mode.data?.classifierPreview &&
+									started.length === 0 &&
+									(preview.isFetching ||
+										!!preview.error ||
+										!preview.data?.count))
+							}
 							loading={run.isPending}
 						>
-							Start run
+							{chooseClassifiers ? "Start reprocessing" : "Start run"}
 						</Button>
 					</div>
 				</form>

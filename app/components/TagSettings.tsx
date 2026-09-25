@@ -1,3 +1,4 @@
+import { Input as KumoInput } from "@cloudflare/kumo";
 import { JevRequestPreview } from "./JevRequestPreview";
 import {
 	AutomationFields,
@@ -207,7 +208,7 @@ export function TagSettings() {
 										))}
 									</div>
 									<label className="flex items-center gap-2 text-xs text-kumo-subtle">
-										<input
+										<KumoInput
 											aria-label="Tag color"
 											type="color"
 											value={color}

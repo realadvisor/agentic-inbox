@@ -100,7 +100,8 @@ test("curate frozen examples, preview teaching context and run a held-out test s
 			.getByRole("button", { name: /Test fixture.*Low.*Teach Jev/ })
 			.click();
 
-		await section.getByLabel("Use this example").selectOption("test");
+		await section.getByRole("combobox", { name: "Use this example" }).click();
+		await page.getByRole("option", { name: "Test only", exact: true }).click();
 		await section
 			.getByRole("button", { name: "Save example", exact: true })
 			.click();

@@ -1,3 +1,10 @@
+import {
+	cloudTaskQueues,
+	cloudTasksConfigured,
+	taskPath,
+	verifyTaskToken,
+	type CloudTasksEnv,
+} from "./classification/cloud-tasks";
 import { processJob } from "./classification/queue";
 import { pruneProviderRuns } from "./classification/provider-runs";
 import { type AiBinding } from "./agent/service";
@@ -9,6 +16,8 @@ import {
 	consumeBatch,
 	type QueueBinding,
 	type QueueBatch,
+	workMessage,
+	queueNames,
 } from "./classification/dispatch";
 import { documentation } from "./docs";
 import { Hono, type ExecutionContext } from "hono";
@@ -19,7 +28,8 @@ import { verifyAccess } from "./access";
 import { ingest, type InboundMessage, type ObjectStore } from "./inbound";
 import type { MailSender } from "./outbound";
 
-export interface WorkerEnv {
+export interface WorkerEnv extends CloudTasksEnv {
+	CLASSIFIER_TRANSPORT?: "cloud-tasks" | "cloudflare";
 	AI?: AiBinding;
 	AI_GATEWAY_API_KEY?: string;
 	AGENT_JOBS?: QueueBinding;
@@ -49,6 +59,59 @@ const worker = new Hono<{
 	Bindings: WorkerEnv;
 	Variables: { actor: string };
 }>();
+// Machine endpoint authenticates Google OIDC independently of interactive Access.
+worker.post(taskPath, async (c) => {
+	if (new URL(c.req.url).origin !== c.env.PUBLIC_ORIGIN)
+		return c.text("Unknown origin", 403);
+	if (c.env.CLASSIFIER_TRANSPORT !== "cloud-tasks")
+		return c.text("Cloud Tasks is disabled", 503);
+	try {
+		await verifyTaskToken(
+			c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
+			c.env,
+		);
+	} catch {
+		return c.text("Invalid task identity", 401);
+	}
+	const body = workMessage.safeParse(await c.req.json().catch(() => null));
+	if (!body.success) return c.text("Invalid task envelope", 400);
+	if (!queuesEnabled(c.env)) return c.text("Classification is paused", 503);
+	const db = postgres(c.env.HYPERDRIVE.connectionString, {
+		max: 2,
+		fetch_types: false,
+	});
+	let retry: number | undefined;
+	try {
+		// Only actual processing attempts count toward exhaustion, not delivery during
+		// a pause, provider cooldown, active lease, or database outage.
+		await consumeBatch(
+			db,
+			c.env.TYPESAFE_API_KEY!,
+			{
+				queue: queueNames.live,
+				messages: [
+					{
+						body: body.data,
+						ack() {},
+						retry(options) {
+							retry = options.delaySeconds;
+						},
+					},
+				],
+			},
+			fetch,
+			4,
+		);
+	} finally {
+		await db.end({ timeout: 5 });
+	}
+	c.executionCtx.waitUntil(dispatchClassifiers(c.env, 1));
+	if (retry !== undefined) {
+		c.header("Retry-After", String(Math.max(1, retry)));
+		return c.text("Retry classification", 503);
+	}
+	return c.body(null, 204);
+});
 worker.use("*", async (c, next) => {
 	if (!c.env.PUBLIC_ORIGIN) return c.text("Access is not configured", 503);
 	if (new URL(c.req.url).origin !== c.env.PUBLIC_ORIGIN)
@@ -151,8 +214,9 @@ function queuesEnabled(env: WorkerEnv) {
 	return (
 		env.CLASSIFIERS_ENABLED === "true" &&
 		!!env.TYPESAFE_API_KEY &&
-		!!env.CLASSIFICATIONS &&
-		!!env.CLASSIFIER_BACKFILLS
+		(env.CLASSIFIER_TRANSPORT === "cloud-tasks"
+			? cloudTasksConfigured(env)
+			: !!env.CLASSIFICATIONS && !!env.CLASSIFIER_BACKFILLS)
 	);
 }
 async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
@@ -164,10 +228,15 @@ async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
 	try {
 		for (let i = 0; i < rounds; i++) {
 			if (
-				(await publishOutbox(db, {
-					live: env.CLASSIFICATIONS!,
-					backfill: env.CLASSIFIER_BACKFILLS!,
-				})) < 100
+				(await publishOutbox(
+					db,
+					env.CLASSIFIER_TRANSPORT === "cloud-tasks"
+						? cloudTaskQueues(env)
+						: {
+								live: env.CLASSIFICATIONS!,
+								backfill: env.CLASSIFIER_BACKFILLS!,
+							},
+				)) < 100
 			)
 				break;
 		}

@@ -8,7 +8,7 @@ import {
 	XIcon,
 	MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTags, useTagMutation } from "~/queries/tags";
 import api from "~/services/api";
 import type { ConversationTag, Tag } from "~/types";
@@ -90,6 +90,7 @@ export function TagPicker({
 	allowAll = false,
 	multiple = false,
 	compact = false,
+	onRemove,
 	source,
 }: {
 	tags: Tag[];
@@ -102,6 +103,7 @@ export function TagPicker({
 	allowAll?: boolean;
 	multiple?: boolean;
 	compact?: boolean;
+	onRemove?: () => void;
 	source?: ConversationTag["source"];
 }) {
 	const [open, setOpen] = useState(false);
@@ -245,6 +247,23 @@ export function TagPicker({
 						</div>
 					)}
 				</div>
+				{onRemove && selected && (
+					<div className="border-t border-kumo-line p-1.5">
+						<button
+							type="button"
+							disabled={disabled}
+							aria-label={`Remove ${selected.group_name ?? "group"} tag`}
+							className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-kumo-subtle hover:bg-kumo-tint focus-visible:bg-kumo-tint disabled:opacity-50"
+							onClick={() => {
+								onRemove();
+								setOpen(false);
+							}}
+						>
+							<XIcon size={15} />
+							Remove tag
+						</button>
+					</div>
+				)}
 				{multiple && (
 					<div className="border-t border-kumo-line p-2">
 						<Button
@@ -263,6 +282,7 @@ export function TagPicker({
 }
 
 export function TagActions({
+	children,
 	mailboxId,
 	threadIds,
 	tags,
@@ -272,6 +292,7 @@ export function TagActions({
 	threadIds: string[];
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	bulk?: boolean;
+	children?: ReactNode;
 }) {
 	const catalog = useTags();
 	const [selected, setSelected] = useState("");
@@ -292,6 +313,7 @@ export function TagActions({
 			className="flex flex-wrap items-center gap-1.5 text-sm"
 			aria-label={bulk ? "Bulk tags" : "Conversation tags"}
 		>
+			{children}
 			{!bulk && (
 				<>
 					<TagChips
@@ -322,6 +344,7 @@ export function TagActions({
 								placeholder={tag.name}
 								disabled={mutation.isPending}
 								onChange={(id) => change(id, "add")}
+								onRemove={() => change(tag.id, "remove")}
 							/>
 						))}
 				</>

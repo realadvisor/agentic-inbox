@@ -79,12 +79,13 @@ export function ClassifierReview({
 	if (!pending.length) return null;
 	return (
 		<span
+			className="inline-flex items-center align-middle"
 			onClick={(e) => e.stopPropagation()}
 			onKeyDown={(e) => e.stopPropagation()}
 		>
 			<button
 				type="button"
-				className={`${compact ? "" : "mt-1.5 "}text-xs text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5`}
+				className={`${compact ? "" : "mt-1.5 "}inline-flex h-[22px] items-center text-xs font-medium text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5`}
 				onClick={() => setOpen(true)}
 			>
 				Needs review{count > 1 ? ` (${count})` : ""}

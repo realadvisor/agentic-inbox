@@ -186,7 +186,55 @@ The preview APIs mount only in the local Node entrypoint with `CLASSIFIER_PREVIE
 
 ## Live Jev classifiers
 
-Settings → Tags configures Jev instructions within each tag or group editor. Migration 006 seeds Needs reply, Privacy: Deletion and Privacy: Data access, all **inactive**. Only `MAILBOX_ADMINS` can create/edit/enable classifiers or run/cancel batches. All authenticated inbox users can review uncertain results. Activating a classifier applies to new mail and confirmed sent replies; it never starts a historical scan. **Apply to existing conversations** explicitly queues active conversations (up to 5,000 per batch), with scope, unprocessed/all and optional reset of classifier corrections. Spam/trash/archive-only conversations are excluded.
+Settings → Tags configures Jev instructions within each tag or group editor. Migration 006 seeds Needs reply, Privacy: Deletion and Privacy: Data access, all **inactive**. Only `MAILBOX_ADMINS` can create/edit/enable classifiers or run/cancel batches. All authenticated inbox users can review uncertain results. Activating a classifier applies to new mail and confirmed sent replies; it never starts a historical scan. **Reprocess conversations** works independently of automatic assignment and explicitly queues active conversations (up to 5,000 per batch), with mailbox scope, unprocessed/all, optional dates based on the latest received email, and a maximum of 1–5,000 conversations per classifier (newest first). Settings → Runs also offers **Reprocess emails**, preselecting the current mailbox and active classifiers; tag groups are selected as a unit. The tag/group drawer remains a shortcut to the same dialog. A read-only preview counts unique selected conversations before starting; date boundaries follow the browser’s local timezone. Classifier corrections can optionally be reset. Spam/trash/archive-only conversations are excluded.
+
+### Google Cloud Tasks
+
+The classifier supports Cloud Tasks delivery to the existing serverless Worker. Run
+`bash scripts/setup-cloud-tasks.sh` with an authorized Google Cloud account to
+provision dedicated `inbox-classifications` (10 concurrent) and
+`inbox-classifier-backfills` (5 concurrent) queues in `realadvisor-prod/europe-west1`.
+The script grants the dedicated service account enqueue permission only on these
+queues. It does not change the other RealAdvisor queues or deploy the application.
+
+Before enabling, configure these Worker variables:
+
+- `CLASSIFIER_TRANSPORT=cloud-tasks`
+- `CLOUD_TASKS_PROJECT=realadvisor-prod`
+- `CLOUD_TASKS_LOCATION=europe-west1`
+- `CLOUD_TASKS_SERVICE_ACCOUNT=inbox-classifications@realadvisor-prod.iam.gserviceaccount.com`
+
+Store that dedicated service account's PKCS8 private key as the Worker secret
+`CLOUD_TASKS_PRIVATE_KEY` using `wrangler secret put`; never commit a key or use
+an existing broadly privileged account. Google OAuth tokens are short-lived and
+cached in memory. Delivery uses Google-signed OIDC tokens with the exact endpoint
+audience and expected service-account email; queue headers alone are not trusted.
+
+Cloudflare Access must bypass **only** `/internal/classification-task` on the inbox
+hostname, using a path-specific Access application. The Worker itself verifies
+Google OIDC on that route. Keep the rest of the hostname protected by Access.
+Verify unauthenticated POSTs return 401 and a real task succeeds before switching
+production dispatch. Do not configure a hostname-wide bypass.
+
+Deploy with the variables and secret together after provisioning and configuring
+Access. The default remains Cloudflare when the transport variable is absent, so
+an ordinary deployment cannot accidentally switch to unprovisioned queues. Existing
+Cloudflare consumers stay attached during migration to drain accepted deliveries;
+new work uses only the selected transport. Existing token/lease checks protect
+against duplicate processing. Unpublished backlog is picked up on the next
+successful dispatch or recovery cron; do not reset classifications or replay email
+webhooks. Already-published pending work is recovered after the existing 25-hour
+outbox window. Switching the transport back to `cloudflare` rolls back publishing.
+
+Cloud Tasks carries only job tokens. Provider backoff and cooldown remain enforced
+in Postgres; the handler returns 503 for a retry and 204 after completion. Four
+actual processing attempts exhaust a job into a visible error via the existing
+failure path; waiting for leases/cooldown or a paused feature does not consume this
+budget. Broker retries are unlimited so a database outage cannot silently discard
+work. Failed creation leaves the outbox uncommitted and recoverable. Automatic AI
+drafting continues to use its separate Cloudflare queue.
+
+### Previous Cloudflare transport
 
 Cloudflare Queues delivers classifier work. New mail and confirmed sent replies use `inbox-classifications`; explicit historical runs use `inbox-classifier-backfills`. The live queue permits 10 concurrent consumers and backfills permit five, with batch size one. Published classifier tokens for the same conversation generation and delay are grouped into `{version: 2, tokens: ["uuid", ...]}` messages, never email bodies or addresses. Version 1 single-token messages remain supported while existing deliveries drain. Ready sibling leases are claimed atomically to keep a conversation’s questions together under concurrent delivery. Neon remains the source of truth for configuration, results, corrections and run progress.
 

@@ -3,6 +3,11 @@ import {
 	scoreBoundaries,
 	scoreRange,
 } from "../../shared/decision-rules";
+import {
+	Input as KumoInput,
+	Textarea as KumoTextarea,
+	Checkbox as KumoCheckbox,
+} from "@cloudflare/kumo";
 import { DecisionRules } from "./DecisionRules";
 import { JevRequestPreview } from "./JevRequestPreview";
 import { groupQuestion } from "../../shared/tag-groups";
@@ -459,7 +464,7 @@ function Editor({
 											</div>
 										)}
 										<label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-kumo-subtle">
-											<input
+											<KumoInput
 												type="color"
 												aria-label={`Tag ${index + 1} color`}
 												value={tag.color}
@@ -477,7 +482,7 @@ function Editor({
 											/>
 											<span className="sr-only">Color</span>
 										</label>
-										<input
+										<KumoInput
 											aria-label={`Tag ${index + 1} name`}
 											required
 											maxLength={80}
@@ -495,7 +500,7 @@ function Editor({
 											style={{
 												width: `${Math.min(22, Math.max(5, tag.name.length + 1))}ch`,
 											}}
-											className="min-w-0 flex-1 bg-transparent text-sm"
+											className="min-w-0 flex-1"
 										/>
 										<button
 											type="button"
@@ -513,7 +518,7 @@ function Editor({
 										>
 											<XIcon size={16} />
 										</button>
-										<textarea
+										<KumoTextarea
 											required={draft.selection === "score"}
 											aria-label={`Tag ${index + 1} description`}
 											placeholder="When should this tag apply? Include important exceptions."
@@ -530,13 +535,13 @@ function Editor({
 													),
 												})
 											}
-											className="w-full resize-y rounded border border-kumo-line bg-kumo-base p-2 text-xs leading-relaxed"
+											className="w-full resize-y leading-relaxed"
 										/>
 									</div>
 								))}
 							</div>
 							<div className="mt-3 flex gap-2">
-								<input
+								<KumoInput
 									aria-label="New tag name"
 									placeholder="Add a tag…"
 									maxLength={80}
@@ -549,7 +554,7 @@ function Editor({
 											if (draft.tags.length < 10) add();
 										}
 									}}
-									className="min-w-0 flex-1 rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
+									className="min-w-0 flex-1"
 								/>
 								<Button
 									type="button"
@@ -562,20 +567,18 @@ function Editor({
 							</div>
 						</div>
 						<div className="space-y-4 border-t border-kumo-line pt-4">
-							<label className="flex items-center gap-2 text-sm font-medium">
-								<input
-									type="checkbox"
+							<div className="flex items-center gap-2 text-sm font-medium">
+								<KumoCheckbox
+									disabled={save.isPending || remove.isPending}
 									checked={draft.enabled}
-									onChange={(e) =>
-										setDraft({ ...draft, enabled: e.target.checked })
-									}
+									onCheckedChange={(e) => setDraft({ ...draft, enabled: e })}
+									label={<>Assign automatically with Jev</>}
 								/>
-								Assign automatically with Jev
-							</label>
+							</div>
 							{
 								<label className="block text-sm font-medium">
 									Instructions for Jev
-									<textarea
+									<KumoTextarea
 										required={draft.enabled}
 										maxLength={2000}
 										rows={10}
@@ -583,7 +586,7 @@ function Editor({
 										onChange={(e) =>
 											setDraft({ ...draft, instructions: e.target.value })
 										}
-										className="mt-2 block min-h-60 w-full resize-y rounded-lg border border-kumo-line bg-kumo-base p-4 text-sm font-normal leading-relaxed"
+										className="mt-2 block min-h-60 w-full resize-y font-normal leading-relaxed"
 									/>
 									<span className="mt-2 block text-xs font-normal text-kumo-subtle">
 										Define each tag and when it applies. The request preview
@@ -724,7 +727,17 @@ function Editor({
 									draft.selection !== current.selection ||
 									draft.instructions !== current.instructions ||
 									draft.enabled !== current.enabled ||
-									JSON.stringify(draft.tags) !== JSON.stringify(current.tags)
+									JSON.stringify(draft.decision_rules) !==
+										JSON.stringify(current.decision_rules) ||
+									JSON.stringify(draft.tags) !==
+										JSON.stringify(
+											current.tags.map(({ id, name, color, description }) => ({
+												id,
+												name,
+												color,
+												description: description ?? "",
+											})),
+										)
 								}
 							/>
 						</div>

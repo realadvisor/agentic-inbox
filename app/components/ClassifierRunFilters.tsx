@@ -1,13 +1,12 @@
-import { Button, Popover, Select } from "@cloudflare/kumo";
+import { DateRangeField } from "./DateRangeField";
+import { Button, Select } from "@cloudflare/kumo";
 import {
-	CalendarBlankIcon,
-	CaretDownIcon,
 	EnvelopeSimpleIcon,
 	FunnelSimpleIcon,
 	TagIcon,
 	XIcon,
 } from "@phosphor-icons/react";
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 interface Choice {
 	value: string;
@@ -24,8 +23,6 @@ const statusChoices = [
 	{ value: "running", label: "Running" },
 	{ value: "interrupted", label: "Interrupted" },
 ];
-const dateField =
-	"w-full min-w-0 rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-sm text-kumo-default focus-visible:outline-2 focus-visible:outline-kumo-brand";
 function FilterSelect({
 	label,
 	value,
@@ -87,42 +84,9 @@ export function ClassifierRunFilters({
 	params: URLSearchParams;
 	onChange: (changes: Record<string, string>) => void;
 }) {
-	const [dateOpen, setDateOpen] = useState(false);
-	const [from, setFrom] = useState(""),
-		[to, setTo] = useState("");
-	const appliedFrom = params.get("from") ?? "",
-		appliedTo = params.get("to") ?? "";
-	const dateLabel = (value: string) =>
-		new Date(value + "T00:00:00Z").toLocaleDateString(undefined, {
-			month: "short",
-			day: "numeric",
-			year: "numeric",
-			timeZone: "UTC",
-		});
-	const rangeLabel =
-		appliedFrom && appliedTo
-			? `${dateLabel(appliedFrom)} – ${dateLabel(appliedTo)}`
-			: appliedFrom
-				? `Since ${dateLabel(appliedFrom)}`
-				: appliedTo
-					? `Through ${dateLabel(appliedTo)}`
-					: "All time";
 	const narrowed = ["status", "classifier", "from", "to", "thread"].some(
 		(key) => params.has(key),
 	);
-	function applyDates(start: string, end: string) {
-		onChange({ from: start, to: end });
-		setDateOpen(false);
-	}
-	function preset(days: number) {
-		const end = new Date();
-		const start = new Date(end);
-		start.setUTCDate(start.getUTCDate() - days + 1);
-		applyDates(
-			start.toISOString().slice(0, 10),
-			end.toISOString().slice(0, 10),
-		);
-	}
 	return (
 		<div
 			className="mt-5 border-t border-kumo-line pt-4"
@@ -158,106 +122,12 @@ export function ClassifierRunFilters({
 					<span className="block text-xs font-medium text-kumo-subtle mb-2">
 						Date range
 					</span>
-					<Popover
-						open={dateOpen}
-						onOpenChange={(open) => {
-							setDateOpen(open);
-							if (open) {
-								setFrom(appliedFrom);
-								setTo(appliedTo);
-							}
-						}}
-					>
-						<Popover.Trigger
-							render={
-								<Button
-									variant="secondary"
-									className="w-full justify-between font-normal"
-									aria-label="Date range"
-								/>
-							}
-						>
-							<span className="flex min-w-0 items-center gap-2">
-								<CalendarBlankIcon
-									size={16}
-									className="shrink-0 text-kumo-subtle"
-								/>
-								<span className="truncate">{rangeLabel}</span>
-							</span>
-							<CaretDownIcon size={14} className="shrink-0 text-kumo-subtle" />
-						</Popover.Trigger>
-						<Popover.Content
-							align="end"
-							className="w-80 max-w-[calc(100vw-24px)] rounded-xl p-4 shadow-lg"
-						>
-							<Popover.Title className="text-sm font-medium">
-								Date range
-							</Popover.Title>
-							<div className="flex flex-wrap gap-2 my-4">
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={() => applyDates("", "")}
-								>
-									All time
-								</Button>
-								<Button variant="secondary" size="sm" onClick={() => preset(1)}>
-									Today
-								</Button>
-								<Button variant="secondary" size="sm" onClick={() => preset(7)}>
-									Last 7 days
-								</Button>
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={() => preset(30)}
-								>
-									Last 30 days
-								</Button>
-							</div>
-							<div className="grid grid-cols-2 gap-3 border-t border-kumo-line pt-4">
-								<label className="text-xs text-kumo-subtle">
-									From
-									<input
-										aria-label="From date"
-										className={dateField + " mt-2"}
-										type="date"
-										value={from}
-										max={to || undefined}
-										onChange={(e) => setFrom(e.target.value)}
-									/>
-								</label>
-								<label className="text-xs text-kumo-subtle">
-									Through
-									<input
-										aria-label="Through date"
-										className={dateField + " mt-2"}
-										type="date"
-										value={to}
-										min={from || undefined}
-										onChange={(e) => setTo(e.target.value)}
-									/>
-								</label>
-							</div>
-							<p className="text-xs text-kumo-subtle mt-3">
-								Dates use UTC. Both days are included.
-							</p>
-							{from && to && from > to && (
-								<p role="alert" className="text-xs text-kumo-danger mt-2">
-									End date must be on or after the start date.
-								</p>
-							)}
-							<div className="flex justify-end mt-4">
-								<Button
-									variant="primary"
-									disabled={!!(from && to && from > to)}
-									onClick={() => applyDates(from, to)}
-								>
-									Apply dates
-								</Button>
-							</div>
-						</Popover.Content>
-					</Popover>
+					<DateRangeField
+						from={params.get("from") ?? ""}
+						to={params.get("to") ?? ""}
+						utc
+						onChange={(from, to) => onChange({ from, to })}
+					/>
 				</div>
 			</div>
 			{narrowed && (

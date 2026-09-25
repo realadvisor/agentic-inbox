@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { RunDialog } from "./TagAutomation";
+import api from "~/services/api";
 import { classificationError } from "../../shared/jev-budget";
 import { RunDetail } from "./ClassifierRunDetail";
 import { ClassifierRunFilters } from "~/components/ClassifierRunFilters";
@@ -25,6 +28,8 @@ function when(value: string) {
 
 export default function ClassifierRuns() {
 	const { mailboxId } = useParams();
+	const [reprocess, setReprocess] = useState(false);
+	const [started, setStarted] = useState(false);
 	const [params, setParams] = useSearchParams();
 	const mode = useMailMode();
 	const allowed = !!(
@@ -34,6 +39,11 @@ export default function ClassifierRuns() {
 	const classifiers = useQuery({
 		queryKey: ["classifiers"],
 		queryFn: () => classifierRequest<Classifier[]>("/classifiers"),
+		enabled: allowed,
+	});
+	const groups = useQuery({
+		queryKey: ["tag-groups"],
+		queryFn: api.listTagGroups,
 		enabled: allowed,
 	});
 	const selected = params.get("run");
@@ -88,17 +98,35 @@ export default function ClassifierRuns() {
 	return (
 		<div className="rounded-xl border border-kumo-line bg-kumo-base text-kumo-default overflow-hidden">
 			<header className="p-5 border-b border-kumo-line">
-				<div className="flex justify-between gap-3">
+				<div className="flex flex-wrap justify-between gap-3">
 					<div>
 						<h2 className="text-sm font-medium">Classifier runs</h2>
 						<p className="text-sm text-kumo-subtle mt-1">
 							Classification attempts, including blocked jobs and Jev requests.
 						</p>
 					</div>
-					<Button variant="secondary" onClick={() => void runs.refetch()}>
-						Refresh
-					</Button>
+					<div className="flex flex-wrap gap-2">
+						<Button
+							variant="primary"
+							disabled={!classifiers.data?.length || groups.isPending}
+							onClick={() => {
+								setStarted(false);
+								setReprocess(true);
+							}}
+						>
+							Reprocess emails
+						</Button>
+						<Button variant="secondary" onClick={() => void runs.refetch()}>
+							Refresh
+						</Button>
+					</div>
 				</div>
+				{started && (
+					<p role="status" className="mt-3 text-sm text-kumo-subtle">
+						Reprocessing started. Progress appears below; you can leave this
+						page.
+					</p>
+				)}
 				<ClassifierRunFilters
 					mailbox={mailbox}
 					mailboxes={(mailboxes.data ?? []).map((m) => ({
@@ -113,6 +141,31 @@ export default function ClassifierRuns() {
 					onChange={changeFilters}
 				/>
 			</header>
+			{reprocess && (
+				<RunDialog
+					classifiers={classifiers.data ?? []}
+					chooseClassifiers
+					initialMailbox={mailbox !== "all" ? mailbox : undefined}
+					groupNames={Object.fromEntries(
+						(groups.data ?? []).map((g) => [g.id, g.name]),
+					)}
+					close={() => setReprocess(false)}
+					done={(mailboxes) => {
+						setReprocess(false);
+						setStarted(true);
+						changeFilters({
+							mailbox: mailboxes.length === 1 ? mailboxes[0] : "all",
+							status: "",
+							classifier: "",
+							thread: "",
+							from: "",
+							to: "",
+						});
+						void runs.refetch();
+						void classifiers.refetch();
+					}}
+				/>
+			)}
 			<div
 				className={`grid ${selected ? "xl:grid-cols-[minmax(280px,1fr)_minmax(360px,1fr)]" : ""}`}
 			>
