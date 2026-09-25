@@ -99,8 +99,9 @@ export default function ComposerAiAssist({
 							? ""
 							: `Write an email about: ${subject}`
 						: instructions,
-					body:
-						action === "draft"
+					body: quick
+						? ""
+						: action === "draft"
 							? htmlToPlainText(body)
 							: suggestion || htmlToPlainText(body),
 					subject,
