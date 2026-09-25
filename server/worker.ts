@@ -1,3 +1,4 @@
+import { processJob } from "./classification/queue";
 import { pruneProviderRuns } from "./classification/provider-runs";
 import { type AiBinding } from "./agent/service";
 import { agentProviders } from "./agent/providers";
@@ -89,6 +90,25 @@ worker.all("/api/*", async (c) => {
 	try {
 		const response = await createApi(db, {
 			jevKey: c.env.TYPESAFE_API_KEY,
+			kickClassifiers: (tokens = []) => {
+				if (!tokens.length || !queuesEnabled(c.env)) return;
+				// Own connection lifetime: the HTTP response can finish immediately.
+				c.executionCtx.waitUntil(
+					(async () => {
+						const immediate = postgres(c.env.HYPERDRIVE.connectionString, {
+							max: 5,
+							fetch_types: false,
+						});
+						try {
+							await processJob(immediate, c.env.TYPESAFE_API_KEY!, tokens[0]);
+						} catch {
+							console.error("Immediate reclassification deferred to queue");
+						} finally {
+							await immediate.end({ timeout: 5 });
+						}
+					})(),
+				);
+			},
 			origin: c.env.PUBLIC_ORIGIN,
 			agent: {
 				...agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY),

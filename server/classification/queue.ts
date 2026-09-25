@@ -1,3 +1,9 @@
+import {
+	requestFits,
+	providerError,
+	withoutExamples,
+} from "../../shared/jev-budget";
+import type { DecisionRules } from "../../shared/decision-rules";
 import { curatedQuestion } from "./curated-examples";
 import {
 	interpretAnswer,
@@ -8,7 +14,7 @@ import {
 import { captureProviderRequest, type CaptureJob } from "./provider-runs";
 import { batchRequests } from "./batch";
 import { type HumanExample } from "./examples";
-import { conversationState } from "./state";
+import { conversationState, ConversationSizeError } from "./state";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import type { Database } from "../db";
 
@@ -43,7 +49,17 @@ export async function askJev(
 	examples: HumanExample[] = [],
 	typedQuestion?: JevQuestion,
 	option?: string,
+	rules?: Partial<DecisionRules>,
 ) {
+	const prepared = jevRequest(state, {
+		match: typedQuestion ?? jevQuestion(question, examples),
+	});
+	if (!requestFits(state, prepared.questions))
+		prepared.questions.match = withoutExamples(
+			prepared.questions.match,
+		) as JevQuestion;
+	if (!requestFits(state, prepared.questions))
+		throw new JevError("provider_context_limit", false);
 	let response: Response;
 	try {
 		response = await request("https://api.typesafe.ai/v1/systemone", {
@@ -52,11 +68,7 @@ export async function askJev(
 				Authorization: `Bearer ${key}`,
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify(
-				jevRequest(state, {
-					match: typedQuestion ?? jevQuestion(question, examples),
-				}),
-			),
+			body: JSON.stringify(prepared),
 			signal: AbortSignal.timeout(20_000),
 		});
 	} catch {
@@ -70,7 +82,7 @@ export async function askJev(
 				: (Date.parse(retry) - Date.now()) / 1000
 			: 0;
 		throw new JevError(
-			`provider_http_${response.status}`,
+			providerError(response.status, await response.json().catch(() => null)),
 			response.status === 429 ||
 				response.status >= 500 ||
 				response.status === 408,
@@ -92,6 +104,7 @@ export async function askJev(
 				typedQuestion ?? jevQuestion(question, examples),
 				value?.answers?.match,
 				option,
+				rules,
 			),
 			model: value?.model ?? "jev-latest",
 		};
@@ -134,6 +147,16 @@ export async function processJob(
 	const tokens = [token, ...siblings.map((j) => j.token)];
 	const contexts = new Map<number, CaptureJob>();
 	const evaluatedAt = new Date();
+	const states = new Map<string, ReturnType<typeof conversationState>>();
+	const loadState = (job: Job) => {
+		const id = `${job.mailbox_id}/${job.thread_id}/${job.generation}`;
+		let state = states.get(id);
+		if (!state) {
+			state = conversationState(db, job.mailbox_id, job.thread_id, evaluatedAt);
+			states.set(id, state);
+		}
+		return state;
+	};
 	const batch = batchRequests(
 		request,
 		tokens.length,
@@ -161,7 +184,7 @@ export async function processJob(
 				jobToken,
 				batch.forJob(index),
 				(job) => contexts.set(index, job),
-				evaluatedAt,
+				loadState,
 			).finally(() => batch.done(index)),
 		),
 	);
@@ -180,7 +203,7 @@ async function processSingleJob(
 	token: string,
 	request: typeof fetch,
 	onClaim: (job: CaptureJob) => void,
-	evaluatedAt: Date,
+	loadState: (job: Job) => ReturnType<typeof conversationState>,
 ): Promise<DeliveryResult> {
 	const claimed = await db.begin(async (tx) => {
 		const [candidate] = await tx<
@@ -212,6 +235,7 @@ async function processSingleJob(
 			attempts: job.attempts + 1,
 			lease_id,
 			question: classifier.question,
+			decision_rules: classifier.decision_rules as Partial<DecisionRules>,
 			tag_id: classifier.tag_id,
 			include_reviewed_examples: classifier.include_reviewed_examples,
 		};
@@ -240,18 +264,9 @@ async function processSingleJob(
 	try {
 		const [eligibility] =
 			await db`SELECT (classifier_thread_active(${j.mailbox_id},${j.thread_id}) OR (${j.priority === 2} AND EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')))) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
-		const [size] =
-			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent')`;
 		if (!eligibility.active || eligibility.manual) result.status = "skipped";
-		else if (size.count > 30 || size.chars > 100_000)
-			result.error = "conversation_too_large";
 		else {
-			const state = await conversationState(
-				db,
-				j.mailbox_id,
-				j.thread_id,
-				evaluatedAt,
-			);
+			const state = await loadState(j);
 			const [group] =
 				await db`SELECT g.*, (SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL) AS tags FROM tag_groups g JOIN tags t ON t.group_id=g.id WHERE t.id=${j.tag_id}`;
 			const typedQuestion = await curatedQuestion(db, {
@@ -275,6 +290,7 @@ async function processSingleJob(
 				[],
 				typedQuestion,
 				j.tag_id,
+				j.decision_rules,
 			);
 			result = {
 				...answer,
@@ -284,9 +300,11 @@ async function processSingleJob(
 		}
 	} catch (error) {
 		failure =
-			error instanceof JevError
-				? error
-				: new JevError("processing_failed", true);
+			error instanceof ConversationSizeError
+				? new JevError("conversation_too_large", false)
+				: error instanceof JevError
+					? error
+					: new JevError("processing_failed", true);
 	}
 	try {
 		await db.begin(async (tx) => {
@@ -322,11 +340,20 @@ async function processSingleJob(
 				delivery = { retry: Math.ceil(delay) };
 				return;
 			}
-			if (failure) result = { ...result, status: "error", error: failure.code };
+			if (failure)
+				result = {
+					...result,
+					status: ["provider_context_limit", "conversation_too_large"].includes(
+						failure.code,
+					)
+						? "review"
+						: "error",
+					error: failure.code,
+				};
 			const [manual] =
 				await tx`SELECT 1 WHERE tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id})`;
 			if (manual) result.status = "skipped";
-			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id}`;
+			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id} AND disposition<>'failed'`;
 			await tx`UPDATE conversation_classifications SET status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;
 			if (result.status !== "skipped")
 				await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${j.mailbox_id},${j.thread_id},${classifier.tag_id},'classifier','jev',${result.answer === true ? null : tx`now()`}) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET actor='jev',removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;

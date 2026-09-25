@@ -202,3 +202,62 @@ test("explicit rerun batches disabled groups and standalone questions and publis
 		),
 	);
 });
+
+test("manual and queue delivery share leases and prepare the conversation once", async () => {
+	const thread = await message();
+	await call(thread);
+	const jobs =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread} AND status='pending'`;
+	let preparations = 0,
+		calls = 0;
+	const debug = db.options.debug;
+	db.options.debug = (_connection, query) => {
+		if (query.includes('sender AS "from"')) preparations++;
+	};
+	let started!: () => void, release!: () => void;
+	const ready = new Promise<void>((r) => {
+		started = r;
+	});
+	const gate = new Promise<void>((r) => {
+		release = r;
+	});
+	try {
+		const direct = processJob(db, "test", jobs[0].token, async (_url, init) => {
+			calls++;
+			started();
+			await gate;
+			const p = JSON.parse(String(init?.body));
+			return Response.json({
+				answers: Object.fromEntries(
+					Object.entries(p.questions).map(([key, q]) => [
+						key,
+						(q as { type: string }).type === "choice"
+							? {
+									type: "choice",
+									choice: "insufficient_evidence",
+									confidence: 1,
+									probabilities: Object.fromEntries(
+										Object.keys((q as { criteria: object }).criteria).map(
+											(k) => [k, k === "insufficient_evidence" ? 1 : 0],
+										),
+									),
+								}
+							: { type: "noul", noul: 0.9 },
+					]),
+				),
+			});
+		});
+		await ready;
+		const duplicate = await processJob(db, "test", jobs[0].token, async () => {
+			throw new Error("Duplicate provider call");
+		});
+		release();
+		await direct;
+		assert.ok("ack" in duplicate || "retry" in duplicate);
+		assert.equal(calls, 1);
+		assert.equal(preparations, 1);
+	} finally {
+		release?.();
+		db.options.debug = debug;
+	}
+});

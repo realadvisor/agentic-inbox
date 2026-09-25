@@ -6,7 +6,17 @@ export interface ProviderRun {
 	started_at: string;
 	finished_at: string | null;
 	duration_ms: number | null;
-	status: "running" | "succeeded" | "failed" | "interrupted";
+	status:
+		| "running"
+		| "succeeded"
+		| "failed"
+		| "interrupted"
+		| "queued"
+		| "review"
+		| "blocked"
+		| "skipped";
+	kind?: "request" | "attempt";
+	historical?: boolean;
 	http_status: number | null;
 	requested_model: string;
 	returned_model: string | null;
@@ -29,7 +39,8 @@ export interface ProviderRunItem {
 	error: string | null;
 }
 export interface ProviderRunDetail extends Omit<ProviderRun, "classifiers"> {
-	request_body: string;
+	requests?: { id: string }[];
+	request_body: string | null;
 	response_body: string | null;
 	items: ProviderRunItem[];
 	email: { id: string; folder_id: string } | null;

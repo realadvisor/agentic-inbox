@@ -4046,8 +4046,8 @@
 		"/api/v1/classification/provider-runs": {
 			"get": {
 				"tags": ["Classifiers"],
-				"summary": "List provider requests (inbox administrators only)",
-				"description": "Newest first, one entry per actual Jev request, including retries. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
+				"summary": "List classification attempts and Jev request logs",
+				"description": "Newest first: Jev requests plus classification attempts without request logs. kind distinguishes request from attempt; historical marks recovered current states. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -4079,7 +4079,16 @@
 						"required": false,
 						"schema": {
 							"type": "string",
-							"enum": ["running", "succeeded", "failed", "interrupted"]
+							"enum": [
+								"running",
+								"succeeded",
+								"failed",
+								"interrupted",
+								"queued",
+								"review",
+								"blocked",
+								"skipped"
+							]
 						}
 					},
 					{
@@ -4747,6 +4756,9 @@
 												"classifier_id": {
 													"type": "string",
 													"format": "uuid"
+												},
+												"decision_rules": {
+													"$ref": "#/components/schemas/DecisionRules"
 												}
 											}
 										}
@@ -5910,6 +5922,9 @@
 					"include_reviewed_examples": {
 						"type": "boolean",
 						"description": "Use up to six recent human-labeled snapshots from the same mailbox and question as Jev examples. Defaults to false on create; omission preserves the value on update. Does not rerun completed classifications."
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
 					}
 				}
 			},
@@ -5994,6 +6009,9 @@
 					"include_reviewed_examples": {
 						"type": "boolean",
 						"description": "Use up to six recent human-labeled snapshots from the same mailbox and question as Jev examples. Defaults to false on create; omission preserves the value on update. Does not rerun completed classifications."
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
 					}
 				}
 			},
@@ -6176,6 +6194,9 @@
 								}
 							}
 						}
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
 					}
 				}
 			},
@@ -6245,6 +6266,46 @@
 					"id": {
 						"type": "string",
 						"format": "uuid"
+					},
+					"decision_rules": {
+						"$ref": "#/components/schemas/DecisionRules"
+					}
+				}
+			},
+			"DecisionRules": {
+				"type": "object",
+				"additionalProperties": false,
+				"description": "Post-response decision thresholds. No must be strictly below Yes. Omitted values use defaults. Choice must pass confidence, winning probability and margin; insufficient evidence always needs review.",
+				"properties": {
+					"yes": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.85
+					},
+					"no": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.15
+					},
+					"confidence": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.6
+					},
+					"probability": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.75
+					},
+					"margin": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 1,
+						"default": 0.2
 					}
 				}
 			}

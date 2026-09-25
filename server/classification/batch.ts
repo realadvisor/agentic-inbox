@@ -1,3 +1,8 @@
+import {
+	providerError,
+	requestFits,
+	withoutExamples,
+} from "../../shared/jev-budget";
 /** Coalesce prepared requests while leaving each job's lease, validation and retry
  * handling independent. Every participant must call done, including skipped jobs. */
 export function batchRequests(
@@ -41,21 +46,47 @@ export function batchRequests(
 						)
 					: request(url, init);
 			const signal = AbortSignal.timeout(Math.min(20_000, remaining));
-			if (group.length === 1) {
-				group[0].resolve(
-					await sendRequest(group[0].url, {
-						...group[0].init,
-						signal,
-					}),
-				);
-				return;
-			}
+
 			const response = await sendRequest(group[0].url, {
 				...group[0].init,
 				body: JSON.stringify(payload(group)),
 				signal,
 			});
 			if (!response.ok) {
+				const error = providerError(
+					response.status,
+					await response
+						.clone()
+						.json()
+						.catch(() => null),
+				);
+				if (
+					error === "provider_context_limit" &&
+					new Set(questionKeys(group)).size > 1
+				) {
+					// Split distinct questions only; Choice siblings share one question.
+					const parts = new Map<string, Pending[]>();
+					questionKeys(group).forEach((key, i) =>
+						parts.set(key, [...(parts.get(key) ?? []), group[i]]),
+					);
+					for (const part of parts.values()) await send(part);
+					return;
+				}
+				if (error === "provider_context_limit") {
+					const smaller = group.map((item) => ({
+						...item,
+						body: {
+							...item.body,
+							questions: { match: withoutExamples(item.body.questions.match) },
+						},
+					}));
+					if (
+						JSON.stringify(payload(smaller)) !== JSON.stringify(payload(group))
+					) {
+						await send(smaller);
+						return;
+					}
+				}
 				for (const item of group) item.resolve(response.clone());
 				return;
 			}
@@ -109,8 +140,7 @@ export function batchRequests(
 				(JSON.stringify(group[0].body.state) !==
 					JSON.stringify(item.body.state) ||
 					group[0].body.model !== item.body.model ||
-					new TextEncoder().encode(JSON.stringify(payload([...group, item])))
-						.length > 24000)
+					!requestFits(item.body.state, payload([...group, item]).questions))
 			) {
 				await send(group);
 				group = [];

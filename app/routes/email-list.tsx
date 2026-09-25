@@ -382,11 +382,13 @@ export default function EmailListRoute() {
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-kumo-line text-sm">
+			<div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-kumo-line text-sm">
 				<TagPicker
 					tags={catalog.data ?? []}
 					value={tagId}
 					label="Tag filter"
+					triggerLabel="Tags"
+					compact
 					placeholder="Filter by tag"
 					allowAll
 					multiple
@@ -398,22 +400,24 @@ export default function EmailListRoute() {
 
 				{tagId && (
 					<>
-						<select
-							aria-label="Tag matching"
-							value={tagMatch}
-							onChange={(e) => {
-								setSearchParams((current) => {
-									const next = new URLSearchParams(current);
-									next.set("tag_match", e.target.value);
-									return next;
-								});
-								setPage(1);
-							}}
-							className="h-8 rounded-lg border border-kumo-line bg-kumo-base px-2 text-xs"
-						>
-							<option value="all">Match all tags</option>
-							<option value="any">Match any tag</option>
-						</select>
+						{tagId.split(",").length > 1 && (
+							<select
+								aria-label="Tag matching"
+								value={tagMatch}
+								onChange={(e) => {
+									setSearchParams((current) => {
+										const next = new URLSearchParams(current);
+										next.set("tag_match", e.target.value);
+										return next;
+									});
+									setPage(1);
+								}}
+								className="h-[22px] rounded-md border border-kumo-line bg-kumo-base px-1.5 text-xs text-kumo-subtle"
+							>
+								<option value="all">Match all</option>
+								<option value="any">Match any</option>
+							</select>
+						)}
 						<TagChips
 							removeLabel="Remove tag filter"
 							tags={tagId.split(",").map(

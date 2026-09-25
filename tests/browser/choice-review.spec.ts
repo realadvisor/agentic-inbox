@@ -53,6 +53,41 @@ test("Choice review asks for one tag rather than separate yes/no answers", async
 			.click();
 		const dialog = page.getByRole("dialog", { name: "Review classification" });
 		await expect(dialog.getByText("Which tag is correct?")).toBeVisible();
+		await expect(
+			dialog.getByText("Assess how soon action is needed.", { exact: true }),
+		).not.toBeVisible();
+		await dialog.getByText("Show prompt", { exact: true }).click();
+		await expect(
+			dialog.getByText("Assess how soon action is needed.", { exact: true }),
+		).toBeVisible();
+		await page.setViewportSize({ width: 390, height: 320 });
+		const layout = await dialog.evaluate((element) => ({
+			height: element.getBoundingClientRect().height,
+			overflow: getComputedStyle(element).overflowY,
+			z: Number(getComputedStyle(element).zIndex),
+			scrollable: element.scrollHeight > element.clientHeight,
+		}));
+		expect(layout.height).toBeLessThanOrEqual(288);
+		expect(layout.overflow).toBe("auto");
+		expect(layout.z).toBeGreaterThan(10);
+		expect(layout.scrollable).toBe(true);
+		await dialog
+			.getByRole("button", { name: "Close", exact: true })
+			.scrollIntoViewIfNeeded();
+		await expect(
+			dialog.getByRole("button", { name: "Close", exact: true }),
+		).toBeInViewport();
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await dialog.getByRole("button", { name: "Close", exact: true }).click();
+		await page.getByText("Review this choice", { exact: true }).click();
+		await expect(
+			page.getByRole("button", { name: "Needs review", exact: true }),
+		).toHaveCount(2);
+		await page
+			.getByRole("button", { name: "Needs review", exact: true })
+			.last()
+			.click();
+
 		await expect(dialog.getByText("Jev confidence: 42%")).toBeVisible();
 		await expect(dialog.getByText("33%", { exact: true })).toHaveCount(3);
 		await expect(

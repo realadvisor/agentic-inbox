@@ -1,3 +1,4 @@
+import { decisionRulesSchema } from "../../shared/decision-rules";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -21,6 +22,7 @@ const input = z
 			.array(
 				z
 					.object({
+						decision_rules: decisionRulesSchema.optional(),
 						name: z.string().trim().min(1).max(80),
 						question: z.string().trim().min(1).max(8000),
 						classifier_id: z.string().uuid().optional(),
@@ -74,10 +76,9 @@ export function classifierTestApi(
 				throw new HTTPException(404, {
 					message: "No received or sent messages in this conversation",
 				});
-			if (size.count > 30 || size.chars > 100000)
+			if (size.count > 1000 || size.chars > 10_000_000)
 				throw new HTTPException(400, {
-					message:
-						"This conversation exceeds the classifier limit (30 messages or 100,000 characters).",
+					message: "This conversation is too large to process safely.",
 				});
 		}
 		const state =
@@ -137,6 +138,8 @@ export function classifierTestApi(
 						[],
 						typedQuestion,
 						q.option,
+						data.group?.decision_rules ??
+							("decision_rules" in q ? q.decision_rules : undefined),
 					);
 					return {
 						name: q.name,
@@ -147,7 +150,7 @@ export function classifierTestApi(
 					return {
 						name: q.name,
 						request: requests.get(index),
-						...(data.execute
+						...(data.execute || !requests.has(index)
 							? {
 									error: error instanceof JevError ? error.code : "Test failed",
 								}

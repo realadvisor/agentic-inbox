@@ -1,3 +1,5 @@
+import { classificationError } from "../../shared/jev-budget";
+import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import { useState } from "react";
 import { useParams } from "react-router";
@@ -6,7 +8,12 @@ import { Button } from "@cloudflare/kumo";
 import api from "~/services/api";
 import type { Email } from "~/types";
 
-type Question = { name: string; question: string; classifier_id?: string };
+type Question = {
+	name: string;
+	question: string;
+	classifier_id?: string;
+	decision_rules?: Partial<Rules>;
+};
 type Response = Awaited<ReturnType<typeof api.testClassifier>>;
 export function JevEmailTest({
 	questions,
@@ -246,7 +253,7 @@ export function JevEmailTest({
 									<p key={i} className="flex justify-between gap-2 text-xs">
 										<span>{r.name}</span>
 										<span>
-											{r.error ??
+											{(r.error ? classificationError(r.error) : null) ??
 												(r.result
 													? `${r.result.answer === null ? "Uncertain" : r.result.answer ? "Yes" : "No"} · ${Math.round(r.result.probability * 100)}%`
 													: "")}

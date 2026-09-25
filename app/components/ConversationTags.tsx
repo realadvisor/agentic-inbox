@@ -78,6 +78,7 @@ export function TagPicker({
 	onChange,
 	label,
 	placeholder,
+	triggerLabel,
 	disabled,
 	allowAll = false,
 	multiple = false,
@@ -89,6 +90,7 @@ export function TagPicker({
 	onChange: (id: string) => void;
 	label: string;
 	placeholder: string;
+	triggerLabel?: string;
 	disabled?: boolean;
 	allowAll?: boolean;
 	multiple?: boolean;
@@ -136,9 +138,9 @@ export function TagPicker({
 									? "Applied manually"
 									: undefined
 						}
-						className={`inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
+						className={`inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected && !triggerLabel ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
 						style={
-							compact && selected
+							compact && selected && !triggerLabel
 								? {
 										backgroundColor: `${selected.color}20`,
 										color: `color-mix(in srgb, ${selected.color} 45%, currentColor)`,
@@ -158,7 +160,9 @@ export function TagPicker({
 						aria-label="Applied automatically"
 					/>
 				)}
-				{selected ? (
+				{triggerLabel ? (
+					<TagIcon size={14} />
+				) : selected ? (
 					compact ? null : (
 						<span
 							className="h-2 w-2 rounded-full shrink-0"
@@ -171,15 +175,16 @@ export function TagPicker({
 					<PlusIcon size={14} />
 				)}
 				<span className="max-w-40 truncate">
-					{multiple && selectedIds.length > 1
-						? `${selectedIds.length} tags`
-						: selected
-							? selected.group_name
-								? `${selected.group_name}: ${selected.name}`
-								: selected.name
-							: allowAll && value
-								? "Deleted tag"
-								: placeholder}
+					{triggerLabel ??
+						(multiple && selectedIds.length > 1
+							? `${selectedIds.length} tags`
+							: selected
+								? selected.group_name
+									? `${selected.group_name}: ${selected.name}`
+									: selected.name
+								: allowAll && value
+									? "Deleted tag"
+									: placeholder)}
 				</span>
 				<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
 			</Popover.Trigger>

@@ -14,6 +14,10 @@ interface Choice {
 	label: string;
 }
 const statusChoices = [
+	{ value: "queued", label: "Queued" },
+	{ value: "blocked", label: "Blocked before sending" },
+	{ value: "review", label: "Needs review" },
+	{ value: "skipped", label: "Skipped" },
 	{ value: "all", label: "All statuses" },
 	{ value: "succeeded", label: "Succeeded" },
 	{ value: "failed", label: "Failed" },

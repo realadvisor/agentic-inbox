@@ -1,3 +1,4 @@
+import { DecisionRules } from "./DecisionRules";
 import { JevRequestPreview } from "./JevRequestPreview";
 import { groupQuestion } from "../../shared/tag-groups";
 import { ExistingConversations, useTagClassifiers } from "./TagAutomation";
@@ -132,7 +133,7 @@ export function TagGroups({
 							<TagChips tags={group.tags} />
 						</div>
 						<span className="text-right text-xs text-kumo-subtle">
-							{group.enabled ? "Jev" : "Manual"}
+							{group.enabled ? "Automatic" : "Manual"}
 						</span>
 						<CaretRightIcon size={16} className="shrink-0 text-kumo-subtle" />
 					</button>
@@ -205,6 +206,7 @@ function Editor({
 					name: current.name,
 					selection: current.selection,
 					instructions: current.instructions,
+					decision_rules: current.decision_rules,
 					enabled: current.enabled,
 					revision: current.revision,
 					tags: current.tags.map(({ id, name, color, description }) => ({
@@ -446,6 +448,13 @@ function Editor({
 									</span>
 								</label>
 							}
+							<DecisionRules
+								choice={draft.selection === "single"}
+								value={draft.decision_rules}
+								onChange={(decision_rules) =>
+									setDraft({ ...draft, decision_rules })
+								}
+							/>
 							<p className="text-xs text-kumo-subtle">
 								Saving does not process existing conversations. Manual choices
 								stay.

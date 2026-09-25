@@ -331,3 +331,48 @@ test("conversation drawer includes questions split across provider requests", as
 		.click();
 	await expect(details.last().locator("pre")).toContainText("jev-test");
 });
+
+test("blocked attempts show a reason without fake request or response tabs", async ({
+	page,
+}) => {
+	await db`UPDATE classifier_provider_state SET cooldown_until=NULL`;
+	const store = new InboxStore(db),
+		thread = crypto.randomUUID();
+	await store.insert(mailbox, {
+		id: thread,
+		thread_id: thread,
+		sender: "customer@example.test",
+		recipient: mailbox,
+		subject: "Blocked before Jev",
+		body: "x".repeat(35000),
+		date: new Date(),
+	});
+	const [job] =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread}`;
+	await processJob(db, "fake", job.token, async () => {
+		throw new Error("Must not call provider");
+	});
+	await page.goto(
+		`${origin}/mailbox/${mailbox}/settings?tab=runs&thread=${thread}`,
+	);
+	await page
+		.getByRole("button", { name: /Blocked before Jev/ })
+		.first()
+		.click();
+	await expect(
+		page.getByRole("tab", { name: "Results", exact: true }),
+	).toBeVisible();
+	await expect(
+		page.getByRole("tab", { name: "Request", exact: true }),
+	).toHaveCount(0);
+	await expect(
+		page.getByText("No Jev request has been recorded for this attempt.", {
+			exact: true,
+		}),
+	).toBeVisible();
+	await expect(
+		page
+			.getByText("Conversation and instructions exceed Jev’s context limit.")
+			.first(),
+	).toBeVisible();
+});

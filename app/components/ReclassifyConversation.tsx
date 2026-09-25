@@ -24,7 +24,7 @@ export function ReclassifyConversation({
 		queryKey: ["thread-reclassification", mailboxId, threadId, attempt],
 		queryFn: () => classifierRequest<Status>(path),
 		enabled: attempt > 0,
-		refetchInterval: (q) => (q.state.data?.pending ? 1500 : false),
+		refetchInterval: (q) => (q.state.data?.pending ? 500 : false),
 	});
 	const run = useMutation({
 		mutationFn: () =>
@@ -37,11 +37,17 @@ export function ReclassifyConversation({
 			if (result.queued) setAttempt((v) => v + 1);
 		},
 	});
+	const completed = status.data
+		? status.data.complete +
+			status.data.review +
+			status.data.failed +
+			status.data.skipped
+		: 0;
 	const pending =
 		run.isPending ||
 		(attempt > 0 && (status.isPending || !!status.data?.pending));
 	useEffect(() => {
-		if (!status.data || status.data.pending) return;
+		if (!attempt || (!completed && pending)) return;
 		for (const key of [
 			"emails",
 			"email",
@@ -51,7 +57,7 @@ export function ReclassifyConversation({
 			"classification-results",
 		])
 			void client.invalidateQueries({ queryKey: [key] });
-	}, [status.data, client]);
+	}, [attempt, completed, pending, client]);
 	return (
 		<>
 			<Button
@@ -60,7 +66,7 @@ export function ReclassifyConversation({
 				size="sm"
 				disabled={pending}
 				onClick={() => run.mutate()}
-				title="Run all configured Jev questions together. Manual tag choices are preserved."
+				title="Run all configured Jev questions, including those with automatic assignment off. Manual tag choices are preserved."
 			>
 				<ArrowClockwiseIcon size={15} />
 				{pending ? "Reclassifying…" : "Reclassify"}
@@ -70,7 +76,7 @@ export function ReclassifyConversation({
 					{!run.data.queued
 						? "Manual choices are preserved; no automatic labels to rerun."
 						: pending
-							? "Classification queued or running…"
+							? `Reclassifying${completed ? ` · ${completed} finished` : "…"}`
 							: status.data
 								? `Reclassification finished${status.data.review ? ` · ${status.data.review} need review` : ""}${status.data.failed ? ` · ${status.data.failed} failed` : ""}${status.data.skipped ? ` · ${status.data.skipped} skipped` : ""}.`
 								: ""}

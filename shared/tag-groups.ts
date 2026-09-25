@@ -1,9 +1,11 @@
+import { decisionRulesSchema } from "./decision-rules";
 import { z } from "zod";
 
 export const tagGroupInput = z
 	.object({
 		name: z.string().trim().min(1).max(80),
 		selection: z.enum(["single", "multiple"]),
+		decision_rules: decisionRulesSchema.optional(),
 		instructions: z.string().trim().max(2000),
 		enabled: z.boolean(),
 		revision: z.number().int().positive().optional(),

@@ -1,10 +1,8 @@
-import {
-	CLASSIFICATION_YES_THRESHOLD,
-	CLASSIFICATION_NO_THRESHOLD,
-} from "shared/classification";
+import { classificationError } from "../../shared/jev-budget";
+import { decisionRules } from "../../shared/decision-rules";
 import { useState } from "react";
 import { Button, Dialog } from "@cloudflare/kumo";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifierRequest, type Classification } from "~/services/classifiers";
 const percentage = (value: number | null | undefined) =>
 	value == null
@@ -13,7 +11,35 @@ const percentage = (value: number | null | undefined) =>
 				style: "percent",
 				maximumFractionDigits: 1,
 			}).format(value);
-export function ClassifierReview({ results }: { results: Classification[] }) {
+export function ThreadClassifierReview({
+	mailboxId,
+	threadId,
+}: {
+	mailboxId: string;
+	threadId: string;
+}) {
+	const results = useQuery({
+		queryKey: ["classification-results", mailboxId, threadId],
+		queryFn: () =>
+			classifierRequest<Classification[]>(
+				`/results/${encodeURIComponent(mailboxId)}?thread=${encodeURIComponent(threadId)}`,
+			),
+		refetchInterval: 5000,
+	});
+	return (
+		<ClassifierReview
+			results={(results.data ?? []).filter((row) => row.thread_id === threadId)}
+			compact
+		/>
+	);
+}
+export function ClassifierReview({
+	results,
+	compact = false,
+}: {
+	results: Classification[];
+	compact?: boolean;
+}) {
 	const [open, setOpen] = useState(false);
 	const qc = useQueryClient();
 	const review = useMutation({
@@ -25,9 +51,14 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 			),
 		onSuccess: async () => {
 			await Promise.all(
-				["classification-results", "emails", "tags"].map((key) =>
-					qc.invalidateQueries({ queryKey: [key] }),
-				),
+				[
+					"classification-results",
+					"emails",
+					"email",
+					"thread",
+					"tags",
+					"conversation-provider-runs",
+				].map((key) => qc.invalidateQueries({ queryKey: [key] })),
 			);
 		},
 	});
@@ -49,13 +80,25 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 			onKeyDown={(e) => e.stopPropagation()}
 		>
 			<button
-				className="mt-1.5 text-xs text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5"
+				type="button"
+				className={`${compact ? "" : "mt-1.5 "}text-xs text-kumo-warning rounded-md border border-kumo-line px-2 py-0.5`}
 				onClick={() => setOpen(true)}
 			>
 				Needs review{count > 1 ? ` (${count})` : ""}
 			</button>
 			<Dialog.Root open={open} onOpenChange={setOpen}>
-				<Dialog size="sm" className="p-6">
+				<Dialog
+					size="sm"
+					className="p-4 sm:p-5"
+					style={{
+						zIndex: 110,
+						width: "min(480px, calc(100vw - 24px))",
+						minWidth: 0,
+						maxHeight: "calc(100dvh - 32px)",
+						overflowY: "auto",
+						overscrollBehavior: "contain",
+					}}
+				>
 					<Dialog.Title className="text-base font-semibold">
 						Review classification
 					</Dialog.Title>
@@ -76,9 +119,14 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 								Percentages show each option’s probability. Confidence describes
 								Jev’s certainty in the overall choice.
 							</p>
-							<p className="text-xs text-kumo-subtle mt-2">
-								{rows[0].group_instructions}
-							</p>
+							<details className="mt-2 text-xs text-kumo-subtle">
+								<summary className="cursor-pointer font-medium">
+									Show prompt
+								</summary>
+								<p className="mt-2 whitespace-pre-wrap break-words">
+									{rows[0].group_instructions}
+								</p>
+							</details>
 							<p className="text-xs text-kumo-subtle mt-2">
 								Jev could not confidently select one option. Choose the correct
 								tag to resolve this group.
@@ -112,14 +160,26 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 							className="py-4 border-t border-kumo-line"
 						>
 							<p className="font-medium text-sm">{row.name}</p>
-							<p className="text-sm mt-1">{row.question}</p>
+							<details className="mt-2 text-xs text-kumo-subtle">
+								<summary className="cursor-pointer font-medium">
+									Show prompt
+								</summary>
+								<p className="mt-2 whitespace-pre-wrap break-words">
+									{row.question}
+								</p>
+							</details>
 							<div className="rounded-md bg-kumo-recessed p-3 mt-3 text-sm">
 								<p className="font-medium">Why this needs review</p>
+								<p className="text-xs text-kumo-subtle">
+									Apply at {percentage(decisionRules(row.decision_rules).yes)}{" "}
+									or above; remove at{" "}
+									{percentage(decisionRules(row.decision_rules).no)} or below.
+								</p>
 								<p className="text-kumo-subtle mt-1">
 									{row.status === "error"
 										? "Classification failed, so there is no reliable automatic answer. Answer below or retry from Settings → Tags."
-										: row.error === "conversation_too_large"
-											? "This conversation exceeds 30 messages or 100,000 characters. It needs a human review because it was not sent to the classifier."
+										: row.error
+											? classificationError(row.error)
 											: row.probability != null
 												? `The model estimated a ${new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 2 }).format(row.probability)} probability of Yes, which is in the review range.`
 												: "No probability is available for this result. A human answer is needed."}
@@ -146,13 +206,6 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 						</div>
 					))}
 					<div className="text-xs text-kumo-subtle border-t border-kumo-line pt-4 space-y-2">
-						{binary.length > 0 && (
-							<p>
-								Automatic decisions: Yes at {CLASSIFICATION_YES_THRESHOLD * 100}
-								% or above; No at {CLASSIFICATION_NO_THRESHOLD * 100}% or below.
-								Probabilities between these thresholds need review.
-							</p>
-						)}
 						<p>
 							Your answer saves immediately. Choosing an option applies that tag
 							and replaces the previous selection in its group. New messages may
