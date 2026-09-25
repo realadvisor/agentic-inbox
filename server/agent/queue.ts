@@ -32,7 +32,7 @@ export async function consumeAgentJobs(
 ) {
 	for (const message of batch.messages) {
 		const parsed = workMessage.safeParse(message.body);
-		if (!parsed.success) {
+		if (!parsed.success || parsed.data.version !== 1) {
 			message.ack();
 			continue;
 		}

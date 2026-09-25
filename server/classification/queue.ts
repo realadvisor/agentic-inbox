@@ -127,24 +127,7 @@ export async function processJob(
 	token: string,
 	request: typeof fetch = fetch,
 ): Promise<DeliveryResult> {
-	const [anchor] = await db<Job[]>`SELECT * FROM conversation_classifications
-	 WHERE token=${token} AND status='pending' AND available_at<=now()
-	 AND (lease_until IS NULL OR lease_until<=now())`;
-
-	// Collect all ready questions; the batch transport bounds elapsed time so
-	// payload splits cannot outlive the job leases.
-	const siblings = anchor
-		? await db<{ token: string }[]>`SELECT j.token
-	 FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id
-	 WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id}
-	 AND j.generation=${anchor.generation} AND j.token<>${token}
-	 AND j.status='pending' AND j.available_at<=now()
-	 AND (j.lease_until IS NULL OR j.lease_until<=now())
-	 AND (c.enabled OR j.priority=2) AND c.revision=j.revision
-	 ORDER BY j.classifier_id`
-		: [];
-
-	const tokens = [token, ...siblings.map((j) => j.token)];
+	const claims = await claimJobs(db, token);
 	const contexts = new Map<number, CaptureJob>();
 	const evaluatedAt = new Date();
 	const states = new Map<string, ReturnType<typeof conversationState>>();
@@ -159,7 +142,7 @@ export async function processJob(
 	};
 	const batch = batchRequests(
 		request,
-		tokens.length,
+		claims.length,
 		(url, init, indexes, questionKeys) =>
 			captureProviderRequest(
 				db,
@@ -177,11 +160,11 @@ export async function processJob(
 			),
 	);
 	const results = await Promise.allSettled(
-		tokens.map((jobToken, index) =>
+		claims.map((claimed, index) =>
 			processSingleJob(
 				db,
 				key,
-				jobToken,
+				claimed,
 				batch.forJob(index),
 				(job) => contexts.set(index, job),
 				loadState,
@@ -190,9 +173,55 @@ export async function processJob(
 	);
 	for (const result of results)
 		if (result.status === "rejected") throw result.reason;
-	const root = results[0];
-	if (root.status === "rejected") throw root.reason;
-	return root.value;
+	for (const result of results) {
+		if (result.status === "fulfilled" && "retry" in result.value)
+			return result.value;
+	}
+	return { ack: true };
+}
+
+async function claimJobs(db: Database, token: string) {
+	return db.begin(async (tx) => {
+		const [anchor] = await tx<
+			Job[]
+		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending'`;
+		if (!anchor) return [];
+		// Use the same lock order as configuration writers. Commit every ready
+		// sibling's lease together so competing deliveries cannot split a batch.
+		const classifiers =
+			await tx`SELECT c.* FROM classifiers c JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR UPDATE OF c`;
+		const [conversation] =
+			await tx`SELECT generation FROM conversations WHERE mailbox_id=${anchor.mailbox_id} AND thread_id=${anchor.thread_id} FOR UPDATE`;
+		const jobs = await tx<
+			(Job & { seconds: number })[]
+		>`SELECT j.*, greatest(0,ceil(extract(epoch FROM greatest(j.lease_until,j.available_at,p.cooldown_until)-now())))::int AS seconds FROM conversation_classifications j CROSS JOIN classifier_provider_state p WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' AND (j.token=${token} OR j.available_at<=now()) AND p.singleton ORDER BY j.classifier_id FOR UPDATE OF j`;
+		const claims = jobs.map((job) => {
+			const classifier = classifiers.find((c) => c.id === job.classifier_id);
+			if (
+				!classifier ||
+				(!classifier.enabled && job.priority !== 2) ||
+				classifier.revision !== job.revision ||
+				conversation?.generation !== job.generation
+			)
+				return { ack: true } as const;
+			if (job.seconds > 0) return { retry: Math.min(86400, job.seconds + 1) };
+			return {
+				...job,
+				attempts: job.attempts + 1,
+				lease_id: crypto.randomUUID(),
+				question: classifier.question,
+				decision_rules: classifier.decision_rules as Partial<DecisionRules>,
+				tag_id: classifier.tag_id,
+				include_reviewed_examples: classifier.include_reviewed_examples,
+			};
+		});
+		const leases = claims.flatMap((c) =>
+			"token" in c ? [{ token: c.token, lease_id: c.lease_id }] : [],
+		);
+		if (leases.length)
+			await tx`UPDATE conversation_classifications j SET lease_id=l.lease_id,lease_until=now()+interval '90 seconds',attempts=attempts+1 FROM jsonb_to_recordset(${tx.json(leases)}) AS l(token uuid,lease_id uuid) WHERE j.token=l.token`;
+		return claims;
+	});
 }
 
 /** Process exactly the version named by the broker. Leases only deduplicate delivery;
@@ -200,46 +229,11 @@ export async function processJob(
 async function processSingleJob(
 	db: Database,
 	key: string,
-	token: string,
+	claimed: Awaited<ReturnType<typeof claimJobs>>[number],
 	request: typeof fetch,
 	onClaim: (job: CaptureJob) => void,
 	loadState: (job: Job) => ReturnType<typeof conversationState>,
 ): Promise<DeliveryResult> {
-	const claimed = await db.begin(async (tx) => {
-		const [candidate] = await tx<
-			Job[]
-		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending'`;
-		if (!candidate) return { ack: true } as const;
-		const [classifier] =
-			await tx`SELECT * FROM classifiers WHERE id=${candidate.classifier_id} FOR UPDATE`;
-		const [conversation] =
-			await tx`SELECT generation FROM conversations WHERE mailbox_id=${candidate.mailbox_id} AND thread_id=${candidate.thread_id} FOR UPDATE`;
-		const [job] = await tx<
-			Job[]
-		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending' FOR UPDATE`;
-		if (
-			!job ||
-			!classifier ||
-			(!classifier.enabled && job.priority !== 2) ||
-			classifier.revision !== job.revision ||
-			conversation?.generation !== job.generation
-		)
-			return { ack: true } as const;
-		const [wait] =
-			await tx`SELECT greatest(0,ceil(extract(epoch FROM greatest(${job.lease_until},${job.available_at},cooldown_until)-now())))::int AS seconds FROM classifier_provider_state WHERE singleton`;
-		if (wait.seconds > 0) return { retry: Math.min(86400, wait.seconds + 1) };
-		const lease_id = crypto.randomUUID();
-		await tx`UPDATE conversation_classifications SET lease_id=${lease_id},lease_until=now()+interval '90 seconds',attempts=attempts+1 WHERE token=${token}`;
-		return {
-			...job,
-			attempts: job.attempts + 1,
-			lease_id,
-			question: classifier.question,
-			decision_rules: classifier.decision_rules as Partial<DecisionRules>,
-			tag_id: classifier.tag_id,
-			include_reviewed_examples: classifier.include_reviewed_examples,
-		};
-	});
 	if (claimed.ack === true) return { ack: true };
 	if (claimed.retry !== undefined) return { retry: claimed.retry };
 	const j = claimed;
