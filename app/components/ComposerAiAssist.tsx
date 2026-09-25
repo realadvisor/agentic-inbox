@@ -3,7 +3,7 @@ import AgentModelPicker from "./AgentModelPicker";
 import "./agent-chat.css";
 import "./composer-ai.css";
 import { useEffect, useRef, useState } from "react";
-import { Button, Dialog } from "@cloudflare/kumo";
+import { Button, Dialog, useKumoToastManager } from "@cloudflare/kumo";
 import {
 	ArrowUpIcon,
 	SparkleIcon,
@@ -35,6 +35,7 @@ export default function ComposerAiAssist({
 	initialOpen?: boolean;
 	initialQuick?: boolean;
 }) {
+	const toastManager = useKumoToastManager();
 	const [model, setModel] = useState("");
 	const [modelPortal, setModelPortal] = useState<HTMLDivElement | null>(null);
 	const config = useQuery({
@@ -65,12 +66,12 @@ export default function ComposerAiAssist({
 	const latestBody = useRef(body);
 	latestBody.current = body;
 	useEffect(() => () => controller.current?.abort(), []);
-	function apply(text: string) {
+	function apply(text: string, suffix = "") {
 		onApply(
 			text
 				.split(/\n\s*\n/)
 				.map((p) => `<p>${escapeHtml(p).replaceAll("\n", "<br>")}</p>`)
-				.join(""),
+				.join("") + suffix,
 		);
 		setSuggestion("");
 		setGenerated(true);
@@ -84,6 +85,7 @@ export default function ComposerAiAssist({
 		controller.current = current;
 		setLoading(true);
 		setError("");
+		if (quick) setOpen(false);
 		const startBody = body;
 		try {
 			const result = await api.composeWithAi(
@@ -107,6 +109,10 @@ export default function ComposerAiAssist({
 				current.signal,
 			);
 			if (current.signal.aborted) return;
+			if (quick) {
+				apply(result.text, latestBody.current);
+				return;
+			}
 			if (
 				!htmlToPlainText(startBody).trim() &&
 				latestBody.current === startBody &&
@@ -120,10 +126,13 @@ export default function ComposerAiAssist({
 			}
 		} catch (err) {
 			if (!current.signal.aborted) {
-				setOpen(true);
-				setError(
-					err instanceof Error ? err.message : "Could not generate a draft.",
-				);
+				const message =
+					err instanceof Error ? err.message : "Could not generate a draft.";
+				if (quick) toastManager.add({ title: message, variant: "error" });
+				else {
+					setOpen(true);
+					setError(message);
+				}
 			}
 		} finally {
 			if (controller.current === current) setLoading(false);
@@ -166,11 +175,7 @@ export default function ComposerAiAssist({
 						if (loading) {
 							controller.current?.abort();
 							setLoading(false);
-						} else
-							void generate(
-								htmlToPlainText(body).trim() ? "improve" : "draft",
-								true,
-							);
+						} else void generate("draft", true);
 					}}
 					icon={
 						loading ? (
@@ -256,12 +261,7 @@ export default function ComposerAiAssist({
 								!effectiveModel ||
 								!(emailId || subject.trim() || htmlToPlainText(body).trim())
 							}
-							onClick={() =>
-								void generate(
-									htmlToPlainText(body).trim() ? "improve" : "draft",
-									true,
-								)
-							}
+							onClick={() => void generate("draft", true)}
 						>
 							Quick Draft
 						</Button>

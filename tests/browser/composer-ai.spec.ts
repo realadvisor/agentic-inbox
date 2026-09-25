@@ -10,6 +10,7 @@ test("AI composer generates, previews replacement and protects text written duri
 	const store = new InboxStore(db);
 	const mailbox = `ai-${randomUUID()}@example.test`;
 	let selectedModel = "";
+	let delayNext = false;
 	let finish: (() => void) | undefined;
 	try {
 		await store.createMailbox(mailbox, "AI composer test");
@@ -48,8 +49,9 @@ test("AI composer generates, previews replacement and protects text written duri
 			}
 			const input = route.request().postDataJSON();
 			selectedModel = input.model;
-			if (input.instructions === "Slow response")
+			if (delayNext || input.instructions === "Slow response")
 				await new Promise<void>((resolve) => {
+					delayNext = false;
 					finish = resolve;
 				});
 			await route.fulfill({
@@ -76,6 +78,28 @@ test("AI composer generates, previews replacement and protects text written duri
 			composer.getByRole("button", { name: "Advanced" }).click();
 		const editor = composer.locator('[contenteditable="true"]');
 		await expect(editor).toContainText("Hello Sophie");
+		await expect(editor.locator("p").nth(1)).toHaveCSS("margin-top", "15px");
+		await editor.fill("Existing signature and notes.");
+		await composer
+			.getByRole("button", { name: "Quick Draft", exact: true })
+			.click();
+		await expect(editor).toContainText("Hello Sophie");
+		await expect(editor).toContainText("Existing signature and notes.");
+		await expect(dialog).toHaveCount(0);
+		await editor.fill("Before the request.");
+		delayNext = true;
+		finish = undefined;
+		await composer
+			.getByRole("button", { name: "Quick Draft", exact: true })
+			.click();
+		await expect.poll(() => !!finish).toBe(true);
+		await editor.fill("Typed while Quick Draft was running.");
+		finish!();
+		await expect(editor).toContainText("Hello Sophie");
+		await expect(editor).toContainText("Typed while Quick Draft was running.");
+		await expect(dialog).toHaveCount(0);
+		finish = undefined;
+
 		await editor.fill("");
 		await customize();
 		await dialog.getByRole("button", { name: "Choose agent model" }).click();
