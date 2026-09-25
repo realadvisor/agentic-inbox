@@ -6,6 +6,10 @@ import { Link } from "react-router";
 import { classifierRequest } from "~/services/classifiers";
 import type { ProviderRunDetail } from "../../shared/provider-runs";
 const statusLabels = {
+	queued: "Queued",
+	review: "Needs review",
+	blocked: "Blocked before sending",
+	skipped: "Skipped",
 	running: "Running",
 	succeeded: "Succeeded",
 	failed: "Failed",
@@ -94,16 +98,17 @@ export function RunDetail({
 				"/provider-runs/" + encodeURIComponent(id),
 			),
 		refetchInterval: (query) =>
+			query.state.data?.status === "queued" ||
 			query.state.data?.status === "running" ||
 			query.state.data?.items.some((i) => i.disposition === "pending")
 				? 5000
 				: false,
 	});
 	const run = detail.data;
-	const examples = run ? requestExamples(run.request_body) : [];
+	const examples = run ? requestExamples(run.request_body ?? "") : [];
 	const raw = run
 		? tab === "request"
-			? run.request_body
+			? (run.request_body ?? "")
 			: run.response_body
 		: null;
 	return (
@@ -142,7 +147,13 @@ export function RunDetail({
 							· Jev request: {run.duration_ms ?? "—"} ms
 						</p>
 						<p className="text-xs text-kumo-subtle mt-2">
-							Model: {run.returned_model ?? run.requested_model}
+							{run.kind === "attempt"
+								? run.historical
+									? "Recovered classification status. No historical request log is available."
+									: run.requests?.length
+										? "Jev request details are shown below."
+										: "No Jev request has been recorded for this attempt."
+								: `Model: ${run.returned_model ?? run.requested_model}`}
 						</p>
 						{showConversationLink && run.email && (
 							<Link
@@ -162,7 +173,10 @@ export function RunDetail({
 						role="tablist"
 						aria-label="Run content"
 					>
-						{(["results", "request", "response"] as const).map((t) => (
+						{(run.kind === "attempt"
+							? (["results"] as const)
+							: (["results", "request", "response"] as const)
+						).map((t) => (
 							<button
 								type="button"
 								key={t.charAt(0).toUpperCase() + t.slice(1)}
@@ -316,6 +330,14 @@ export function RunDetail({
 					</div>
 				</>
 			)}
+			{run?.requests?.map((request) => (
+				<details key={request.id} className="border-t border-kumo-line p-4">
+					<summary className="cursor-pointer text-sm font-medium">
+						Jev request
+					</summary>
+					<RunDetail id={request.id} showConversationLink={false} />
+				</details>
+			))}
 		</aside>
 	);
 }
