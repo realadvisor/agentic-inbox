@@ -1,3 +1,4 @@
+import { classificationError } from "../../shared/jev-budget";
 import { decisionRules } from "../../shared/decision-rules";
 import { useState } from "react";
 import { Button, Dialog } from "@cloudflare/kumo";
@@ -143,8 +144,8 @@ export function ClassifierReview({ results }: { results: Classification[] }) {
 								<p className="text-kumo-subtle mt-1">
 									{row.status === "error"
 										? "Classification failed, so there is no reliable automatic answer. Answer below or retry from Settings → Tags."
-										: row.error === "conversation_too_large"
-											? "This conversation exceeds 30 messages or 100,000 characters. It needs a human review because it was not sent to the classifier."
+										: row.error
+											? classificationError(row.error)
 											: row.probability != null
 												? `The model estimated a ${new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 2 }).format(row.probability)} probability of Yes, which is in the review range.`
 												: "No probability is available for this result. A human answer is needed."}

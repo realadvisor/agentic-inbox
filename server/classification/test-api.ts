@@ -76,10 +76,9 @@ export function classifierTestApi(
 				throw new HTTPException(404, {
 					message: "No received or sent messages in this conversation",
 				});
-			if (size.count > 30 || size.chars > 100000)
+			if (size.count > 1000 || size.chars > 10_000_000)
 				throw new HTTPException(400, {
-					message:
-						"This conversation exceeds the classifier limit (30 messages or 100,000 characters).",
+					message: "This conversation is too large to process safely.",
 				});
 		}
 		const state =
@@ -151,7 +150,7 @@ export function classifierTestApi(
 					return {
 						name: q.name,
 						request: requests.get(index),
-						...(data.execute
+						...(data.execute || !requests.has(index)
 							? {
 									error: error instanceof JevError ? error.code : "Test failed",
 								}

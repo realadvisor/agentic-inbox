@@ -133,7 +133,7 @@ export function TagGroups({
 							<TagChips tags={group.tags} />
 						</div>
 						<span className="text-right text-xs text-kumo-subtle">
-							{group.enabled ? "Jev" : "Manual"}
+							{group.enabled ? "Automatic" : "Manual"}
 						</span>
 						<CaretRightIcon size={16} className="shrink-0 text-kumo-subtle" />
 					</button>

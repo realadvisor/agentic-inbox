@@ -60,7 +60,7 @@ export function ReclassifyConversation({
 				size="sm"
 				disabled={pending}
 				onClick={() => run.mutate()}
-				title="Run all configured Jev questions together. Manual tag choices are preserved."
+				title="Run all configured Jev questions, including those with automatic assignment off. Manual tag choices are preserved."
 			>
 				<ArrowClockwiseIcon size={15} />
 				{pending ? "Reclassifying…" : "Reclassify"}

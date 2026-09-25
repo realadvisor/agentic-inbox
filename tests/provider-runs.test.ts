@@ -245,3 +245,56 @@ test("provider duration excludes slow result persistence", async () => {
 		await db.unsafe(`DROP FUNCTION delay_provider_log()`);
 	}
 });
+
+test("HTML-heavy emails classify using readable text and preserve more than 30 messages", async () => {
+	const { thread } = await prepare();
+	await db`UPDATE emails SET body=${"<style>" + "x".repeat(150000) + "</style><p>Please help</p>"} WHERE thread_id=${thread}`;
+	for (let i = 0; i < 31; i++)
+		await store.insert(mailbox, {
+			id: crypto.randomUUID(),
+			thread_id: thread,
+			sender: "customer@example.test",
+			recipient: mailbox,
+			subject: "Follow-up",
+			body: `Message ${i}`,
+			date: new Date(Date.now() + i + 1),
+		});
+	const [job] =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread}`;
+	let messages = 0;
+	await processJob(db, "test", job.token, async (url, init) => {
+		const p = JSON.parse(String(init?.body));
+		messages = p.state.messages.length;
+		assert.ok(String(init?.body).length < 28000);
+		return yes(url, init);
+	});
+	assert.equal(messages, 32);
+	const [result] =
+		await db`SELECT status FROM conversation_classifications WHERE thread_id=${thread}`;
+	assert.equal(result.status, "complete");
+});
+
+test("recovered batches retain the rejected attempt in the audit trail", async () => {
+	const { thread, token } = await prepare(2);
+	let calls = 0;
+	await processJob(db, "test", token, async (url, init) => {
+		calls++;
+		if (calls === 1)
+			return Response.json(
+				{ detail: { error_type: "max_tokens_exceeded" } },
+				{ status: 400 },
+			);
+		return yes(url, init);
+	});
+	assert.equal(calls, 3);
+	const failed =
+		await db`SELECT i.disposition,i.error FROM classifier_provider_run_items i JOIN classifier_provider_runs r ON r.id=i.run_id WHERE r.thread_id=${thread} AND r.status='failed'`;
+	assert.equal(failed.length, 2);
+	for (const row of failed) {
+		assert.equal(row.disposition, "failed");
+		assert.equal(row.error, "provider_context_limit");
+	}
+	const results =
+		await db`SELECT status FROM conversation_classifications WHERE thread_id=${thread}`;
+	assert.ok(results.every((r) => r.status === "complete"));
+});
