@@ -531,7 +531,7 @@ test("outbox intent is atomic with job changes and ambiguous publishes are safe"
 	assert.equal(await publishOutbox(db, { live: queue, backfill: queue }), 1);
 	assert.deepEqual(sent[0], sent[1]);
 	assert.deepEqual(Object.keys((sent[0] as { body: object }).body).sort(), [
-		"token",
+		"tokens",
 		"version",
 	]);
 	assert.equal(await publishOutbox(db, { live: queue, backfill: queue }), 0);
@@ -567,7 +567,7 @@ test("concurrent outbox publishers split batches and isolate live mail from back
 	assert.equal(live.length, 1);
 	assert.equal(bulk.length, 1);
 	assert.equal(
-		(live[0] as { body: { token: string } }).body.token,
+		(live[0] as { body: { tokens: string[] } }).body.tokens[0],
 		(await job(liveThread)).token,
 	);
 });
@@ -707,7 +707,7 @@ test("queue config bounds provider concurrency and routes exhausted deliveries t
 	assert.equal(
 		consumers.find((c: { queue: string }) => c.queue === queueNames.live)
 			.max_concurrency,
-		1,
+		10,
 	);
 	assert.equal(
 		consumers.find((c: { queue: string }) => c.queue === queueNames.backfill)
@@ -1164,7 +1164,9 @@ test("overlapping deliveries never send the same question twice", async () => {
 	const jobs =
 		await db`SELECT token FROM conversation_classifications WHERE thread_id=${target}`;
 	const asked: string[] = [];
+	let calls = 0;
 	const request: typeof fetch = async (_url, init) => {
+		calls++;
 		const { questions } = JSON.parse(init!.body as string);
 		for (const q of Object.values(questions))
 			asked.push((q as { instructions: string }).instructions);
@@ -1176,6 +1178,7 @@ test("overlapping deliveries never send the same question twice", async () => {
 		});
 	};
 	await Promise.all(jobs.map((j) => processJob(db, "test", j.token, request)));
+	assert.equal(calls, 1);
 	assert.equal(asked.length, 2);
 	assert.equal(new Set(asked).size, 2);
 	assert.equal(
@@ -1277,5 +1280,136 @@ test("needs-review filter counts and paginates unresolved conversations across f
 			)
 		).status,
 		400,
+	);
+});
+
+test("one conversation envelope preserves sibling retries after the first job completes", async () => {
+	await reset();
+	await siblingClassifier("Retry sibling?");
+	const thread = await message();
+	const envelopes: import("../server/classification/dispatch").WorkMessage[] =
+		[];
+	const queue: import("../server/classification/dispatch").QueueBinding = {
+		sendBatch: async (messages) => {
+			envelopes.push(...messages.map((m) => m.body));
+		},
+	};
+	assert.equal(await publishOutbox(db, { live: queue, backfill: queue }), 2);
+	assert.equal(envelopes.length, 1);
+	assert.equal(envelopes[0].version, 2);
+	let acked = false,
+		retried = false,
+		calls = 0;
+	const batch = {
+		queue: queueNames.live,
+		messages: [
+			{
+				body: envelopes[0],
+				ack: () => {
+					acked = true;
+				},
+				retry: () => {
+					retried = true;
+				},
+			},
+		],
+	};
+	await consumeBatch(db, "test", batch, async (_url, init) => {
+		calls++;
+		const keys = Object.keys(JSON.parse(init!.body as string).questions);
+		assert.equal(keys.length, 2);
+		return Response.json({
+			answers: { [keys[0]]: { type: "noul", noul: 0.99 } },
+		});
+	});
+	assert.equal(acked, false);
+	assert.equal(retried, true);
+	assert.equal(calls, 1);
+	assert.equal(
+		(
+			await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread} AND status='complete'`
+		).length,
+		1,
+	);
+	await db`UPDATE conversation_classifications SET available_at=now() WHERE thread_id=${thread} AND status='pending'`;
+	acked = false;
+	retried = false;
+	await consumeBatch(db, "test", batch, yes);
+	assert.equal(acked, true);
+	assert.equal(retried, false);
+	assert.equal(
+		(
+			await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread} AND status='complete'`
+		).length,
+		2,
+	);
+});
+
+test("different conversations can call Jev concurrently", async () => {
+	await reset();
+	const first = await message(),
+		second = await message();
+	let entered = 0;
+	let release!: () => void;
+	const bothEntered = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const request: typeof fetch = async () => {
+		if (++entered === 2) release();
+		await Promise.race([
+			bothEntered,
+			new Promise((_, reject) => {
+				const timer = setTimeout(
+					() => reject(new Error("Conversations were serialized")),
+					3000,
+				);
+				timer.unref();
+			}),
+		]);
+		return yes("https://example.test");
+	};
+	await Promise.all(
+		[first, second].map(async (thread) =>
+			processJob(db, "test", (await job(thread)).token, request),
+		),
+	);
+	assert.equal(entered, 2);
+	assert.equal((await job(first)).status, "complete");
+	assert.equal((await job(second)).status, "complete");
+});
+
+test("grouped deliveries park and dead-letter every remaining classifier", async () => {
+	await reset();
+	await siblingClassifier("Grouped failure?");
+	const thread = await message();
+	const jobs =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread}`;
+	await db`UPDATE classifier_outbox SET published_at=now()`;
+	let acknowledgments = 0;
+	const messages = [
+		{
+			body: { version: 2, tokens: jobs.map((j) => j.token) },
+			ack: () => {
+				acknowledgments++;
+			},
+			retry: () => {
+				assert.fail("Unexpected retry");
+			},
+		},
+	];
+	await parkBatch(db, { queue: queueNames.live, messages });
+	assert.equal(
+		(
+			await db`SELECT job_token FROM classifier_outbox WHERE published_at IS NULL`
+		).length,
+		2,
+	);
+	await consumeBatch(db, "test", { queue: queueNames.dead, messages }, yes);
+	assert.equal(acknowledgments, 2);
+	assert.equal(
+		(
+			await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread} AND status='error' AND error='queue_delivery_exhausted'`
+		).length,
+		2,
 	);
 });

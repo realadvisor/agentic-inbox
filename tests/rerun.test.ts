@@ -130,8 +130,16 @@ test("explicit rerun batches disabled groups and standalone questions and publis
 	const { publishOutbox } = await import("../server/classification/dispatch");
 	const published: string[] = [];
 	const queue = {
-		sendBatch: async (messages: { body: { token: string } }[]) => {
-			published.push(...messages.map((m) => m.body.token));
+		sendBatch: async (
+			messages: {
+				body: import("../server/classification/dispatch").WorkMessage;
+			}[],
+		) => {
+			published.push(
+				...messages.flatMap((m) =>
+					m.body.version === 1 ? [m.body.token] : m.body.tokens,
+				),
+			);
 		},
 	};
 	await publishOutbox(db, { live: queue, backfill: queue });
