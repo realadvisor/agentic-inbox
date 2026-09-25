@@ -67,6 +67,12 @@ export class InboxStore {
 		WHERE ct.mailbox_id=${mailbox} AND ct.thread_id IN ${this.db([...new Set(threads)])} AND ct.removed_at IS NULL AND t.archived_at IS NULL ORDER BY g.name,t.position,lower(t.name), t.id`;
 	}
 
+	async scoresForThreads(mailbox: string, threads: string[]) {
+		if (!threads.length) return [];
+		return this.db<
+			(import("../app/types/index").ConversationScore & { thread_id: string })[]
+		>`SELECT DISTINCT ON (j.thread_id,g.id) j.thread_id,g.id AS group_id,g.name,j.score,j.confidence,(j.status='review') AS needs_review,(SELECT count(*)::int-1 FROM tags levels WHERE levels.group_id=g.id AND levels.archived_at IS NULL) AS maximum FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id JOIN tag_groups g ON g.id=t.group_id JOIN conversations v ON v.mailbox_id=j.mailbox_id AND v.thread_id=j.thread_id WHERE j.mailbox_id=${mailbox} AND j.thread_id IN ${this.db([...new Set(threads)])} AND g.selection='score' AND t.archived_at IS NULL AND j.score IS NOT NULL AND j.revision=c.revision AND j.generation=v.generation AND j.status IN ('complete','review') AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.thread_id,g.id,j.updated_at DESC`;
+	}
 	async listMailboxes() {
 		return this.db<Mailbox[]>`SELECT * FROM mailboxes ORDER BY name`;
 	}
@@ -106,6 +112,7 @@ export class InboxStore {
 		return {
 			...serialize(row),
 			attachments,
+			scores: await this.scoresForThreads(mailbox, [row.thread_id!]),
 			tags: await this.tagsForThreads(mailbox, [row.thread_id!]),
 		};
 	}
@@ -119,7 +126,9 @@ export class InboxStore {
 			FROM attachments a JOIN emails e ON e.id = a.email_id AND e.mailbox_id = a.mailbox_id
 			WHERE e.mailbox_id = ${mailbox} AND e.thread_id = ${thread}`;
 		const tags = await this.tagsForThreads(mailbox, [thread]);
+		const scores = await this.scoresForThreads(mailbox, [thread]);
 		return rows.map((row) => ({
+			scores,
 			tags,
 			...serialize(row),
 			attachments: attachments.filter((a) => a.email_id === row.id),
@@ -240,22 +249,31 @@ export class InboxStore {
 			: "date";
 		const direction =
 			params.sortDirection === "ASC" ? this.db`ASC` : this.db`DESC`;
+		const scoreOrder = params.score_group
+			? this
+					.db`(SELECT max(j.score) FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id JOIN tag_groups g ON g.id=t.group_id JOIN conversations v ON v.mailbox_id=j.mailbox_id AND v.thread_id=j.thread_id WHERE j.mailbox_id=selected.mailbox_id AND j.thread_id=selected.thread_id AND g.id=${params.score_group} AND g.selection='score' AND t.archived_at IS NULL AND j.revision=c.revision AND j.generation=v.generation AND j.status IN ('complete','review') AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id)) DESC NULLS LAST,`
+			: this.db``;
 		const rows = await this.db<MessageRow[]>`SELECT selected.*,
  (SELECT status FROM conversations workflow WHERE workflow.mailbox_id = selected.mailbox_id AND workflow.thread_id = selected.thread_id) AS thread_status,
 			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS thread_count,
 			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND NOT t.read) AS thread_unread_count,
 			EXISTS (SELECT 1 FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND t.folder_id = 'draft') AS has_draft,
 			(SELECT string_agg(DISTINCT t.sender, ', ') FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS participants
-			FROM (${selection}) selected ORDER BY ${this.db(
+			FROM (${selection}) selected ORDER BY ${scoreOrder} ${this.db(
 				column,
 			)} ${direction}, id LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
 		const tags = await this.tagsForThreads(
 			mailbox,
 			rows.map((row) => row.thread_id!),
 		);
+		const scores = await this.scoresForThreads(
+			mailbox,
+			rows.map((row) => row.thread_id!),
+		);
 		return {
 			emails: rows.map((row) => ({
 				...serialize(row),
+				scores: scores.filter((score) => score.thread_id === row.thread_id),
 				tags: tags.filter((tag) => tag.thread_id === row.thread_id),
 			})),
 			totalCount: count.count,

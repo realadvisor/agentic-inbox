@@ -31,7 +31,7 @@ export function JevRequestPreview({
 			timezone: "UTC",
 			messages: "<received and confirmed-sent conversation messages>",
 		},
-		group?.selection === "single"
+		group?.selection === "single" || group?.selection === "score"
 			? { match: groupChoice(group) }
 			: Object.fromEntries(
 					questions.map((q, i) => [
@@ -115,7 +115,7 @@ export function JevRequestPreview({
 						</p>
 					)}
 					<p>
-						{group?.selection === "single"
+						{group?.selection === "single" || group?.selection === "score"
 							? `match → ${group.name}`
 							: questions
 									.map(
@@ -125,9 +125,9 @@ export function JevRequestPreview({
 									.join(" · ")}
 					</p>
 					<p>
-						Single-selection groups use Choice; other tags use yes/no questions.
-						Questions are batched per conversation. See Runs for requests
-						actually sent.
+						Single-selection groups use Choice; ordered scales use Score; other
+						tags use yes/no questions. Questions are batched per conversation.
+						See Runs for requests actually sent.
 					</p>
 					{copied && <p role="status">{copied}</p>}
 				</div>

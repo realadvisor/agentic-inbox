@@ -1,4 +1,8 @@
-import { decisionRules, type DecisionRules } from "./decision-rules";
+import {
+	decisionRules,
+	scoreBoundaries,
+	type DecisionRules,
+} from "./decision-rules";
 import type { TagGroupInput } from "./tag-groups";
 export interface JevExample {
 	answer: boolean;
@@ -33,13 +37,41 @@ export function jevRequest(
 	state: unknown,
 	questions: Record<string, JevQuestion>,
 ) {
-	return { model: "jev-latest", state, questions };
+	return {
+		model: "jev-latest",
+		state,
+		questions: Object.fromEntries<
+			JevQuestion | Omit<Extract<JevQuestion, { type: "score" }>, "levelIds">
+		>(
+			Object.entries(questions).map(([key, q]) => {
+				if (q.type !== "score") return [key, q] as const;
+				return [
+					key,
+					{ type: q.type, instructions: q.instructions, criteria: q.criteria },
+				] as const;
+			}),
+		),
+	};
 }
 
+interface ScoreQuestion {
+	type: "score";
+	instructions: string;
+	criteria: string[];
+	levelIds: string[];
+}
 export type JevQuestion =
 	| ReturnType<typeof jevQuestion>
+	| ScoreQuestion
 	| { type: "choice"; instructions: string; criteria: Record<string, string> };
 export function groupChoice(group: TagGroupInput): JevQuestion {
+	if (group.selection === "score")
+		return {
+			type: "score",
+			instructions: `${guard}\n\nAssess ${JSON.stringify(group.name)} on the supplied scale. ${group.instructions}`,
+			criteria: group.tags.map((tag) => tag.description.trim()),
+			levelIds: group.tags.map((tag) => tag.id),
+		};
 	return {
 		type: "choice",
 		instructions: `${guard}\n\nSelect the single best-fitting tag for the ${JSON.stringify(group.name)} group. Assess the latest unresolved request using the conversation in chronological order; confirmed responses and resolutions can change what still needs action. Apply these group rules: ${group.instructions}\nUse insufficient_evidence when the conversation cannot be classified from the supplied evidence.`,
@@ -70,6 +102,7 @@ export function interpretAnswer(
 	const a = raw as {
 		type?: string;
 		noul?: number;
+		score?: number;
 		choice?: string;
 		confidence?: number;
 		probabilities?: Record<string, number>;
@@ -87,6 +120,62 @@ export function interpretAnswer(
 					: a.noul <= thresholds.no
 						? false
 						: null,
+		};
+	}
+	if (question.type === "score") {
+		const keys = question.criteria.map((_, i) => String(i));
+		const probabilities = a?.probabilities;
+		if (
+			keys.length < 2 ||
+			keys.length > 10 ||
+			question.levelIds.length !== keys.length ||
+			a?.type !== "score" ||
+			!Number.isFinite(a.score) ||
+			!probabilityValue(a.confidence) ||
+			!probabilities ||
+			keys.some((k) => !probabilityValue(probabilities[k])) ||
+			Object.keys(probabilities).some((k) => !keys.includes(k)) ||
+			(option && !question.levelIds.includes(option))
+		)
+			throw new Error("invalid_provider_answer");
+		const ranked = keys
+			.map((k) => ({ index: Number(k), p: probabilities[k] }))
+			.sort((x, y) => y.p - x.p);
+		const sum = ranked.reduce((n, v) => n + v.p, 0),
+			mean = ranked.reduce((n, v) => n + v.index * v.p, 0);
+		if (
+			Math.abs(sum - 1) > 0.02 ||
+			a.score! < 0 ||
+			a.score! > keys.length - 1 ||
+			Math.abs(a.score! - mean) > 0.05
+		)
+			throw new Error("invalid_provider_answer");
+		const edges = scoreBoundaries(keys.length, rules);
+		if (
+			edges.length !== keys.length - 1 ||
+			edges.some(
+				(v, i) =>
+					!Number.isFinite(v) ||
+					v <= 0 ||
+					v >= keys.length - 1 ||
+					(i > 0 && v <= edges[i - 1]),
+			)
+		)
+			throw new Error("invalid_score_boundaries");
+		const index = edges.filter((boundary) => a.score! >= boundary).length;
+		const accepted = a.confidence >= thresholds.confidence;
+		const level = question.levelIds[index];
+		return {
+			probability: option
+				? probabilities[String(question.levelIds.indexOf(option))]
+				: probabilities[String(index)],
+			answer: accepted ? !option || option === level : null,
+			score: a.score!,
+			choice: level,
+			confidence: a.confidence,
+			probabilities: Object.fromEntries(
+				question.levelIds.map((id, i) => [id, probabilities[String(i)]]),
+			),
 		};
 	}
 	const options = Object.keys(question.criteria);

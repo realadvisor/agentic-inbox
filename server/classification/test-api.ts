@@ -126,7 +126,8 @@ export function classifierTestApi(
 								option: q.option,
 								legacy: data.include_examples,
 							})
-						: data.group?.selection === "single"
+						: data.group?.selection === "single" ||
+								data.group?.selection === "score"
 							? groupChoice(data.group)
 							: jevQuestion(q.question);
 

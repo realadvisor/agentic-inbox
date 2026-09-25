@@ -51,6 +51,7 @@ const tagSchema = z
 	})
 	.strict();
 const querySchema = z.object({
+	score_group: id.optional(),
 	status: threadStatusSchema.optional(),
 	tag_id: id.optional(),
 	tag_ids: z

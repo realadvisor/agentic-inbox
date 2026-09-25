@@ -65,7 +65,10 @@ export function ClassifierReview({
 	const pending = results.filter((r) => r.answer === null);
 	const choices = new Map<string, Classification[]>();
 	const binary = pending.filter((row) => {
-		if (row.group_id && row.group_selection === "single") {
+		if (
+			row.group_id &&
+			(row.group_selection === "single" || row.group_selection === "score")
+		) {
 			const key = `${row.mailbox_id}/${row.thread_id}/${row.group_id}`;
 			choices.set(key, [...(choices.get(key) ?? []), row]);
 			return false;
@@ -116,6 +119,9 @@ export function ClassifierReview({
 								</span>
 							</p>
 							<p className="text-xs text-kumo-subtle mt-1">
+								{rows[0].score != null && (
+									<>Score {rows[0].score.toFixed(2)} · </>
+								)}
 								Percentages show each option’s probability. Confidence describes
 								Jev’s certainty in the overall choice.
 							</p>
