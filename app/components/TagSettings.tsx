@@ -112,7 +112,7 @@ export function TagSettings() {
 										? "…"
 										: classifiers.data?.find((c) => c.tag_id === tag.id)
 													?.enabled
-											? "Jev"
+											? "Automatic"
 											: "Manual"}
 								</span>
 								<CaretRightIcon

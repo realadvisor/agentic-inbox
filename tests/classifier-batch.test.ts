@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { batchRequests } from "../server/classification/batch";
 
-test("skipped participants do not stall batching; different snapshots and large payloads split", async () => {
+test("skipped participants do not stall batching; different snapshots split while fitting questions stay together", async () => {
 	const calls: unknown[] = [];
 	const request: typeof fetch = async (_url, init) => {
 		const body = JSON.parse(init!.body as string);
@@ -33,7 +33,7 @@ test("skipped participants do not stall batching; different snapshots and large 
 	];
 	batch.done(3);
 	const results = await Promise.all(promises);
-	assert.equal(calls.length, 3);
+	assert.equal(calls.length, 2);
 	for (const result of results)
 		assert.equal((await result.json()).answers.match.noul, 0.9);
 });

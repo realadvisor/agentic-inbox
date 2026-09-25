@@ -1,3 +1,4 @@
+import { classificationError } from "../../shared/jev-budget";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@cloudflare/kumo";
 import { useId, useState } from "react";
@@ -189,7 +190,7 @@ export function RunDetail({
 							<>
 								{run.error && (
 									<p role="alert" className="text-sm text-kumo-danger mb-4">
-										{run.error}
+										{classificationError(run.error)}
 									</p>
 								)}
 								{run.items
@@ -236,7 +237,7 @@ export function RunDetail({
 											</p>
 											{item.error && (
 												<p className="text-xs text-kumo-danger mt-2">
-													{item.error}
+													{classificationError(item.error)}
 												</p>
 											)}
 										</div>

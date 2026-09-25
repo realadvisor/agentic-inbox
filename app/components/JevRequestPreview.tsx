@@ -50,7 +50,8 @@ export function JevRequestPreview({
 				<div>
 					<h3 className="text-sm font-semibold">Jev request</h3>
 					<p className="mt-1 text-xs text-kumo-subtle">
-						Live preview of your unsaved configuration
+						Configuration template. Select an email to preview its prepared
+						request.
 					</p>
 				</div>
 				<Button

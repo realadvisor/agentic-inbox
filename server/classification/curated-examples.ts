@@ -1,3 +1,4 @@
+import { requestFits } from "../../shared/jev-budget";
 import { HTTPException } from "hono/http-exception";
 import type { Database } from "../db";
 import type { TagGroupInput } from "../../shared/tag-groups";
@@ -97,9 +98,7 @@ export async function curatedQuestion(
 					next.map((x) => ({ labels: x.labels, state: x.state, note: x.note })),
 				),
 			).length > 12000 ||
-			new TextEncoder().encode(
-				JSON.stringify(jevRequest(state, { match: trial })),
-			).length > 24000
+			!requestFits(state, { match: trial })
 		)
 			continue;
 		selected.push(e);

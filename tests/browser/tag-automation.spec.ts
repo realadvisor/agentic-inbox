@@ -67,7 +67,7 @@ test("Tags owns existing Jev settings and historical processing stays explicit",
 		expect(
 			await db`SELECT id FROM classifier_runs WHERE classifier_id=${classifier.id}`,
 		).toHaveLength(0);
-		await expect(row).toContainText("Jev");
+		await expect(row).toContainText("Automatic");
 		await row.click();
 		await dialog
 			.getByRole("button", {

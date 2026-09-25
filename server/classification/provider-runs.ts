@@ -1,3 +1,4 @@
+import { providerError } from "../../shared/jev-budget";
 import type { DecisionRules } from "../../shared/decision-rules";
 import { z } from "zod";
 import type { Database } from "../db";
@@ -85,7 +86,16 @@ export async function captureProviderRequest(
 		/* Retain malformed JSON verbatim for inspection. */
 	}
 	let error = !response.ok
-		? `provider_http_${response.status}`
+		? providerError(
+				response.status,
+				(() => {
+					try {
+						return JSON.parse(raw);
+					} catch {
+						return null;
+					}
+				})(),
+			)
 		: !parsed
 			? "invalid_provider_response"
 			: null;
@@ -118,6 +128,8 @@ export async function captureProviderRequest(
 	await db.begin(async (tx) => {
 		if (answers.length)
 			await tx`UPDATE classifier_provider_run_items i SET probability=a.probability,answer=a.answer FROM jsonb_to_recordset(${tx.json(answers)}) AS a(token uuid,probability double precision,answer boolean) WHERE i.run_id=${runId} AND i.job_token=a.token`;
+		if (error)
+			await tx`UPDATE classifier_provider_run_items SET disposition='failed',error=${error} WHERE run_id=${runId}`;
 		await tx`UPDATE classifier_provider_runs SET status=${error ? "failed" : "succeeded"},finished_at=clock_timestamp(),duration_ms=${providerDurationMs},http_status=${response.status},returned_model=${parsed?.model ?? null},response_body=${raw},error=${error} WHERE id=${runId}`;
 	});
 	// Rebuild the consumed response so existing parsing/retry behavior stays intact.

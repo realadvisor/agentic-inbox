@@ -1,3 +1,8 @@
+import {
+	requestFits,
+	providerError,
+	withoutExamples,
+} from "../../shared/jev-budget";
 import type { DecisionRules } from "../../shared/decision-rules";
 import { curatedQuestion } from "./curated-examples";
 import {
@@ -46,6 +51,15 @@ export async function askJev(
 	option?: string,
 	rules?: Partial<DecisionRules>,
 ) {
+	const prepared = jevRequest(state, {
+		match: typedQuestion ?? jevQuestion(question, examples),
+	});
+	if (!requestFits(state, prepared.questions))
+		prepared.questions.match = withoutExamples(
+			prepared.questions.match,
+		) as JevQuestion;
+	if (!requestFits(state, prepared.questions))
+		throw new JevError("provider_context_limit", false);
 	let response: Response;
 	try {
 		response = await request("https://api.typesafe.ai/v1/systemone", {
@@ -54,11 +68,7 @@ export async function askJev(
 				Authorization: `Bearer ${key}`,
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify(
-				jevRequest(state, {
-					match: typedQuestion ?? jevQuestion(question, examples),
-				}),
-			),
+			body: JSON.stringify(prepared),
 			signal: AbortSignal.timeout(20_000),
 		});
 	} catch {
@@ -72,7 +82,7 @@ export async function askJev(
 				: (Date.parse(retry) - Date.now()) / 1000
 			: 0;
 		throw new JevError(
-			`provider_http_${response.status}`,
+			providerError(response.status, await response.json().catch(() => null)),
 			response.status === 429 ||
 				response.status >= 500 ||
 				response.status === 408,
@@ -247,7 +257,7 @@ async function processSingleJob(
 		const [size] =
 			await db`SELECT count(*)::int AS count,coalesce(sum(length(body)+length(subject)),0)::int AS chars FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent')`;
 		if (!eligibility.active || eligibility.manual) result.status = "skipped";
-		else if (size.count > 30 || size.chars > 100_000)
+		else if (size.count > 1000 || size.chars > 10_000_000)
 			result.error = "conversation_too_large";
 		else {
 			const state = await conversationState(
@@ -327,11 +337,17 @@ async function processSingleJob(
 				delivery = { retry: Math.ceil(delay) };
 				return;
 			}
-			if (failure) result = { ...result, status: "error", error: failure.code };
+			if (failure)
+				result = {
+					...result,
+					status:
+						failure.code === "provider_context_limit" ? "review" : "error",
+					error: failure.code,
+				};
 			const [manual] =
 				await tx`SELECT 1 WHERE tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id})`;
 			if (manual) result.status = "skipped";
-			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id}`;
+			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id} AND disposition<>'failed'`;
 			await tx`UPDATE conversation_classifications SET status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;
 			if (result.status !== "skipped")
 				await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${j.mailbox_id},${j.thread_id},${classifier.tag_id},'classifier','jev',${result.answer === true ? null : tx`now()`}) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET actor='jev',removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;

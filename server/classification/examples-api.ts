@@ -121,7 +121,7 @@ export function examplesApi(db: Database, admin: boolean, actor: string) {
 				throw new HTTPException(400, {
 					message: "Examples need received or sent messages.",
 				});
-			if (size.count > 30 || size.chars > 100000)
+			if (size.count > 1000 || size.chars > 10_000_000)
 				throw new HTTPException(400, {
 					message: "This conversation is too large for an example.",
 				});

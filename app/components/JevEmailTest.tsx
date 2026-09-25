@@ -1,3 +1,4 @@
+import { classificationError } from "../../shared/jev-budget";
 import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import type { TagGroupInput } from "../../shared/tag-groups";
 import { useState } from "react";
@@ -252,7 +253,7 @@ export function JevEmailTest({
 									<p key={i} className="flex justify-between gap-2 text-xs">
 										<span>{r.name}</span>
 										<span>
-											{r.error ??
+											{(r.error ? classificationError(r.error) : null) ??
 												(r.result
 													? `${r.result.answer === null ? "Uncertain" : r.result.answer ? "Yes" : "No"} · ${Math.round(r.result.probability * 100)}%`
 													: "")}
