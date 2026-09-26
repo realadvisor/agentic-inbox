@@ -21,7 +21,8 @@
 		"deploy:check": "pnpm build && wrangler deploy --dry-run",
 		"deploy": "node scripts/deploy-preflight.mjs && pnpm check && pnpm build && wrangler deploy",
 		"preview:classifiers": "CLASSIFIER_PREVIEW=1 PORT=4313 tsx --env-file=.env server/index.ts",
-		"eval:jev": "tsx --env-file=.env scripts/evaluate-jev.ts"
+		"eval:jev": "tsx --env-file=.env scripts/evaluate-jev.ts",
+		"test:email-rendering": "playwright test --config playwright.email.config.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/react": "3.0.35",
@@ -42,6 +43,7 @@
 		"@tiptap/react": "3.20.2",
 		"@tiptap/starter-kit": "3.20.2",
 		"ai": "^6.0.33",
+		"css-tree": "^3.2.1",
 		"dompurify": "^3.3.3",
 		"hono": "^4.7.11",
 		"isbot": "^5",
@@ -63,6 +65,7 @@
 		"@playwright/test": "^1.55.0",
 		"@react-router/dev": "^7.5.3",
 		"@tailwindcss/vite": "^4.1.4",
+		"@types/css-tree": "^3.2.0",
 		"@types/node": "^20.19.37",
 		"@types/react": "^19.1.2",
 		"@types/react-dom": "^19.1.2",
