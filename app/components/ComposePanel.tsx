@@ -1,4 +1,5 @@
 import { Input as KumoInput } from "@cloudflare/kumo";
+import "./composer-fields.css";
 import ComposerAiAssist from "./ComposerAiAssist";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@cloudflare/kumo";
@@ -117,7 +118,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 			>
 				<div className="flex-1 min-h-0 overflow-y-auto">
 					<div>
-						<div className="flex items-center gap-2 px-4 py-2 border-b border-kumo-line/60 text-xs">
+						<div className="flex items-center gap-2 px-4 min-h-9 py-1 border-b border-kumo-line/60 text-xs">
 							<span className="w-10 shrink-0 text-kumo-subtle">From</span>
 							<span className="min-w-0 truncate text-kumo-subtle">
 								{mailbox?.name}{" "}
@@ -127,6 +128,10 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							</span>
 						</div>
 						<RecipientField
+							excluded={[form.cc, form.bcc]
+								.join(",")
+								.split(",")
+								.map((s) => s.trim())}
 							label="To"
 							value={form.to}
 							onChange={form.setTo}
@@ -148,11 +153,19 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 						{form.showCcBcc && (
 							<>
 								<RecipientField
+									excluded={[form.to, form.bcc]
+										.join(",")
+										.split(",")
+										.map((s) => s.trim())}
 									label="Cc"
 									value={form.cc}
 									onChange={form.setCc}
 								/>
 								<RecipientField
+									excluded={[form.to, form.cc]
+										.join(",")
+										.split(",")
+										.map((s) => s.trim())}
 									label="Bcc"
 									value={form.bcc}
 									onChange={form.setBcc}
@@ -160,10 +173,10 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							</>
 						)}
 						{!inline || composeOptions.mode === "forward" ? (
-							<div className="flex items-center gap-2 px-4 border-b border-kumo-line/60 py-2">
+							<div className="flex items-center gap-2 px-4 min-h-9 border-b border-kumo-line/60 py-1">
 								<label
 									htmlFor="compose-subject"
-									className="w-10 text-xs text-kumo-subtle"
+									className="w-10 shrink-0 text-xs text-kumo-subtle"
 								>
 									Subject
 								</label>
@@ -174,7 +187,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 									value={form.subject}
 									onChange={(e) => form.setSubject(e.target.value)}
 									placeholder="Add a subject"
-									className="flex-1 min-w-0"
+									className="composer-header-input flex-1 min-w-0"
 								/>
 							</div>
 						) : null}

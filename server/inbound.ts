@@ -78,6 +78,12 @@ export async function ingest(
 		const date = parsed.date ? new Date(parsed.date) : new Date();
 		await tx`INSERT INTO emails (id,mailbox_id,folder_id,subject,sender,recipient,cc,date,body,in_reply_to,email_references,thread_id,message_id,raw_storage_key,reply_to)
    VALUES (${id},${mailbox},'inbox',${parsed.subject ?? ""},${addresses(parsed.from ? [parsed.from] : []) || message.from},${addresses(parsed.to) || mailbox},${addresses(parsed.cc)},${Number.isNaN(date.getTime()) ? new Date() : date},${parsed.html ?? escape(parsed.text ?? "")},${parsed.inReplyTo ?? null},${parsed.references ?? null},${thread},${messageId},${rawKey},${addresses(parsed.replyTo) || null})`;
+		// Address indexing is transactional with delivery; MIME supplies the optional name.
+		if (parsed.from?.address && parsed.from.name?.trim()) {
+			await tx`UPDATE mailbox_contacts SET name=${parsed.from.name.trim().slice(0, 200)}
+				WHERE mailbox_id=${mailbox} AND email=${parsed.from.address.toLowerCase().trim()}`;
+		}
+
 		for (const attachment of parsed.attachments) {
 			const key = crypto.randomUUID();
 			const content = attachment.content;

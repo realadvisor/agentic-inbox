@@ -25,6 +25,16 @@ Generation returns an editable suggestion without saving or sending an email.
 Existing text, including edits made during generation, is retained until the user
 chooses Use suggestion. Draft saving and sending remain manual.
 
+## Recipient suggestions
+
+To, Cc and Bcc search a mailbox-scoped contact index after two characters.
+Migration 025 backfills addresses from received senders and confirmed outgoing
+recipients. A database trigger maintains the index on delivery, including local
+simulated sends; drafts and unconfirmed sends do not count. New inbound MIME
+supplies display names (older stored messages contain addresses only).
+Suggestions use indexed name/address prefixes and prioritize sent frequency,
+then recency, excluding recipients already selected and automated senders.
+
 ## Conversation status
 
 Conversations have an Open or Done status, independent of tags and classification.

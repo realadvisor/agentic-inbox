@@ -1,3 +1,4 @@
+import type { RecipientSuggestion } from "shared/contacts";
 import type { AgentSettings, AgentCatalog } from "shared/agent";
 import type { ComposerAiInput, ComposerAiResult } from "shared/composer-ai";
 import type {
@@ -109,6 +110,19 @@ interface EmailListResponse {
 // ---------- API client ----------
 
 const api = {
+	recipientSuggestions: (
+		mailbox: string,
+		q: string,
+		excluded: string[],
+		signal?: AbortSignal,
+	) =>
+		get<RecipientSuggestion[]>(
+			`/api/v1/mailboxes/${encodeURIComponent(mailbox)}/recipients`,
+			{
+				params: { q, exclude: excluded.join(",") },
+				signal,
+			},
+		),
 	listTags: () => get<Tag[]>("/api/v1/tags"),
 	listTagGroups: () => get<TagGroup[]>("/api/v1/tag-groups"),
 	createTagGroup: (group: TagGroupInput) =>

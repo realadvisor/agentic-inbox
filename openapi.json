@@ -5566,6 +5566,68 @@
 					}
 				}
 			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/recipients": {
+			"get": {
+				"tags": ["Mailboxes"],
+				"summary": "Suggest recipients from mailbox contact history",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "q",
+						"in": "query",
+						"description": "Case-insensitive name or address prefix; fewer than two characters returns no suggestions.",
+						"schema": {
+							"type": "string",
+							"maxLength": 100
+						}
+					},
+					{
+						"name": "exclude",
+						"in": "query",
+						"description": "Comma-separated addresses already selected (up to 50).",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Up to five suggestions, ordered by exact email match, sent frequency and recency.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"maxItems": 5,
+									"items": {
+										"type": "object",
+										"required": ["email", "name"],
+										"properties": {
+											"email": {
+												"type": "string"
+											},
+											"name": {
+												"type": "string",
+												"nullable": true
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Mailbox not found"
+					}
+				}
+			}
 		}
 	},
 	"components": {
