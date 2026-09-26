@@ -44,6 +44,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: node --import tsx --test tests/*.test.ts
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:email-rendering
       - run: pnpm deploy:check
       - name: Save validated frontend
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
