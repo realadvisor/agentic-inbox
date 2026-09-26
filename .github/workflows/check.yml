@@ -111,7 +111,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: node --import tsx scripts/migrate.ts
-      - name: Deploy Worker, frontend, queues, and schedule
+      - name: Deploy Worker, frontend, and schedule
         if: steps.release.outputs.current == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
