@@ -1,3 +1,4 @@
+import { recipientSuggestions } from "./contacts";
 import {
 	statusChangeSchema,
 	threadStatusSchema,
@@ -300,6 +301,16 @@ export function createApi(db: Database, options: ApiOptions) {
 		);
 		return c.body(null, 204);
 	});
+	app.get("/api/v1/mailboxes/:mailboxId/recipients", async (c) =>
+		c.json(
+			await recipientSuggestions(
+				db,
+				c.req.param("mailboxId"),
+				c.req.query("q") ?? "",
+				(c.req.query("exclude") ?? "").split(",").slice(0, 50),
+			),
+		),
+	);
 	app.get("/api/v1/mailboxes/:mailboxId", async (c) =>
 		c.json(await store.mailbox(c.req.param("mailboxId"))),
 	);

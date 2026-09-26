@@ -56,6 +56,13 @@ test("MIME ingestion deduplicates retries and links replies within mailbox", asy
 	const rows =
 		await db`SELECT * FROM emails WHERE message_id='<inbound@example.test>'`;
 	assert.equal(rows.length, 1);
+	const [contact] =
+		await db`SELECT email,name,sent_count FROM mailbox_contacts WHERE mailbox_id=${mailbox} AND email='customer@example.test'`;
+	assert.deepEqual(contact, {
+		email: "customer@example.test",
+		name: "Customer",
+		sent_count: 0,
+	});
 	assert.match(rows[0].body, /provide my data/);
 	assert.ok(blobs.has(rows[0].raw_storage_key));
 	await ingest(
