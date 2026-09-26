@@ -199,13 +199,12 @@ Settings → Tags configures Jev instructions within each tag or group editor. M
 The classifier supports Cloud Tasks delivery to the existing serverless Worker. Run
 `bash scripts/setup-cloud-tasks.sh` with an authorized Google Cloud account to
 provision dedicated `inbox-classifications` (10 concurrent) and
-`inbox-classifier-backfills` (5 concurrent) queues in `realadvisor-prod/europe-west1`.
+`inbox-classifier-backfills` (5 concurrent), and `inbox-agent-drafts` (2 concurrent) queues in `realadvisor-prod/europe-west1`.
 The script grants the dedicated service account enqueue permission only on these
 queues. It does not change the other RealAdvisor queues or deploy the application.
 
 Before enabling, configure these Worker variables:
 
-- `CLASSIFIER_TRANSPORT=cloud-tasks`
 - `CLOUD_TASKS_PROJECT=realadvisor-prod`
 - `CLOUD_TASKS_LOCATION=europe-west1`
 - `CLOUD_TASKS_SERVICE_ACCOUNT=inbox-classifications@realadvisor-prod.iam.gserviceaccount.com`
@@ -222,15 +221,13 @@ Google OIDC on that route. Keep the rest of the hostname protected by Access.
 Verify unauthenticated POSTs return 401 and a real task succeeds before switching
 production dispatch. Do not configure a hostname-wide bypass.
 
-Deploy with the variables and secret together after provisioning and configuring
-Access. The default remains Cloudflare when the transport variable is absent, so
-an ordinary deployment cannot accidentally switch to unprovisioned queues. Existing
-Cloudflare consumers stay attached during migration to drain accepted deliveries;
-new work uses only the selected transport. Existing token/lease checks protect
-against duplicate processing. Unpublished backlog is picked up on the next
-successful dispatch or recovery cron; do not reset classifications or replay email
-webhooks. Already-published pending work is recovered after the existing 25-hour
-outbox window. Switching the transport back to `cloudflare` rolls back publishing.
+Deploy after provisioning the queues and configuring the variables, secret, and
+Access. All background work uses Google Cloud Tasks; there are no Cloudflare
+queue bindings or consumers. The existing `/internal/classification-task` endpoint
+also accepts draft deliveries with `kind: "agent-draft"`, using the same Google
+OIDC validation and exact audience. Drafts do not depend on classification being enabled.
+Existing token/lease checks protect against duplicate processing. Unpublished work
+is recovered on dispatch or by the 15-minute recovery cron.
 
 Cloud Tasks carries only job tokens. Provider backoff and cooldown remain enforced
 in Postgres; the handler returns 503 for a retry and 204 after completion. Four
@@ -238,29 +235,28 @@ actual processing attempts exhaust a job into a visible error via the existing
 failure path; waiting for leases/cooldown or a paused feature does not consume this
 budget. Broker retries are unlimited so a database outage cannot silently discard
 work. Failed creation leaves the outbox uncommitted and recoverable. Automatic AI
-drafting continues to use its separate Cloudflare queue.
+drafting uses its separate Google queue. Existing draft jobs retain their stable IDs;
+completed or potentially partial agent runs are never replayed. Before retiring
+legacy queues, republish pending draft jobs through Cloud Tasks by clearing only
+their `published_at` markers. Leave results, drafts, and agent turns intact.
 
-### Previous Cloudflare transport
+### Classification delivery
 
-Cloudflare Queues delivers classifier work. New mail and confirmed sent replies use `inbox-classifications`; explicit historical runs use `inbox-classifier-backfills`. The live queue permits 10 concurrent consumers and backfills permit five, with batch size one. Published classifier tokens for the same conversation generation and delay are grouped into `{version: 2, tokens: ["uuid", ...]}` messages, never email bodies or addresses. Version 1 single-token messages remain supported while existing deliveries drain. Ready sibling leases are claimed atomically to keep a conversation’s questions together under concurrent delivery. Neon remains the source of truth for configuration, results, corrections and run progress.
+Google Cloud Tasks delivers classifier work. New mail and confirmed sent replies use `inbox-classifications`; explicit historical runs use `inbox-classifier-backfills`. The live queue permits 10 concurrent consumers and backfills permit five, with batch size one. Published classifier tokens for the same conversation generation and delay are grouped into `{version: 2, tokens: ["uuid", ...]}` messages, never email bodies or addresses. Version 1 single-token messages remain supported while existing deliveries drain. Ready sibling leases are claimed atomically to keep a conversation’s questions together under concurrent delivery. Neon remains the source of truth for configuration, results, corrections and run progress.
 
 Migration 007 adds a transactional `classifier_outbox`: changes to pending job versions record dispatch intent in the same database transaction. Ingestion and successful API mutations publish promptly after commit; consumers continue draining large unpublished batches. The published marker is committed only after broker acceptance, so an ambiguous publish may duplicate a message but cannot silently lose work. Stable version tokens and short per-job leases make retries/duplicate deliveries safe. Completion and tag changes are atomic. New mail, configuration edits, cancellation and human review invalidate stale messages.
 
-Cloudflare performs delivery and three retries (up to four deliveries), respecting provider backoff and a shared 429 cooldown. Exhausted deliveries go to `inbox-classifications-dead`; its consumer records failures in Neon for review or **Run on existing → Not yet processed**. The dead-letter consumer retries database outages. All three queues retain messages for 24 hours; outbox intent survives broker expiry and can republish still-pending jobs after 25 hours. A recovery cron checks unpublished/expired delivery intent every 15 minutes, so idle Neon can suspend between checks. The cron does not run Jev. A disabled feature parks deliveries in the outbox without burning retries. Existing manual choices and cancellation behavior are unchanged.
+The task handler enforces four actual processing attempts, respecting provider
+backoff and a shared 429 cooldown. Exhausted jobs are recorded in Neon for review
+or reprocessing. Outbox intent survives broker expiry and can republish pending
+classifications after 25 hours. Manual choices and cancellation behavior are unchanged.
 
 Jev receives chronological received/confirmed-sent conversation text and metadata via `POST https://api.typesafe.ai/v1/systemone`, model `jev-latest`, question type `noul`. Responses ≥0.85 apply the tag; ≤0.15 remove the automatic tag; intermediate results need human review. Full attachments/raw MIME are not submitted. Classification budgets apply after HTML-to-text conversion, including every message. A conservative UTF-8 ceiling leaves headroom under Jev’s 32k per-question and 64k per-request token limits; it is not an exact token count. Optional examples are dropped before rejecting a request. Token-limit responses split distinct questions and, if necessary, remove examples once; conversation content is never truncated. Conversations exceeding the 1,000-message/10-million-raw-character resource guard or the prepared request budget require review. Provider failures never become a confident No. New messages, configuration revisions, human corrections and cancellation invalidate in-flight result tokens. Manual tag additions/removals always win. Editing or disabling clears only classifier-owned tags. This labels conversations; it never sends replies or performs deletion.
 
-First provision the queues in the existing Cloudflare account (skip creation if they already exist):
-
-```sh
-pnpm exec wrangler queues create inbox-classifications --message-retention-period-secs 86400
-pnpm exec wrangler queues create inbox-classifier-backfills --message-retention-period-secs 86400
-pnpm exec wrangler queues create inbox-classifications-dead --message-retention-period-secs 86400
-```
-
-Queue retention is set during provisioning; when adopting existing queues, use `wrangler queues update <name> --message-retention-period-secs 86400`. Producer bindings, consumers, retry limits and the recovery cron are versioned in `wrangler.jsonc`.
-
-Release: run migrations against Neon, set Worker secret `TYPESAFE_API_KEY` with `pnpm exec wrangler secret put TYPESAFE_API_KEY`, retain `CLASSIFIERS_ENABLED=true` and the cron in `wrangler.jsonc`, then deploy. The key is server-only and never stored in Postgres, browser code or the repository. Existing configured secrets survive a deploy. Set `CLASSIFIERS_ENABLED=false` to pause processing and hide the UI without discarding queued work. Migration 007 is additive and seeds dispatch intent for existing pending work. Legacy worker-slot rows remain only for rollout compatibility. A rollback must also detach the Queue consumers before restoring the old cron-only Worker; do not leave consumers pointed at code without a queue handler. Database rows and outbox intent remain available for recovery. Scalar documents `/api/v1/classification/*`.
+Provision Google queues with `bash scripts/setup-cloud-tasks.sh`. Set the server-only
+Worker secret `TYPESAFE_API_KEY`, retain `CLASSIFIERS_ENABLED=true` and the recovery
+cron, then deploy. Set `CLASSIFIERS_ENABLED=false` to pause classification without
+discarding work. Scalar documents `/api/v1/classification/*`.
 
 Classifier editors offer **Use recent human examples** (off by default). When enabled, Jev receives up to three yes and three no examples from the same mailbox and question, labeled within the last 30 days. New manual tag additions/removals and classifier reviews capture frozen conversation snapshots; automatic predictions and unlabeled conversations are never examples. Existing labels are not backfilled because their historical message state is unknown. Examples omit drafts and unsent messages, exclude the current conversation, and are size-limited. Editing the question or tag clears its examples. Turning the setting on affects future processing; use Run on existing to reevaluate completed conversations. This supplies request context, not model training.
 
@@ -284,7 +280,7 @@ Workers AI choices use the `AI` binding through `workers-ai-provider`: Kimi K2.6
 
 The chat follows the CRM/Mako Vercel AI SDK architecture: `@ai-sdk/react` `useChat`, `DefaultChatTransport`, and server `streamText` → `toUIMessageStreamResponse`. It renders Markdown and expandable tool activity with draft review links. Native UI messages (including tool results) persist in Postgres and are converted back to model messages for bounded follow-up context. A client disconnect aborts generation; the server drains the remaining stream to persist partial progress and release the mailbox lease within Cloudflare’s cleanup window. Changes already saved remain available. Legacy turns remain readable. Postgres stores chat history, the selected model for each turn, actor, and tool results. The panel displays the 30 most recent turns. The model sees up to 30 prior turns within a conservative model-aware context budget and bounded email text; attachments are listed but not submitted. Email content is treated as untrusted. Only one agent turn can write per mailbox at a time. Runs time out after two minutes with a three-minute mutation lease; disconnected or interrupted runs are not automatically replayed. Check history and saved drafts before retrying. Automatic jobs are deduplicated by incoming email and never replay a model run that might already have created a draft. Turning automatic drafting off prevents further writes by active automatic runs.
 
-Deployment requires migrations **009–017**, the Workers AI `AI` binding, and a dedicated queue created with `pnpm exec wrangler queues create inbox-agent-drafts` before deploying the checked-in Wrangler configuration. Enable Anthropic/OpenAI with `pnpm exec wrangler secret put AI_GATEWAY_API_KEY`, then refresh the model list in settings. Existing CRM/Mako gateway credentials can be supplied through the deployment secret store; do not commit keys. The ingestion event dispatches its durable Postgres outbox; the existing 15-minute cron recovers unpublished or exhausted deliveries. Chat does not depend on the automatic queue. The local Node server supports gateway chat when `AI_GATEWAY_API_KEY` is in `.env`; automatic drafting requires the Worker queue. Integration tests exercise catalogs, model overrides, streaming, draft tools and queue processing using deterministic models and isolated local Postgres schemas, with no external email delivery.
+Deployment requires migrations **009–017**, the Workers AI `AI` binding, and the Google Cloud Tasks `inbox-agent-drafts` queue provisioned by `scripts/setup-cloud-tasks.sh`. Enable Anthropic/OpenAI with `pnpm exec wrangler secret put AI_GATEWAY_API_KEY`, then refresh the model list in settings. Existing CRM/Mako gateway credentials can be supplied through the deployment secret store; do not commit keys. The ingestion event dispatches its durable Postgres outbox; the existing 15-minute cron recovers unpublished or exhausted deliveries. Chat does not depend on the automatic queue. The local Node server supports gateway chat when `AI_GATEWAY_API_KEY` is in `.env`; automatic drafting requires Google Cloud Tasks delivery to the Worker. Integration tests exercise catalogs, model overrides, streaming, draft tools and queue processing using deterministic models and isolated local Postgres schemas, with no external email delivery.
 
 The assistant normalizes historical tool calls across providers, including failed and interrupted turns. Old context is omitted as complete turns when its budget is exceeded; there is no automatic summary generation. **Stop** revokes a specific run’s write lease, retaining earlier saved changes; generation observes cancellation within its polling interval. Refreshing reconnects the UI to persisted progress through polling, not SSE replay. Completed turns record token usage and, when catalog pricing exists, an approximate model cost excluding caching adjustments, discounts and additional fees. Failed or stopped turns do not display a potentially incomplete cost estimate.
 

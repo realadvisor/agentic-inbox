@@ -693,32 +693,14 @@ test("retention-expired queue delivery is recoverable from the outbox", async ()
 	assert.equal(calls, 2);
 });
 
-test("queue config bounds provider concurrency and routes exhausted deliveries to a DLQ", async () => {
+test("Worker has no Cloudflare queues and retains durable outbox recovery", async () => {
 	const text = await readFile(
 		new URL("../wrangler.jsonc", import.meta.url),
 		"utf8",
 	);
 	const config = JSON.parse(text.replace(/,\s*([}\]])/g, "$1"));
-	const consumers = config.queues.consumers.filter(
-		(c: { queue: string }) =>
-			c.queue === queueNames.live || c.queue === queueNames.backfill,
-	);
-	assert.equal(consumers.length, 2);
-	assert.equal(
-		consumers.find((c: { queue: string }) => c.queue === queueNames.live)
-			.max_concurrency,
-		10,
-	);
-	assert.equal(
-		consumers.find((c: { queue: string }) => c.queue === queueNames.backfill)
-			.max_concurrency,
-		5,
-	);
-	for (const c of consumers) {
-		assert.equal(c.max_batch_size, 1);
-		assert.equal(c.dead_letter_queue, queueNames.dead);
-		assert.equal(c.max_retries, 3);
-	}
+	assert.equal(config.queues, undefined);
+	assert.ok(config.vars.CLOUD_TASKS_PROJECT);
 	assert.deepEqual(config.triggers.crons, ["*/15 * * * *"]);
 });
 

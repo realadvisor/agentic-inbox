@@ -11,6 +11,7 @@ import {
 import {
 	cloudTaskQueues,
 	taskPath,
+	taskMessage,
 	verifyTaskToken,
 } from "../server/classification/cloud-tasks";
 
@@ -151,4 +152,47 @@ test("OAuth failures can recover on the next publication", async () => {
 	await assert.rejects(queues.live.sendBatch(messages), /OAuth HTTP 503/);
 	await queues.live.sendBatch(messages);
 	assert.equal(attempts, 2);
+});
+
+test("draft jobs use their own queue and an explicit token-only routing envelope", async () => {
+	let delivered: any;
+	const queues = cloudTaskQueues({ ...config }, async (url, init) => {
+		if (String(url).includes("oauth2.googleapis.com"))
+			return Response.json({ access_token: "test", expires_in: 3600 });
+		assert.match(String(url), /queues\/inbox-agent-drafts\/tasks$/);
+		delivered = JSON.parse(init!.body as string).task;
+		return Response.json({});
+	});
+	const token = crypto.randomUUID();
+	await queues.drafts.sendBatch([
+		{
+			body: { version: 1, token },
+			contentType: "json",
+			delaySeconds: 0,
+		},
+	]);
+	assert.deepEqual(JSON.parse(atob(delivered.httpRequest.body)), {
+		kind: "agent-draft",
+		version: 1,
+		token,
+	});
+	assert.equal(delivered.httpRequest.url, config.PUBLIC_ORIGIN + taskPath);
+	assert.equal(
+		delivered.httpRequest.oidcToken.audience,
+		config.PUBLIC_ORIGIN + taskPath,
+	);
+});
+
+test("task routing rejects unknown job kinds and malformed draft envelopes", () => {
+	const token = crypto.randomUUID();
+	assert.ok(
+		taskMessage.safeParse({ kind: "agent-draft", version: 1, token }).success,
+	);
+	assert.ok(taskMessage.safeParse({ version: 1, token }).success);
+	for (const envelope of [
+		{ kind: "unknown", version: 1, token },
+		{ kind: "agent-draft", version: 2, tokens: [token] },
+		{ kind: "agent-draft", version: 1, token: "invalid" },
+	])
+		assert.equal(taskMessage.safeParse(envelope).success, false);
 });

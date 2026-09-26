@@ -145,7 +145,6 @@ test("Cloud Tasks machine endpoint rejects unauthenticated and forged deliveries
 			}),
 			{
 				...env,
-				CLASSIFIER_TRANSPORT: "cloud-tasks",
 				CLOUD_TASKS_SERVICE_ACCOUNT: "expected@example.test",
 			},
 			ctx,

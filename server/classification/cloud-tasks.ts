@@ -1,6 +1,19 @@
 import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from "jose";
 import type { JWTVerifyGetKey } from "jose";
 import type { ClassifierQueues, QueueBinding } from "./dispatch";
+import { workMessage } from "./dispatch";
+import { z } from "zod";
+
+export const taskMessage = z.union([
+	z
+		.object({
+			kind: z.literal("agent-draft"),
+			version: z.literal(1),
+			token: z.string().uuid(),
+		})
+		.strict(),
+	workMessage,
+]);
 
 export const taskPath = "/internal/classification-task";
 export interface CloudTasksEnv {
@@ -95,10 +108,10 @@ async function accessToken(env: CloudTasksEnv, request: typeof fetch) {
 export function cloudTaskQueues(
 	env: CloudTasksEnv,
 	request: typeof fetch = fetch,
-): ClassifierQueues {
+): ClassifierQueues & { drafts: QueueBinding } {
 	if (!cloudTasksConfigured(env))
 		throw new Error("Cloud Tasks is not configured");
-	const binding = (queue: string): QueueBinding => ({
+	const binding = (queue: string, kind?: "agent-draft"): QueueBinding => ({
 		async sendBatch(messages) {
 			const token = await accessToken(env, request);
 			// Bound publish concurrency, and settle all sends before the outbox transaction ends.
@@ -123,7 +136,11 @@ export function cloudTaskQueues(
 											httpMethod: "POST",
 											url: env.PUBLIC_ORIGIN + taskPath,
 											headers: { "Content-Type": "application/json" },
-											body: btoa(JSON.stringify(message.body)),
+											body: btoa(
+												JSON.stringify(
+													kind ? { ...message.body, kind } : message.body,
+												),
+											),
 											oidcToken: {
 												serviceAccountEmail: env.CLOUD_TASKS_SERVICE_ACCOUNT,
 												audience: env.PUBLIC_ORIGIN + taskPath,
@@ -146,5 +163,6 @@ export function cloudTaskQueues(
 	return {
 		live: binding("inbox-classifications"),
 		backfill: binding("inbox-classifier-backfills"),
+		drafts: binding("inbox-agent-drafts", "agent-draft"),
 	};
 }

@@ -2,6 +2,7 @@ import {
 	cloudTaskQueues,
 	cloudTasksConfigured,
 	taskPath,
+	taskMessage,
 	verifyTaskToken,
 	type CloudTasksEnv,
 } from "./classification/cloud-tasks";
@@ -12,11 +13,7 @@ import { agentProviders } from "./agent/providers";
 import { AGENT_QUEUE, publishAgentJobs, consumeAgentJobs } from "./agent/queue";
 import {
 	publishOutbox,
-	parkBatch,
 	consumeBatch,
-	type QueueBinding,
-	type QueueBatch,
-	workMessage,
 	queueNames,
 } from "./classification/dispatch";
 import { documentation } from "./docs";
@@ -29,15 +26,11 @@ import { ingest, type InboundMessage, type ObjectStore } from "./inbound";
 import type { MailSender } from "./outbound";
 
 export interface WorkerEnv extends CloudTasksEnv {
-	CLASSIFIER_TRANSPORT?: "cloud-tasks" | "cloudflare";
 	AI?: AiBinding;
 	AI_GATEWAY_API_KEY?: string;
-	AGENT_JOBS?: QueueBinding;
 	PUBLIC_ORIGIN: string;
 	CLASSIFIERS_ENABLED?: string;
 	CLASSIFIER_LOG_RETENTION_DAYS?: string;
-	CLASSIFICATIONS?: QueueBinding;
-	CLASSIFIER_BACKFILLS?: QueueBinding;
 	TYPESAFE_API_KEY?: string;
 	PROTOTYPE_PASSWORD?: string;
 	MAIL_MODE?: "live" | "synthetic";
@@ -63,8 +56,6 @@ const worker = new Hono<{
 worker.post(taskPath, async (c) => {
 	if (new URL(c.req.url).origin !== c.env.PUBLIC_ORIGIN)
 		return c.text("Unknown origin", 403);
-	if (c.env.CLASSIFIER_TRANSPORT !== "cloud-tasks")
-		return c.text("Cloud Tasks is disabled", 503);
 	try {
 		await verifyTaskToken(
 			c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "",
@@ -73,42 +64,46 @@ worker.post(taskPath, async (c) => {
 	} catch {
 		return c.text("Invalid task identity", 401);
 	}
-	const body = workMessage.safeParse(await c.req.json().catch(() => null));
+	const body = taskMessage.safeParse(await c.req.json().catch(() => null));
 	if (!body.success) return c.text("Invalid task envelope", 400);
-	if (!queuesEnabled(c.env)) return c.text("Classification is paused", 503);
+	const isDraft = "kind" in body.data;
+	const provider = isDraft
+		? agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY)
+		: undefined;
+	if (isDraft ? !provider?.model : !queuesEnabled(c.env))
+		return c.text("Processing is paused", 503);
 	const db = postgres(c.env.HYPERDRIVE.connectionString, {
 		max: 2,
 		fetch_types: false,
 	});
 	let retry: number | undefined;
 	try {
-		// Only actual processing attempts count toward exhaustion, not delivery during
-		// a pause, provider cooldown, active lease, or database outage.
-		await consumeBatch(
-			db,
-			c.env.TYPESAFE_API_KEY!,
-			{
-				queue: queueNames.live,
-				messages: [
-					{
-						body: body.data,
-						ack() {},
-						retry(options) {
-							retry = options.delaySeconds;
-						},
+		const batch = {
+			queue: isDraft ? AGENT_QUEUE : queueNames.live,
+			messages: [
+				{
+					body:
+						"kind" in body.data
+							? { version: body.data.version, token: body.data.token }
+							: body.data,
+					ack() {},
+					retry(options: { delaySeconds: number }) {
+						retry = options.delaySeconds;
 					},
-				],
-			},
-			fetch,
-			4,
-		);
+				},
+			],
+		};
+		if (isDraft) await consumeAgentJobs(db, batch, provider!.model!);
+		else await consumeBatch(db, c.env.TYPESAFE_API_KEY!, batch, fetch, 4);
 	} finally {
 		await db.end({ timeout: 5 });
 	}
-	c.executionCtx.waitUntil(dispatchClassifiers(c.env, 1));
+	c.executionCtx.waitUntil(
+		isDraft ? dispatchAgentJobs(c.env) : dispatchClassifiers(c.env, 1),
+	);
 	if (retry !== undefined) {
 		c.header("Retry-After", String(Math.max(1, retry)));
-		return c.text("Retry classification", 503);
+		return c.text("Retry task", 503);
 	}
 	return c.body(null, 204);
 });
@@ -175,7 +170,7 @@ worker.all("/api/*", async (c) => {
 			origin: c.env.PUBLIC_ORIGIN,
 			agent: {
 				...agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY),
-				autoDraftAvailable: !!c.env.AGENT_JOBS,
+				autoDraftAvailable: cloudTasksConfigured(c.env),
 				disconnectSignal: c.req.raw.signal,
 				waitUntil: (task) => {
 					agentTasks.push(task);
@@ -214,9 +209,7 @@ function queuesEnabled(env: WorkerEnv) {
 	return (
 		env.CLASSIFIERS_ENABLED === "true" &&
 		!!env.TYPESAFE_API_KEY &&
-		(env.CLASSIFIER_TRANSPORT === "cloud-tasks"
-			? cloudTasksConfigured(env)
-			: !!env.CLASSIFICATIONS && !!env.CLASSIFIER_BACKFILLS)
+		cloudTasksConfigured(env)
 	);
 }
 async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
@@ -227,18 +220,7 @@ async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
 	});
 	try {
 		for (let i = 0; i < rounds; i++) {
-			if (
-				(await publishOutbox(
-					db,
-					env.CLASSIFIER_TRANSPORT === "cloud-tasks"
-						? cloudTaskQueues(env)
-						: {
-								live: env.CLASSIFICATIONS!,
-								backfill: env.CLASSIFIER_BACKFILLS!,
-							},
-				)) < 100
-			)
-				break;
+			if ((await publishOutbox(db, cloudTaskQueues(env))) < 100) break;
 		}
 	} catch {
 		console.error("Classifier outbox publish failed; recovery will retry");
@@ -248,13 +230,17 @@ async function dispatchClassifiers(env: WorkerEnv, rounds = 10) {
 }
 
 async function dispatchAgentJobs(env: WorkerEnv) {
-	if ((!env.AI && !env.AI_GATEWAY_API_KEY?.trim()) || !env.AGENT_JOBS) return;
+	if (
+		(!env.AI && !env.AI_GATEWAY_API_KEY?.trim()) ||
+		!cloudTasksConfigured(env)
+	)
+		return;
 	const db = postgres(env.HYPERDRIVE.connectionString, {
 		max: 2,
 		fetch_types: false,
 	});
 	try {
-		await publishAgentJobs(db, env.AGENT_JOBS);
+		await publishAgentJobs(db, cloudTaskQueues(env).drafts);
 	} finally {
 		await db.end({ timeout: 5 });
 	}
@@ -277,50 +263,6 @@ export default {
 			await db.end({ timeout: 5 });
 		}
 		await dispatchAgentJobs(env);
-	},
-	async queue(batch: QueueBatch, env: WorkerEnv) {
-		if (batch.queue === AGENT_QUEUE) {
-			const provider = agentProviders(env.AI, env.AI_GATEWAY_API_KEY);
-			if (!provider.model) {
-				for (const message of batch.messages)
-					message.retry({ delaySeconds: 300 });
-				return;
-			}
-			const db = postgres(env.HYPERDRIVE.connectionString, {
-				max: 2,
-				fetch_types: false,
-			});
-			try {
-				await consumeAgentJobs(db, batch, provider.model);
-			} finally {
-				await db.end({ timeout: 5 });
-			}
-			return;
-		}
-		if (!queuesEnabled(env)) {
-			// Leave dispatch intent recoverable while paused; do not exhaust retries.
-			const db = postgres(env.HYPERDRIVE.connectionString, {
-				max: 2,
-				fetch_types: false,
-			});
-			try {
-				await parkBatch(db, batch);
-			} finally {
-				await db.end({ timeout: 5 });
-			}
-			return;
-		}
-		const db = postgres(env.HYPERDRIVE.connectionString, {
-			max: 2,
-			fetch_types: false,
-		});
-		try {
-			await consumeBatch(db, env.TYPESAFE_API_KEY!, batch);
-		} finally {
-			await db.end({ timeout: 5 });
-		}
-		// Continue publishing large batches without waiting for the recovery cron.
-		await dispatchClassifiers(env, 1);
 	},
 	async email(message: InboundMessage, env: WorkerEnv, ctx?: ExecutionContext) {
 		if (
