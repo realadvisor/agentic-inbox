@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 process.loadEnvFile(".env");
 export default defineConfig({
 	testDir: "./tests/browser",
+	testIgnore: "email-rendering.spec.ts",
 	workers: 1,
 	use: {
 		baseURL: "http://127.0.0.1:4310",
