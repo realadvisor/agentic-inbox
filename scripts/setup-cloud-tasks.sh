@@ -8,8 +8,9 @@ gcloud services enable cloudtasks.googleapis.com --project="$project"
 if ! gcloud iam service-accounts describe "$account" --project="$project" >/dev/null 2>&1; then
  gcloud iam service-accounts create inbox-classifications --display-name="Inbox classification delivery" --project="$project"
 fi
-for queue in inbox-classifications inbox-classifier-backfills inbox-agent-drafts; do
+for queue in inbox-classifications inbox-classifier-backfills inbox-agent-drafts inbox-webhooks; do
  concurrency=10
+ if [[ "$queue" == "inbox-webhooks" ]]; then concurrency=5; fi
  if [[ "$queue" == "inbox-agent-drafts" ]]; then concurrency=2; fi
  if [[ "$queue" == "inbox-classifier-backfills" ]]; then concurrency=5; fi
  action=update

@@ -7,7 +7,7 @@ import { z } from "zod";
 export const taskMessage = z.union([
 	z
 		.object({
-			kind: z.literal("agent-draft"),
+			kind: z.enum(["agent-draft", "webhook"]),
 			version: z.literal(1),
 			token: z.string().uuid(),
 		})
@@ -108,10 +108,13 @@ async function accessToken(env: CloudTasksEnv, request: typeof fetch) {
 export function cloudTaskQueues(
 	env: CloudTasksEnv,
 	request: typeof fetch = fetch,
-): ClassifierQueues & { drafts: QueueBinding } {
+): ClassifierQueues & { drafts: QueueBinding; webhooks: QueueBinding } {
 	if (!cloudTasksConfigured(env))
 		throw new Error("Cloud Tasks is not configured");
-	const binding = (queue: string, kind?: "agent-draft"): QueueBinding => ({
+	const binding = (
+		queue: string,
+		kind?: "agent-draft" | "webhook",
+	): QueueBinding => ({
 		async sendBatch(messages) {
 			const token = await accessToken(env, request);
 			// Bound publish concurrency, and settle all sends before the outbox transaction ends.
@@ -164,5 +167,6 @@ export function cloudTaskQueues(
 		live: binding("inbox-classifications"),
 		backfill: binding("inbox-classifier-backfills"),
 		drafts: binding("inbox-agent-drafts", "agent-draft"),
+		webhooks: binding("inbox-webhooks", "webhook"),
 	};
 }

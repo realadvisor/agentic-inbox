@@ -1,3 +1,4 @@
+import WebhookSettings from "~/components/WebhookSettings";
 import AgentModelSettings from "~/components/AgentModelSettings";
 import ClassifierRuns from "~/components/ClassifierRuns";
 // Modified for the RealAdvisor local Postgres prototype.
@@ -74,6 +75,7 @@ export default function SettingsRoute() {
 					"account",
 					"tags",
 					"models",
+					...(mode.data?.canManageClassifiers ? ["webhooks"] : []),
 					...(hasClassifiers && mode.data?.canManageClassifiers
 						? ["runs"]
 						: []),
@@ -87,7 +89,9 @@ export default function SettingsRoute() {
 					</Button>
 				))}
 			</div>
-			{tab === "models" ? (
+			{tab === "webhooks" && mode.data?.canManageClassifiers ? (
+				<WebhookSettings mailboxId={mailboxId!} />
+			) : tab === "models" ? (
 				<AgentModelSettings key={mailboxId} mailboxId={mailboxId!} />
 			) : hasClassifiers && tab === "runs" ? (
 				<ClassifierRuns />
