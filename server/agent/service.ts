@@ -1,4 +1,3 @@
-import { classificationTools } from "./classification-tools";
 import { buildHistory } from "./history";
 import { agentErrorMessage } from "./errors";
 import { modelIdSchema, requireModel } from "./catalog";
@@ -9,6 +8,7 @@ import { z } from "zod";
 import type { Database } from "../db";
 import { InboxStore } from "../store";
 import { liveSender } from "../mailboxes";
+import { classificationTools } from "./classification-tools";
 import {
 	DEFAULT_AGENT_MODEL,
 	type AgentSettings,
