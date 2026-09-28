@@ -207,9 +207,9 @@ export function createTools(
 		const email = await store.message(run.mailbox, id);
 		await assertAutoThread(email.thread_id ?? email.id);
 		return {
+			draft_version: email.draft_version,
 			...metadata(email),
 			...consumeText(email.body ?? ""),
-			draft_version: email.draft_version,
 			attachments: email.attachments.slice(0, 20).map((a) => ({
 				filename: a.filename.slice(0, 200),
 				mimetype: a.mimetype,
