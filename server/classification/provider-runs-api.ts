@@ -32,6 +32,9 @@ const activity = `SELECT r.id,r.mailbox_id,r.thread_id,r.subject,r.started_at,r.
  SELECT a.id,a.mailbox_id,a.thread_id,a.subject,a.started_at,a.finished_at,NULL::integer AS duration_ms,a.status,NULL::integer AS http_status,'' AS requested_model,NULL::text AS returned_model,NULL::text AS request_body,NULL::text AS response_body,a.error,'attempt' AS kind,a.historical,
  json_build_array(json_build_object('classifier_id',a.classifier_id,'name',a.classifier_name,'attempt',a.attempt)) AS classifiers
  FROM classification_attempts a`;
+const listActivity =
+	activity +
+	` WHERE NOT EXISTS(SELECT 1 FROM classifier_provider_run_items i WHERE i.job_token=a.job_token AND i.attempt=a.attempt)`;
 export function providerRunsApi(db: Database, admin: boolean) {
 	const app = new Hono();
 	app.use("*", async (c, next) => {
@@ -59,8 +62,8 @@ export function providerRunsApi(db: Database, admin: boolean) {
 			}
 		}
 		const rows =
-			await db`WITH activity AS (${db.unsafe(activity)}) SELECT r.id,r.mailbox_id,r.thread_id,r.subject,r.started_at,to_char(r.started_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time,r.finished_at,r.duration_ms,r.status,r.http_status,r.requested_model,r.returned_model,r.error,r.kind,r.historical,r.classifiers
-   FROM activity r WHERE (r.kind='request' OR NOT EXISTS(SELECT 1 FROM classification_attempts a JOIN classifier_provider_run_items i ON i.job_token=a.job_token AND i.attempt=a.attempt WHERE a.id=r.id))
+			await db`WITH activity AS (${db.unsafe(listActivity)}) SELECT r.id,r.mailbox_id,r.thread_id,r.subject,r.started_at,to_char(r.started_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_time,r.finished_at,r.duration_ms,r.status,r.http_status,r.requested_model,r.returned_model,r.error,r.kind,r.historical,r.classifiers
+   FROM activity r WHERE true
    ${f.mailbox ? db`AND r.mailbox_id=${f.mailbox}` : db``}
    ${f.thread ? db`AND r.thread_id=${f.thread}` : db``}
    ${f.status ? db`AND r.status=${f.status}` : db``}
@@ -85,7 +88,10 @@ export function providerRunsApi(db: Database, admin: boolean) {
 		});
 	});
 	app.get("/:id", async (c) => {
-		const id = z.string().uuid().parse(c.req.param("id"));
+		let id = z.string().uuid().parse(c.req.param("id"));
+		const [handedOff] =
+			await db`SELECT run_id FROM classifier_provider_run_items WHERE lifecycle_id=${id} ORDER BY run_id LIMIT 1`;
+		if (handedOff) id = handedOff.run_id;
 		const [run] =
 			await db`WITH activity AS (${db.unsafe(activity)}) SELECT * FROM activity WHERE id=${id}`;
 		if (!run) return c.json({ error: "Classifier run not found" }, 404);
@@ -98,7 +104,9 @@ export function providerRunsApi(db: Database, admin: boolean) {
 		const requests =
 			run.kind === "attempt"
 				? await db`SELECT DISTINCT i.run_id AS id FROM classifier_provider_run_items i JOIN classification_attempts a ON a.job_token=i.job_token AND a.attempt=i.attempt WHERE a.id=${id}`
-				: [];
+				: handedOff
+					? [{ id: run.id }]
+					: [];
 		return c.json({ ...run, items, requests, email: email ?? null });
 	});
 	return app;

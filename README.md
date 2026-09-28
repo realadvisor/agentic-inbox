@@ -371,6 +371,16 @@ Tag and group editors expose **Automatic decision rules** (migration 021). Thres
 
 Migration 022 records classification attempt states transactionally, including queued work and failures before a Jev request. Runs shows these alongside provider requests without duplicating attempts that have a request log. Existing current states are marked as recovered history, with no invented request payloads. Attempt details remain accessible after dispatch and link to the physical requests. Completed attempt history follows the same 30-day retention as provider logs.
 
+Migration 031 hands a lifecycle record over to its provider request item atomically
+when Jev is called, so sent attempts no longer have a second full outcome record.
+Queued and pre-provider failures remain in `classification_attempts`; their links
+continue to resolve after dispatch. Token replacement and job deletion close
+superseded lifecycle records, and the recovery cron reconciles older orphan states.
+Runs filters use mailbox/date indexes and exclude legacy overlap directly in the
+attempt query. Automatic refresh runs every 15 seconds on the first page only;
+older loaded pages refresh on demand. This does not change emails, classifications,
+manual tags, or provider request retention.
+
 Manual reclassification starts the existing leased worker immediately in a request-scoped background task; the transactional outbox and hosted queues remain the recovery path. Enqueue writes are batched, and sibling classifiers reuse one prepared conversation per generation within a processing call. The conversation UI refreshes tags as completed-result counts change.
 
 ## Outgoing webhooks
