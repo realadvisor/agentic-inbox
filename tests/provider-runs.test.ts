@@ -65,6 +65,11 @@ test("one physical request records both batched questions, exact IO, and applied
 		return yes(url, init);
 	});
 	assert.equal(calls, 1);
+	assert.equal(
+		(await db`SELECT id FROM classification_attempts WHERE thread_id=${thread}`)
+			.length,
+		0,
+	);
 	const runs =
 		await db`SELECT * FROM classifier_provider_runs WHERE thread_id=${thread}`;
 	assert.equal(runs.length, 1);
@@ -352,4 +357,102 @@ test("an attempt links its physical request without duplicating the run list", a
 	assert.equal(detail.status, "succeeded");
 	assert.equal(detail.requests.length, 1);
 	assert.equal(detail.requests[0].id, after.runs[0].id);
+});
+
+test("superseding and deleting jobs closes queued lifecycle history", async () => {
+	const { thread, token } = await prepare();
+	await db`UPDATE conversation_classifications SET token=gen_random_uuid() WHERE token=${token}`;
+	const [old] =
+		await db`SELECT status,finished_at,error FROM classification_attempts WHERE job_token=${token}`;
+	assert.equal(old.status, "skipped");
+	assert.ok(old.finished_at);
+	assert.equal(old.error, "job_superseded");
+	await db`DELETE FROM conversation_classifications WHERE thread_id=${thread}`;
+	assert.equal(
+		(
+			await db`SELECT id FROM classification_attempts WHERE thread_id=${thread} AND status IN ('queued','running')`
+		).length,
+		0,
+	);
+});
+
+test("retention closes orphan states but preserves genuine queued jobs", async () => {
+	const { token } = await prepare();
+	const [live] =
+		await db`SELECT * FROM classification_attempts WHERE job_token=${token}`;
+	const orphan = crypto.randomUUID();
+	await db`INSERT INTO classification_attempts ${db({ ...live, id: orphan, job_token: crypto.randomUUID(), started_at: new Date("2020-01-01") })}`;
+	await pruneProviderRuns(db);
+	assert.equal(
+		(await db`SELECT id FROM classification_attempts WHERE id=${orphan}`)
+			.length,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT status FROM classification_attempts WHERE job_token=${token}`
+		)[0].status,
+		"queued",
+	);
+});
+
+test("no-op writes cannot recreate retained-away attempt history", async () => {
+	const { thread, token } = await prepare();
+	await processJob(db, "fake", token, yes);
+	await db`DELETE FROM classifier_provider_runs WHERE thread_id=${thread}`;
+	await db`UPDATE conversation_classifications SET status=status,updated_at=now() WHERE token=${token}`;
+	assert.equal(
+		(await db`SELECT id FROM classification_attempts WHERE thread_id=${thread}`)
+			.length,
+		0,
+	);
+});
+
+test("provider handoff rolls back with its request, preserving the queued link", async () => {
+	const { thread, token } = await prepare();
+	const [original] =
+		await db`SELECT * FROM classification_attempts WHERE job_token=${token}`;
+	await assert.rejects(
+		db.begin(async (tx) => {
+			const [run] =
+				await tx`INSERT INTO classifier_provider_runs(mailbox_id,thread_id,subject,requested_model,request_body) VALUES(${mailbox},${thread},'Rollback','test','{}') RETURNING id`;
+			await tx`INSERT INTO classifier_provider_run_items(run_id,question_key,classifier_id,classifier_name,question,revision,generation,job_token,lease_id,attempt) VALUES(${run.id},'q',${original.classifier_id},'Test','Test?',1,1,${token},${crypto.randomUUID()},1)`;
+			assert.equal(
+				(
+					await tx`SELECT id FROM classification_attempts WHERE id=${original.id}`
+				).length,
+				0,
+			);
+			throw new Error("rollback test");
+		}),
+		/rollback test/,
+	);
+	assert.equal(
+		(await db`SELECT id FROM classification_attempts WHERE id=${original.id}`)
+			.length,
+		1,
+	);
+	assert.equal(
+		(
+			await db`SELECT id FROM classifier_provider_runs WHERE thread_id=${thread}`
+		).length,
+		0,
+	);
+});
+
+test("rotating a completed result token does not invent another attempt", async () => {
+	const { thread, token } = await prepare();
+	await processJob(db, "fake", token, yes);
+	await db`UPDATE conversation_classifications SET revision=revision+1,token=gen_random_uuid(),lease_until=NULL WHERE token=${token}`;
+	assert.equal(
+		(await db`SELECT id FROM classification_attempts WHERE thread_id=${thread}`)
+			.length,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT id FROM classifier_provider_runs WHERE thread_id=${thread}`
+		).length,
+		1,
+	);
 });

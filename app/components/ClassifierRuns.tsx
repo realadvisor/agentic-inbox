@@ -64,7 +64,6 @@ export default function ClassifierRuns() {
 	const runs = useInfiniteQuery({
 		queryKey: ["provider-runs", filterKey],
 		initialPageParam: null as string | null,
-		refetchInterval: 5000,
 		enabled: allowed,
 		queryFn: ({ pageParam }) => {
 			const query = new URLSearchParams(filterKey);
@@ -72,6 +71,9 @@ export default function ClassifierRuns() {
 			return classifierRequest<ProviderRunPage>("/provider-runs?" + query);
 		},
 		getNextPageParam: (page) => page.next_cursor ?? undefined,
+		// Browsing older history must not refetch every loaded page on a timer.
+		refetchInterval: (query) =>
+			(query.state.data?.pages.length ?? 1) === 1 ? 15000 : false,
 	});
 	function changeFilters(changes: Record<string, string>) {
 		setParams(

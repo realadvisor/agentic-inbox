@@ -150,6 +150,8 @@ export async function captureProviderRequest(
 export async function pruneProviderRuns(db: Database, days = 30) {
 	if (!Number.isInteger(days) || days < 1 || days > 365)
 		throw new Error("Invalid classifier log retention");
+	// Reconcile old orphan states too, so they eventually qualify for retention.
+	await db`UPDATE classification_attempts a SET status='skipped',finished_at=now(),error=coalesce(error,'job_superseded') WHERE a.status IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.token=a.job_token AND j.status='pending' AND greatest(1,j.attempts)=a.attempt)`;
 	await db`DELETE FROM classification_attempts WHERE started_at < now()-${days}*interval '1 day' AND status NOT IN ('queued','running')`;
 	await db`DELETE FROM classifier_provider_runs WHERE started_at < now()-${days}*interval '1 day'`;
 	await db`UPDATE classifier_provider_run_items i SET disposition='failed',error='application_interrupted' FROM classifier_provider_runs r WHERE i.run_id=r.id AND i.disposition='pending' AND r.started_at < now()-interval '5 minutes'`;
