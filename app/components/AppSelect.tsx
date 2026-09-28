@@ -17,10 +17,15 @@ export function AppSelect({
 	compact?: boolean;
 	disabled?: boolean;
 }) {
+	const [open, setOpen] = useState(false);
 	const [container, setContainer] = useState<HTMLDivElement | null>(null);
 	return (
-		<div ref={setContainer} className={compact ? "min-w-0" : "mt-1.5 min-w-0"}>
+		<div
+			ref={setContainer}
+			className={`relative min-w-0 ${compact ? "" : "mt-1.5"} ${open ? "z-20" : ""}`}
+		>
 			<Select
+				onOpenChange={setOpen}
 				disabled={disabled}
 				aria-label={label}
 				value={value}

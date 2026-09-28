@@ -200,6 +200,7 @@
 										"classifiersEnabled": {
 											"type": "boolean"
 										},
+										"canManageWebhooks": { "type": "boolean" },
 										"canManageClassifiers": {
 											"type": "boolean"
 										}
@@ -5784,7 +5785,7 @@
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Create a webhook endpoint; returns signing secret once",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5833,9 +5834,33 @@
 												"email.sent",
 												"conversation.tags_changed",
 												"conversation.classified",
-												"conversation.status_changed"
+												"conversation.status_changed",
+												"conversation.matched"
 											]
 										}
+									},
+									"include_tag_ids": {
+										"type": "array",
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"maxItems": 50,
+										"description": "Include any/all of these active tag IDs. Empty means no inclusion restriction. Omitted on update preserves the existing filter."
+									},
+									"exclude_tag_ids": {
+										"type": "array",
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"maxItems": 50,
+										"description": "Any of these tags prevents delivery. Cannot overlap included tags. Omitted on update preserves the existing filter."
+									},
+									"tag_match": {
+										"type": "string",
+										"enum": ["any", "all"],
+										"default": "any"
 									}
 								}
 							}
@@ -5848,7 +5873,7 @@
 			"put": {
 				"tags": ["Webhooks"],
 				"summary": "Update endpoint",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5905,9 +5930,33 @@
 												"email.sent",
 												"conversation.tags_changed",
 												"conversation.classified",
-												"conversation.status_changed"
+												"conversation.status_changed",
+												"conversation.matched"
 											]
 										}
+									},
+									"include_tag_ids": {
+										"type": "array",
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"maxItems": 50,
+										"description": "Include any/all of these active tag IDs. Empty means no inclusion restriction. Omitted on update preserves the existing filter."
+									},
+									"exclude_tag_ids": {
+										"type": "array",
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"maxItems": 50,
+										"description": "Any of these tags prevents delivery. Cannot overlap included tags. Omitted on update preserves the existing filter."
+									},
+									"tag_match": {
+										"type": "string",
+										"enum": ["any", "all"],
+										"default": "any"
 									}
 								}
 							}

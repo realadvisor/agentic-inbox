@@ -75,7 +75,7 @@ export default function SettingsRoute() {
 					"account",
 					"tags",
 					"models",
-					...(mode.data?.canManageClassifiers ? ["webhooks"] : []),
+					...(mode.data?.canManageWebhooks ? ["webhooks"] : []),
 					...(hasClassifiers && mode.data?.canManageClassifiers
 						? ["runs"]
 						: []),
@@ -89,7 +89,7 @@ export default function SettingsRoute() {
 					</Button>
 				))}
 			</div>
-			{tab === "webhooks" && mode.data?.canManageClassifiers ? (
+			{tab === "webhooks" && mode.data?.canManageWebhooks ? (
 				<WebhookSettings mailboxId={mailboxId!} />
 			) : tab === "models" ? (
 				<AgentModelSettings key={mailboxId} mailboxId={mailboxId!} />

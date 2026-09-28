@@ -179,6 +179,7 @@ const api = {
 			classifierPreview?: boolean;
 			classifiersEnabled?: boolean;
 			canManageClassifiers?: boolean;
+			canManageWebhooks?: boolean;
 		}>("/api/v1/config"),
 
 	getComposerAiConfig: (mailboxId: string) =>
