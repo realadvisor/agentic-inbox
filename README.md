@@ -372,3 +372,39 @@ Tag and group editors expose **Automatic decision rules** (migration 021). Thres
 Migration 022 records classification attempt states transactionally, including queued work and failures before a Jev request. Runs shows these alongside provider requests without duplicating attempts that have a request log. Existing current states are marked as recovered history, with no invented request payloads. Attempt details remain accessible after dispatch and link to the physical requests. Completed attempt history follows the same 30-day retention as provider logs.
 
 Manual reclassification starts the existing leased worker immediately in a request-scoped background task; the transactional outbox and hosted queues remain the recovery path. Enqueue writes are batched, and sibling classifiers reuse one prepared conversation per generation within a processing call. The conversation UI refreshes tags as completed-result counts change.
+
+## Outgoing webhooks
+
+Administrators can configure **Settings → Webhooks** per mailbox: HTTPS endpoint,
+event subscriptions, enable/disable, test ping, and the latest 50 deliveries with
+payloads, response excerpts, timing, and manual retry. Supported events are
+`email.received`, `email.sent`, `conversation.tags_changed`,
+`conversation.classified`, and `conversation.status_changed`. Bodies and attachments
+are excluded. `conversation.classified` contains the results when all pending
+questions for that conversation generation have settled, including review/error
+outcomes; received events precede classification. No historical events are backfilled.
+
+Migration 028 captures subscribed events and delivery intent transactionally.
+Google Cloud Tasks `inbox-webhooks` (5 concurrent) carries only delivery IDs to the
+existing authenticated task handler. Run `scripts/setup-cloud-tasks.sh` before
+production rollout and set `WEBHOOK_SECRET_KEY` to a random 32-byte hex value
+using the deployment secret store. This encrypts endpoint signing secrets at rest;
+retain it across deployments. Secrets are shown once at creation. Local endpoint
+configuration also requires this variable; the local Node server does not dispatch
+outgoing webhooks automatically, preventing copied production subscriptions from
+sending to real integrations.
+
+Delivery uses `X-Webhook-ID`, Unix-seconds `X-Webhook-Timestamp`, and
+`X-Webhook-Signature: v1=<hex HMAC-SHA256>`. Verify the signature over
+`timestamp + '.' + rawRequestBody` using the displayed secret, compare in constant
+time, and reject stale timestamps (for example, older than five minutes). Store the
+event ID to deduplicate: delivery is at least once and ordering is not guaranteed.
+Google OIDC authenticates task delivery to the inbox; the HMAC authenticates the
+outgoing request to your endpoint. Return 2xx after accepting the event durably.
+
+Requests time out after 10 seconds. Network failures, 408, 429, and 5xx retry with
+exponential backoff, up to five attempts; other failures are terminal and visible
+in delivery history. Manual retry preserves the event ID and payload. Redirects
+are rejected; destinations must be HTTPS public hostnames with public DNS answers.
+Completed event logs are retained for 30 days; pending deliveries remain recoverable
+through the existing 15-minute cron. Disabling an endpoint skips waiting deliveries.

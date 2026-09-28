@@ -45,6 +45,7 @@ function rerunLocally(tokens: string[] = []) {
 		});
 }
 const app = createApi(db, {
+	webhookSecretKey: process.env.WEBHOOK_SECRET_KEY,
 	kickClassifiers: rerunLocally,
 	jevKey: process.env.TYPESAFE_API_KEY,
 	agent: agentProviders(undefined, process.env.AI_GATEWAY_API_KEY),

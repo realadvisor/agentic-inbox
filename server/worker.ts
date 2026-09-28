@@ -1,3 +1,4 @@
+import { deliverWebhook, publishWebhooks } from "./webhooks/delivery";
 import {
 	cloudTaskQueues,
 	cloudTasksConfigured,
@@ -26,6 +27,7 @@ import { ingest, type InboundMessage, type ObjectStore } from "./inbound";
 import type { MailSender } from "./outbound";
 
 export interface WorkerEnv extends CloudTasksEnv {
+	WEBHOOK_SECRET_KEY?: string;
 	AI?: AiBinding;
 	AI_GATEWAY_API_KEY?: string;
 	PUBLIC_ORIGIN: string;
@@ -66,11 +68,18 @@ worker.post(taskPath, async (c) => {
 	}
 	const body = taskMessage.safeParse(await c.req.json().catch(() => null));
 	if (!body.success) return c.text("Invalid task envelope", 400);
-	const isDraft = "kind" in body.data;
+	const isWebhook = "kind" in body.data && body.data.kind === "webhook";
+	const isDraft = "kind" in body.data && body.data.kind === "agent-draft";
 	const provider = isDraft
 		? agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY)
 		: undefined;
-	if (isDraft ? !provider?.model : !queuesEnabled(c.env))
+	if (
+		isWebhook
+			? !c.env.WEBHOOK_SECRET_KEY
+			: isDraft
+				? !provider?.model
+				: !queuesEnabled(c.env)
+	)
 		return c.text("Processing is paused", 503);
 	const db = postgres(c.env.HYPERDRIVE.connectionString, {
 		max: 2,
@@ -93,14 +102,22 @@ worker.post(taskPath, async (c) => {
 				},
 			],
 		};
-		if (isDraft) await consumeAgentJobs(db, batch, provider!.model!);
+		if (isWebhook && "token" in body.data)
+			retry = await deliverWebhook(
+				db,
+				body.data.token,
+				c.env.WEBHOOK_SECRET_KEY!,
+			);
+		else if (isDraft) await consumeAgentJobs(db, batch, provider!.model!);
 		else await consumeBatch(db, c.env.TYPESAFE_API_KEY!, batch, fetch, 4);
 	} finally {
 		await db.end({ timeout: 5 });
 	}
-	c.executionCtx.waitUntil(
-		isDraft ? dispatchAgentJobs(c.env) : dispatchClassifiers(c.env, 1),
-	);
+	c.executionCtx.waitUntil(dispatchWebhooks(c.env));
+	if (!isWebhook)
+		c.executionCtx.waitUntil(
+			isDraft ? dispatchAgentJobs(c.env) : dispatchClassifiers(c.env, 1),
+		);
 	if (retry !== undefined) {
 		c.header("Retry-After", String(Math.max(1, retry)));
 		return c.text("Retry task", 503);
@@ -167,6 +184,7 @@ worker.all("/api/*", async (c) => {
 					})(),
 				);
 			},
+			webhookSecretKey: c.env.WEBHOOK_SECRET_KEY,
 			origin: c.env.PUBLIC_ORIGIN,
 			agent: {
 				...agentProviders(c.env.AI, c.env.AI_GATEWAY_API_KEY),
@@ -194,8 +212,10 @@ worker.all("/api/*", async (c) => {
 				return object ? new Uint8Array(await object.arrayBuffer()) : null;
 			},
 		}).fetch(c.req.raw);
-		if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(c.req.method))
+		if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
 			c.executionCtx.waitUntil(dispatchClassifiers(c.env, 10));
+			c.executionCtx.waitUntil(dispatchWebhooks(c.env));
+		}
 		return response;
 	} finally {
 		c.executionCtx.waitUntil(
@@ -246,6 +266,19 @@ async function dispatchAgentJobs(env: WorkerEnv) {
 	}
 }
 
+async function dispatchWebhooks(env: WorkerEnv) {
+	if (!cloudTasksConfigured(env) || !env.WEBHOOK_SECRET_KEY) return;
+	const db = postgres(env.HYPERDRIVE.connectionString, {
+		max: 2,
+		fetch_types: false,
+	});
+	try {
+		await publishWebhooks(db, cloudTaskQueues(env).webhooks);
+	} finally {
+		await db.end({ timeout: 5 });
+	}
+}
+
 export default {
 	async scheduled(_event: unknown, env: WorkerEnv) {
 		// Recovery only: normal ingestion/API writes publish immediately.
@@ -255,6 +288,7 @@ export default {
 			fetch_types: false,
 		});
 		try {
+			await db`DELETE FROM webhook_events WHERE created_at<now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.event_id=webhook_events.id AND d.status='pending')`;
 			await pruneProviderRuns(
 				db,
 				Number(env.CLASSIFIER_LOG_RETENTION_DAYS ?? 30),
@@ -263,6 +297,7 @@ export default {
 			await db.end({ timeout: 5 });
 		}
 		await dispatchAgentJobs(env);
+		await dispatchWebhooks(env);
 	},
 	async email(message: InboundMessage, env: WorkerEnv, ctx?: ExecutionContext) {
 		if (
@@ -287,9 +322,11 @@ export default {
 			if (ctx) {
 				ctx.waitUntil(dispatchClassifiers(env, 10));
 				ctx.waitUntil(dispatchAgentJobs(env));
+				ctx.waitUntil(dispatchWebhooks(env));
 			} else {
 				await dispatchClassifiers(env, 10);
 				await dispatchAgentJobs(env);
+				await dispatchWebhooks(env);
 			}
 		} finally {
 			await db.end({ timeout: 5 });

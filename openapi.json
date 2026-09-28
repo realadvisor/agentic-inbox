@@ -5753,6 +5753,318 @@
 				"operationId": "inspectThreadClassifications",
 				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled."
 			}
+		},
+		"/api/v1/webhooks/{mailbox}": {
+			"get": {
+				"tags": ["Webhooks"],
+				"summary": "List mailbox webhook endpoints",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			},
+			"post": {
+				"tags": ["Webhooks"],
+				"summary": "Create a webhook endpoint; returns signing secret once",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["url", "events"],
+								"properties": {
+									"url": {
+										"type": "string",
+										"format": "uri"
+									},
+									"enabled": {
+										"type": "boolean",
+										"default": true
+									},
+									"events": {
+										"type": "array",
+										"minItems": 1,
+										"items": {
+											"type": "string",
+											"enum": [
+												"email.received",
+												"email.sent",
+												"conversation.tags_changed",
+												"conversation.classified",
+												"conversation.status_changed"
+											]
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/webhooks/{mailbox}/{id}": {
+			"put": {
+				"tags": ["Webhooks"],
+				"summary": "Update endpoint",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["url", "events"],
+								"properties": {
+									"url": {
+										"type": "string",
+										"format": "uri"
+									},
+									"enabled": {
+										"type": "boolean",
+										"default": true
+									},
+									"events": {
+										"type": "array",
+										"minItems": 1,
+										"items": {
+											"type": "string",
+											"enum": [
+												"email.received",
+												"email.sent",
+												"conversation.tags_changed",
+												"conversation.classified",
+												"conversation.status_changed"
+											]
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": ["Webhooks"],
+				"summary": "Delete endpoint and its deliveries",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			}
+		},
+		"/api/v1/webhooks/{mailbox}/{id}/deliveries": {
+			"get": {
+				"tags": ["Webhooks"],
+				"summary": "List latest 50 deliveries with payload and attempts",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			}
+		},
+		"/api/v1/webhooks/{mailbox}/{id}/test": {
+			"post": {
+				"tags": ["Webhooks"],
+				"summary": "Queue a test event",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			}
+		},
+		"/api/v1/webhooks/{mailbox}/{id}/deliveries/{delivery}/retry": {
+			"post": {
+				"tags": ["Webhooks"],
+				"summary": "Retry a failed delivery",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "delivery",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"202": {
+						"description": "Success"
+					},
+					"400": {
+						"description": "Invalid input"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			}
 		}
 	},
 	"components": {

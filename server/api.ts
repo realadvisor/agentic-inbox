@@ -1,3 +1,4 @@
+import { webhookApi } from "./webhooks/api";
 import {
 	draftContentSchema,
 	draftVersionSchema,
@@ -77,6 +78,7 @@ const querySchema = z.object({
 });
 
 export interface ApiOptions {
+	webhookSecretKey?: string;
 	agent?: AgentOptions;
 	jevKey?: string;
 	jevTransport?: typeof fetch;
@@ -147,6 +149,15 @@ export function createApi(db: Database, options: ApiOptions) {
 		console.error("Inbox request failed:", error.message);
 		return c.json({ error: "Request failed" }, 500);
 	});
+	app.route(
+		"/api/v1/webhooks",
+		webhookApi(db, {
+			secretKey: options.webhookSecretKey,
+			canManage:
+				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+		}),
+	);
+
 	app.route("/", documentation());
 	app.get("/api/health", async (c) => {
 		await db`SELECT version FROM inbox_migrations WHERE version = 1`;
