@@ -233,6 +233,7 @@ export function useComposeForm(
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
 	const lastInitializedOptionsRef = useRef<typeof composeOptions | null>(null);
+	const [draftVersion, setDraftVersion] = useState<string | undefined>();
 	const [savedDraftId, setSavedDraftId] = useState<string>();
 	const isDraftEdit = !!composeOptions.draftEmail;
 
@@ -259,6 +260,7 @@ export function useComposeForm(
 		if (lastInitializedOptionsRef.current === composeOptions) return;
 		lastInitializedOptionsRef.current = composeOptions;
 		setSavedDraftId(composeOptions.draftEmail?.id);
+		setDraftVersion(composeOptions.draftEmail?.draft_version ?? undefined);
 
 		const initialFields = buildInitialComposeFields(
 			composeOptions,
@@ -306,9 +308,11 @@ export function useComposeForm(
 						composeOptions.draftEmail?.thread_id ||
 						undefined,
 					draft_id: savedDraftId,
+					draft_version: draftVersion,
 				},
 			});
 			setSavedDraftId(saved.draft_id);
+			setDraftVersion(saved.draft_version);
 			toastManager.add({ title: "Draft saved!" });
 		} catch (err: unknown) {
 			const message =

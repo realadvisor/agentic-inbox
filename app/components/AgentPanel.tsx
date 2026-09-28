@@ -398,6 +398,7 @@ function AgentChat({
 		await Promise.all([
 			client.invalidateQueries({ queryKey: ["agent", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["emails", mailboxId] }),
+			client.invalidateQueries({ queryKey: ["thread-status", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["folders", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["search", mailboxId] }),
 		]);

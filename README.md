@@ -301,6 +301,29 @@ set `CLASSIFIERS_ENABLED=1` in `.env` and restart `pnpm dev`. This exposes the
 existing database-backed classifier routes; the local server does not run the
 hosted Jev queue worker.
 
+## Agent organization tools
+
+Interactive chat can add/remove an existing conversation tag, change Open/Done
+using the current revision, star a message, and mark a whole conversation read or
+unread. These tools reuse API mutation services, retain mailbox scoping and the
+run lease, and record successful changes in the agent turn. Tag and status
+history identifies the agent acting on behalf of the authenticated operator.
+Single-choice and ordered-scale edits preserve the existing manual override rules.
+
+`draft_email` accepts multiple To recipients and optional Cc/Bcc. `get_draft`
+returns a bounded plain-text preview and `draft_version`; `update_draft` changes
+only supplied fields using that version. Omitting body preserves existing rich
+HTML; supplying body replaces it with escaped plain text. A stale version fails
+without overwriting newer edits. The composer also sends the version when saving.
+API clients can pass `draft_version` to `POST .../drafts` for the same protection;
+omission remains supported for older clients. `POST .../threads/:threadId/read`
+accepts `{ "read": false }` to mark unread; no body retains mark-read behavior.
+
+Single requested changes execute directly. The agent is instructed to present
+specific changes and obtain confirmation before acting on multiple conversations;
+no bulk-write tool is exposed. Automatic drafting keeps only its existing
+read-email, read-thread and draft-reply tools. Sending remains manual.
+
 ## Tag groups
 
 Settings → Tags extends the shared tag catalogue with groups. Each group has a
