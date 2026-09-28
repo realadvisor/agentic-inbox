@@ -26,6 +26,12 @@ test("recipient suggestions support keyboard, click, exclusion and free entry", 
 		await to.fill("ali");
 		const alice = page.getByRole("option", { name: /Alice Martin/ });
 		await expect(alice).toBeVisible();
+		await to.pressSequentially("c");
+		await expect(to).toHaveValue("alic");
+		await expect(alice).toBeVisible();
+		await to.pressSequentially("e");
+		await expect(to).toHaveValue("alice");
+		await expect(alice).toBeVisible();
 		await page.screenshot({ path: ".local/recipient-suggestions.png" });
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect
@@ -80,6 +86,7 @@ test("recipient suggestions support keyboard, click, exclusion and free entry", 
 			page.getByRole("option", { name: "alex@example.test", exact: true }),
 		).toBeVisible();
 		await cc.press("Escape");
+		await expect(cc).toHaveValue("alex");
 		await expect(page.getByRole("listbox")).not.toBeVisible();
 		await cc.fill("ale");
 		await expect(
