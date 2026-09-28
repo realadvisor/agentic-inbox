@@ -416,7 +416,7 @@ are excluded. Keep the source and generated plans in private, ignored storage.
 These tools are intentionally restricted to Privacy/Info and the existing Neon
 inbox project; they are not an HTTP import endpoint.
 
-Apply migration 028 before importing. It adds a transaction-local
+Apply migration 029 before importing. It adds a transaction-local
 `inbox.historical_import` flag to the classifier, agent and conversation-status
 triggers. Only an import transaction sets it: normal mail still creates jobs and
 reopens conversations. Imports retain foreign keys, duplicate constraints,
