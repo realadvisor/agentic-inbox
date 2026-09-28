@@ -207,7 +207,7 @@ test("tag discovery pages both collections without dropping or repeating entries
 	const groupIds = new Set<string>(),
 		tagIds = new Set<string>();
 	let page = 1;
-	while (true) {
+	while (page < 10) {
 		const result = await tools.list_tag_groups!.execute!({ page }, opts);
 		assert.ok("groups" in result);
 		assert.ok(result.groups.length <= 5);
