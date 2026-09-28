@@ -60,15 +60,11 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 				name: `Remove ${names[1]} from exclude tags`,
 			}),
 		).toBeVisible();
-		await page.getByLabel("When to send", { exact: true }).click();
 		await page
-			.getByRole("option", {
-				name: "Selected events while tags match",
-				exact: true,
-			})
+			.getByRole("button", { name: "Selected events", exact: true })
 			.click();
 		await page
-			.getByRole("checkbox", { name: "conversation.classified", exact: true })
+			.getByRole("checkbox", { name: "Classification completed", exact: true })
 			.check();
 		await page.getByRole("button", { name: "Save endpoint" }).click();
 		await expect(page.getByLabel("Endpoint URL")).toHaveCount(0);

@@ -3,6 +3,13 @@ import { useTags } from "~/queries/tags";
 import { Button, Input, Checkbox } from "@cloudflare/kumo";
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+const eventLabels: Record<string, string> = {
+	"email.received": "Email received",
+	"email.sent": "Email sent",
+	"conversation.tags_changed": "Tags changed",
+	"conversation.classified": "Classification completed",
+	"conversation.status_changed": "Status changed",
+};
 const events = [
 	"email.received",
 	"email.sent",
@@ -139,7 +146,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 			)}
 			{editing !== undefined && (
 				<form
-					className="rounded-lg border border-kumo-line bg-kumo-base p-5 space-y-4"
+					className="rounded-lg border border-kumo-line bg-kumo-base p-4 space-y-3"
 					onSubmit={async (e) => {
 						e.preventDefault();
 						await action
@@ -167,23 +174,55 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						onChange={(e) => setUrl(e.target.value)}
 						required
 					/>
-					<div className="space-y-3 border-t border-kumo-line pt-4">
+					<div className="space-y-2 border-t border-kumo-line pt-3">
 						<label className="text-sm font-medium">When to send</label>
-						<AppSelect
-							label="When to send"
-							value={trigger}
-							onChange={setTrigger}
-							options={[
-								{ value: "enters", label: "Conversation starts matching tags" },
-								{ value: "events", label: "Selected events while tags match" },
-							]}
-						/>
+						<div
+							role="group"
+							aria-label="When to send"
+							className="flex gap-1 rounded-lg bg-kumo-control p-1 ring-1 ring-kumo-line"
+						>
+							{[
+								{ value: "enters", label: "When tags match" },
+								{ value: "events", label: "Selected events" },
+							].map((option) => (
+								<button
+									key={option.value}
+									type="button"
+									aria-pressed={trigger === option.value}
+									onClick={() => setTrigger(option.value)}
+									className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-blue-500 ${trigger === option.value ? "bg-kumo-base shadow-sm text-kumo-default" : "text-kumo-subtle hover:text-kumo-default"}`}
+								>
+									{option.label}
+								</button>
+							))}
+						</div>
 						<p className="text-xs text-kumo-subtle">
 							{trigger === "enters"
 								? "Send when a conversation begins to meet these conditions, including after Jev adds tags. Existing matches are skipped."
 								: "Send selected events only for conversations that meet these conditions."}
 						</p>
 					</div>
+					{trigger === "events" && (
+						<div
+							className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2"
+							aria-label="Event types"
+						>
+							{events.map((event) => (
+								<Checkbox
+									key={event}
+									label={eventLabels[event]}
+									checked={selected.includes(event)}
+									onCheckedChange={(value) =>
+										setSelected((prev) =>
+											value
+												? [...prev, event]
+												: prev.filter((v) => v !== event),
+										)
+									}
+								/>
+							))}
+						</div>
+					)}
 					<section
 						aria-label="Tag conditions"
 						className="rounded-lg border border-kumo-line"
@@ -192,7 +231,6 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 							{
 								label: "Include tags",
 								title: "Conversation has",
-								hint: "Choose the tags that should trigger this webhook.",
 								values: included,
 								other: excluded,
 								set: setIncluded,
@@ -200,7 +238,6 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 							{
 								label: "Exclude tags",
 								title: "But does not have",
-								hint: "Skip conversations with any of these tags.",
 								values: excluded,
 								other: included,
 								set: setExcluded,
@@ -208,7 +245,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						].map((group) => (
 							<div
 								key={group.label}
-								className="min-w-0 p-4 space-y-3 border-b border-kumo-line last:border-b-0"
+								className="min-w-0 p-3 space-y-2 border-b border-kumo-line last:border-b-0"
 							>
 								<div className="flex flex-wrap items-center justify-between gap-2">
 									<div className="text-sm font-medium">{group.title}</div>
@@ -237,7 +274,6 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 										<span className="text-xs text-kumo-subtle">Optional</span>
 									)}
 								</div>
-								<p className="text-xs text-kumo-subtle">{group.hint}</p>
 								<AppSelect
 									label={group.label}
 									value=""
@@ -305,27 +341,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 								? "Add at least one tag or exclusion to define a condition."
 								: "No conditions added. All selected events will be sent."}
 					</p>
-					{trigger === "events" && (
-						<div className="grid grid-cols-1 gap-3">
-							{events.map((event) => (
-								<Checkbox
-									key={event}
-									label={event}
-									checked={selected.includes(event)}
-									onCheckedChange={(value) =>
-										setSelected((prev) =>
-											value
-												? [...prev, event]
-												: prev.filter((v) => v !== event),
-										)
-									}
-								/>
-							))}
-						</div>
-					)}
 					<p className="text-xs text-kumo-subtle">
-						{trigger === "events" &&
-							"Use conversation.classified to receive Jev results. "}
 						Email bodies and attachments are not included.
 					</p>
 					<div className="flex gap-2">
