@@ -4,6 +4,7 @@ import { Button, Input, Checkbox } from "@cloudflare/kumo";
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 const eventLabels: Record<string, string> = {
+	"conversation.matched": "Tag conditions matched",
 	"email.received": "Email received",
 	"email.sent": "Email sent",
 	"conversation.tags_changed": "Tags changed",
@@ -11,6 +12,7 @@ const eventLabels: Record<string, string> = {
 	"conversation.status_changed": "Status changed",
 };
 const events = [
+	"conversation.matched",
 	"email.received",
 	"email.sent",
 	"conversation.tags_changed",
@@ -45,7 +47,6 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 	const [included, setIncluded] = useState<string[]>([]);
 	const [excluded, setExcluded] = useState<string[]>([]);
 	const [match, setMatch] = useState("any");
-	const [trigger, setTrigger] = useState("enters");
 	const tagLabel = (id: string) => {
 		const t = tags.data?.find((t) => t.id === id);
 		return t
@@ -56,7 +57,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 		qc = useQueryClient();
 	const [editing, setEditing] = useState<Endpoint | null | undefined>(),
 		[url, setUrl] = useState(""),
-		[selected, setSelected] = useState<string[]>(["conversation.classified"]),
+		[selected, setSelected] = useState<string[]>(["conversation.matched"]),
 		[secret, setSecret] = useState(""),
 		[history, setHistory] = useState("");
 	const list = useQuery({
@@ -103,17 +104,10 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 	const edit = (e: Endpoint | null) => {
 		setEditing(e);
 		setUrl(e?.url ?? "");
-		setSelected(
-			e?.events.filter((v) => v !== "conversation.matched") ?? [
-				"conversation.classified",
-			],
-		);
+		setSelected(e?.events ?? ["conversation.matched"]);
 		setIncluded(e?.include_tag_ids ?? []);
 		setExcluded(e?.exclude_tag_ids ?? []);
 		setMatch(e?.tag_match ?? "any");
-		setTrigger(
-			!e || e.events.includes("conversation.matched") ? "enters" : "events",
-		);
 		setSecret("");
 	};
 	return (
@@ -155,8 +149,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 								method: editing ? "PUT" : "POST",
 								body: {
 									url,
-									events:
-										trigger === "enters" ? ["conversation.matched"] : selected,
+									events: selected,
 									include_tag_ids: included,
 									exclude_tag_ids: excluded,
 									tag_match: match,
@@ -174,39 +167,9 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						onChange={(e) => setUrl(e.target.value)}
 						required
 					/>
-					<div className="space-y-2 border-t border-kumo-line pt-3">
-						<label className="text-sm font-medium">When to send</label>
-						<div
-							role="group"
-							aria-label="When to send"
-							className="flex gap-1 rounded-lg bg-kumo-control p-1 ring-1 ring-kumo-line"
-						>
-							{[
-								{ value: "enters", label: "When tags match" },
-								{ value: "events", label: "Selected events" },
-							].map((option) => (
-								<button
-									key={option.value}
-									type="button"
-									aria-pressed={trigger === option.value}
-									onClick={() => setTrigger(option.value)}
-									className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-blue-500 ${trigger === option.value ? "bg-kumo-base shadow-sm text-kumo-default" : "text-kumo-subtle hover:text-kumo-default"}`}
-								>
-									{option.label}
-								</button>
-							))}
-						</div>
-						<p className="text-xs text-kumo-subtle">
-							{trigger === "enters"
-								? "Send when a conversation begins to meet these conditions, including after Jev adds tags. Existing matches are skipped."
-								: "Send selected events only for conversations that meet these conditions."}
-						</p>
-					</div>
-					{trigger === "events" && (
-						<div
-							className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2"
-							aria-label="Event types"
-						>
+					<fieldset className="border-t border-kumo-line pt-3 space-y-2">
+						<legend className="text-sm font-medium">Events</legend>
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
 							{events.map((event) => (
 								<Checkbox
 									key={event}
@@ -222,7 +185,13 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 								/>
 							))}
 						</div>
-					)}
+						{selected.includes("conversation.matched") && (
+							<p className="text-xs text-kumo-subtle">
+								Tag conditions matched fires when a conversation starts meeting
+								the conditions below, including after Jev adds tags.
+							</p>
+						)}
+					</fieldset>
 					<section
 						aria-label="Tag conditions"
 						className="rounded-lg border border-kumo-line"
@@ -337,7 +306,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 					<p className="text-xs text-kumo-subtle" aria-live="polite">
 						{included.length || excluded.length
 							? `Matches ${included.length === 1 ? "the selected tag" : included.length ? `${match === "all" ? "all" : "any"} of ${included.length} selected tags` : "any conversation"}${excluded.length ? `, excluding ${excluded.length} tag${excluded.length === 1 ? "" : "s"}` : ""}.`
-							: trigger === "enters"
+							: selected.includes("conversation.matched")
 								? "Add at least one tag or exclusion to define a condition."
 								: "No conditions added. All selected events will be sent."}
 					</p>
@@ -349,9 +318,11 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 							type="submit"
 							variant="primary"
 							disabled={
-								(trigger === "enters"
-									? !included.length && !excluded.length
-									: !selected.length) || action.isPending
+								!selected.length ||
+								(selected.includes("conversation.matched") &&
+									!included.length &&
+									!excluded.length) ||
+								action.isPending
 							}
 						>
 							Save endpoint
@@ -379,9 +350,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 					<div className="font-medium break-all">{e.url}</div>
 					<p className="text-xs text-kumo-subtle">
 						{e.enabled ? "Enabled" : "Disabled"} ·{" "}
-						{e.events.includes("conversation.matched")
-							? "Starts matching tags"
-							: e.events.join(", ")}
+						{e.events.map((event) => eventLabels[event] ?? event).join(", ")}
 					</p>
 					{(e.include_tag_ids.length > 0 || e.exclude_tag_ids.length > 0) && (
 						<p className="text-sm text-kumo-subtle">

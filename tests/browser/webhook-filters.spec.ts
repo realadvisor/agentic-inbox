@@ -61,8 +61,8 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 			}),
 		).toBeVisible();
 		await page
-			.getByRole("button", { name: "Selected events", exact: true })
-			.click();
+			.getByRole("checkbox", { name: "Tag conditions matched", exact: true })
+			.uncheck();
 		await page
 			.getByRole("checkbox", { name: "Classification completed", exact: true })
 			.check();
