@@ -418,7 +418,7 @@ inbox project; they are not an HTTP import endpoint.
 
 Apply migration 029 before importing. It adds a transaction-local
 `inbox.historical_import` flag to the classifier, agent and conversation-status
-triggers. Only an import transaction sets it: normal mail still creates jobs and
+and webhook triggers. Only an import transaction sets it: normal mail still creates jobs and
 reopens conversations. Imports retain foreign keys, duplicate constraints,
 conversation registration and contact indexing. Later migrations replacing these
 trigger functions must retain the guard; the importer refuses to apply without it.
@@ -474,4 +474,4 @@ reused on retry; the importer does not automatically delete objects.
 Before declaring completion, reconcile every source Message-ID with the target,
 verify imported dates/read/folder state and attachment counts, sample raw object
 hashes and attachment contents, and confirm no import-generated classifier or
-agent jobs. Run classification separately only when explicitly requested.
+agent jobs or webhook events. Run classification separately only when explicitly requested.

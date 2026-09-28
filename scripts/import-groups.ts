@@ -93,8 +93,8 @@ async function pool<T>(items: T[], fn: (x: T) => Promise<void>, workers = 8) {
 }
 try {
 	const guard =
-		await db`SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace=n.oid WHERE n.nspname='public' AND p.proname IN ('classifier_email_changed','enqueue_agent_draft','inbox_message_thread') AND position('inbox.historical_import' in pg_get_functiondef(p.oid))>0`;
-	if (values.apply && guard.length !== 3)
+		await db`SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace=n.oid WHERE n.nspname='public' AND p.proname IN ('classifier_email_changed','enqueue_agent_draft','inbox_message_thread','emit_inbox_webhook') AND position('inbox.historical_import' in pg_get_functiondef(p.oid))>0`;
+	if (values.apply && guard.length !== 4)
 		throw Error("Historical import guard missing");
 	const existing =
 		await db`SELECT id,message_id,thread_id,in_reply_to,email_references,date FROM emails WHERE mailbox_id=${mailbox} ORDER BY date,id`;
@@ -316,6 +316,16 @@ try {
 				})),
 			});
 			const inserted = await db.begin(async (tx) => {
+				// Coordinate each batch with migrations; re-check guards after any release.
+				await tx`SELECT pg_advisory_xact_lock_shared(7342201)`;
+				const guarded =
+					await tx`SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON p.pronamespace=n.oid WHERE n.nspname='public' AND p.proname IN ('classifier_email_changed','enqueue_agent_draft','inbox_message_thread','emit_inbox_webhook') AND position('inbox.historical_import' in pg_get_functiondef(p.oid))>0`;
+				if (guarded.length !== 4)
+					throw Error("Import guards changed during the run");
+				const unexpected =
+					await tx`SELECT tgname FROM pg_trigger WHERE tgrelid='public.emails'::regclass AND NOT tgisinternal AND tgenabled IN ('O','A') AND tgname NOT IN ('register_email_conversation','zz_classifier_email_changed','agent_incoming_email','status_email_insert','maintain_mailbox_contacts','webhook_email')`;
+				if (unexpected.length)
+					throw Error("New email trigger requires import review");
 				await tx`SELECT pg_advisory_xact_lock(hashtext(${mailbox}))`;
 				await tx`SELECT set_config('inbox.historical_import','on',true)`;
 				const rows =

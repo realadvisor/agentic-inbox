@@ -13,3 +13,15 @@ BEGIN
     EXECUTE guarded;
   END LOOP;
 END $$;
+
+-- Suppress all outgoing webhooks during an import, including triggers introduced
+-- by migration 028. The publisher sees no import event to deliver later.
+DO $$
+DECLARE definition text;
+BEGIN
+  SELECT pg_get_functiondef(to_regprocedure('emit_inbox_webhook(text,text,jsonb,text)')) INTO definition;
+  IF definition IS NULL THEN RAISE EXCEPTION 'Missing webhook emitter'; END IF;
+  IF strpos(definition, 'inbox.historical_import') = 0 THEN
+    EXECUTE regexp_replace(definition, E'\\mBEGIN\\M', E'BEGIN\n IF current_setting(''inbox.historical_import'', true) = ''on'' THEN RETURN NULL; END IF;');
+  END IF;
+END $$;

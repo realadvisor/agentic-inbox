@@ -17,6 +17,7 @@ before(async () => {
 	tag = t.id;
 	await db`INSERT INTO classifiers(tag_id,question,enabled) VALUES(${tag},'Needs reply?',true)`;
 	await db`INSERT INTO agent_settings(mailbox_id,auto_draft) VALUES(${mailbox},true)`;
+	await db`INSERT INTO webhook_endpoints(mailbox_id,url,events,secret) VALUES(${mailbox},'https://example.test/webhook',ARRAY['email.received','email.sent'],'synthetic')`;
 });
 after(async () => {
 	await db.end();
@@ -49,6 +50,7 @@ test("import flag preserves constraints and suppresses jobs; normal delivery sti
 	);
 	assert.equal((await db`SELECT * FROM classifier_outbox`).length, 0);
 	assert.equal((await db`SELECT * FROM agent_jobs`).length, 0);
+	assert.equal((await db`SELECT * FROM webhook_events`).length, 0);
 	await assert.rejects(
 		db.begin(async (tx) => {
 			await tx`SELECT set_config('inbox.historical_import','on',true)`;
@@ -63,6 +65,7 @@ test("import flag preserves constraints and suppresses jobs; normal delivery sti
 	);
 	assert.equal((await db`SELECT * FROM classifier_outbox`).length, 1);
 	assert.equal((await db`SELECT * FROM agent_jobs`).length, 1);
+	assert.equal((await db`SELECT * FROM webhook_events`).length, 1);
 });
 test("historical parent leaves existing resolved conversation and classifications unchanged", async () => {
 	const row = email();
