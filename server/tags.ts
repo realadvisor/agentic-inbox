@@ -1,3 +1,4 @@
+import { transaction } from "./transactions";
 import { HTTPException } from "hono/http-exception";
 import type { Database } from "./db";
 
@@ -11,7 +12,7 @@ export async function setConversationTags(
 	actor: string,
 ) {
 	const ids = [...new Set(threads)].sort();
-	await db.begin(async (tx) => {
+	await transaction(db, async (tx) => {
 		const [tag] =
 			await tx`SELECT id FROM tags WHERE id = ${tagId} AND archived_at IS NULL FOR KEY SHARE`;
 		if (!tag) throw new HTTPException(404, { message: "Tag not found" });

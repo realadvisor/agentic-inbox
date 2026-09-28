@@ -2027,9 +2027,9 @@
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/read": {
 			"post": {
 				"operationId": "postMarkThreadRead",
-				"summary": "Mark thread read",
+				"summary": "Set conversation read state",
 				"tags": ["Threads"],
-				"description": "Send Content-Type: application/json with an empty object. Unknown threads also return 204.",
+				"description": "Marks every message in one mailbox-scoped conversation read or unread. With no body, marks read for backwards compatibility. Unknown conversations return 404.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2114,6 +2114,23 @@
 					},
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					}
+				},
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"read": {
+										"type": "boolean",
+										"default": true
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -2561,7 +2578,7 @@
 				"operationId": "postSaveDraft",
 				"summary": "Save draft",
 				"tags": ["Drafts"],
-				"description": "With draft_id, updates an existing draft and returns 200. in_reply_to is an internal email UUID (not an RFC Message-ID).",
+				"description": "Save a new draft or update an existing draft. Pass draft_version from the latest email detail or save response to protect concurrent edits. A stale version returns 409 without changing content. Existing clients may omit the version; agent updates always require it.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -5932,6 +5949,12 @@
 							"$ref": "#/components/schemas/ConversationTag"
 						},
 						"description": "Active tags on this mailbox/conversation; shared by every message, including replies and archived messages."
+					},
+					"draft_version": {
+						"type": "string",
+						"pattern": "^[a-f0-9]{32}$",
+						"description": "Opaque version of editable draft fields. Send the version read from the draft to reject stale edits with HTTP 409.",
+						"nullable": true
 					}
 				},
 				"required": [
@@ -6080,6 +6103,11 @@
 					"in_reply_to": {
 						"type": "string",
 						"format": "uuid"
+					},
+					"draft_version": {
+						"type": "string",
+						"pattern": "^[a-f0-9]{32}$",
+						"description": "Opaque version of editable draft fields. Send the version read from the draft to reject stale edits with HTTP 409."
 					}
 				},
 				"required": ["body"]
@@ -6090,6 +6118,11 @@
 					"draft_id": {
 						"type": "string",
 						"format": "uuid"
+					},
+					"draft_version": {
+						"type": "string",
+						"pattern": "^[a-f0-9]{32}$",
+						"description": "Opaque version of editable draft fields. Send the version read from the draft to reject stale edits with HTTP 409."
 					}
 				},
 				"required": ["draft_id"]

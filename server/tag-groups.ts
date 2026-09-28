@@ -4,6 +4,10 @@ import { z } from "zod";
 import type { Database } from "./db";
 import { groupQuestion, tagGroupInput } from "../shared/tag-groups";
 
+export async function listTagGroups(db: Database, page?: number) {
+	return db`SELECT g.*,coalesce((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL),'[]'::json) AS tags FROM tag_groups g ORDER BY lower(g.name),g.id ${page ? db`LIMIT 6 OFFSET ${(page - 1) * 5}` : db``}`;
+}
+
 export function tagGroupsApi(db: Database, admin: boolean) {
 	const app = new Hono();
 	app.use("*", async (c, next) => {
@@ -13,11 +17,8 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 			});
 		await next();
 	});
-	app.get("/", async (c) =>
-		c.json(
-			await db`SELECT g.*,coalesce((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL),'[]'::json) AS tags FROM tag_groups g ORDER BY lower(g.name),g.id`,
-		),
-	);
+	app.get("/", async (c) => c.json(await listTagGroups(db)));
+
 	async function save(groupId: string, body: unknown, creating: boolean) {
 		const input = tagGroupInput.parse(body);
 		return db.begin(async (tx) => {

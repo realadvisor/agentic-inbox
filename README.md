@@ -290,6 +290,8 @@ Workers AI choices use the `AI` binding through `workers-ai-provider`: Kimi K2.6
 
 The chat follows the CRM/Mako Vercel AI SDK architecture: `@ai-sdk/react` `useChat`, `DefaultChatTransport`, and server `streamText` → `toUIMessageStreamResponse`. It renders Markdown and expandable tool activity with draft review links. Native UI messages (including tool results) persist in Postgres and are converted back to model messages for bounded follow-up context. A client disconnect aborts generation; the server drains the remaining stream to persist partial progress and release the mailbox lease within Cloudflare’s cleanup window. Changes already saved remain available. Legacy turns remain readable. Postgres stores chat history, the selected model for each turn, actor, and tool results. The panel displays the 30 most recent turns. The model sees up to 30 prior turns within a conservative model-aware context budget and bounded email text; attachments are listed but not submitted. Email content is treated as untrusted. Only one agent turn can write per mailbox at a time. Runs time out after two minutes with a three-minute mutation lease; disconnected or interrupted runs are not automatically replayed. Check history and saved drafts before retrying. Automatic jobs are deduplicated by incoming email and never replay a model run that might already have created a draft. Turning automatic drafting off prevents further writes by active automatic runs.
 
+Interactive chat can read tag and ordered-scale definitions (`list_tag_groups`) and resolve recipients from the current mailbox’s contact history (`search_recipients`). Email and thread reads include tags, current scores, score confidence/review state and conversation workflow revisions/activity. `list_emails` and `search_emails` share the HTTP API store and support tags, Open/Done status, date bounds, read/starred state, review filtering, thread grouping, score ordering and pagination. Search dates use ISO timestamps and the end bound is exclusive; `has_more` identifies another page. Definitions are shared across mailboxes, while messages and contacts remain mailbox-scoped. Automatic drafting still exposes only `get_email`, `get_thread` and `draft_reply`, restricted to the triggering conversation.
+
 Deployment requires migrations **009–017**, the Workers AI `AI` binding, and the Google Cloud Tasks `inbox-agent-drafts` queue provisioned by `scripts/setup-cloud-tasks.sh`. Enable Anthropic/OpenAI with `pnpm exec wrangler secret put AI_GATEWAY_API_KEY`, then refresh the model list in settings. Existing CRM/Mako gateway credentials can be supplied through the deployment secret store; do not commit keys. The ingestion event dispatches its durable Postgres outbox; the existing 15-minute cron recovers unpublished or exhausted deliveries. Chat does not depend on the automatic queue. The local Node server supports gateway chat when `AI_GATEWAY_API_KEY` is in `.env`; automatic drafting requires Google Cloud Tasks delivery to the Worker. Integration tests exercise catalogs, model overrides, streaming, draft tools and queue processing using deterministic models and isolated local Postgres schemas, with no external email delivery.
 
 The assistant normalizes historical tool calls across providers, including failed and interrupted turns. Old context is omitted as complete turns when its budget is exceeded; there is no automatic summary generation. **Stop** revokes a specific run’s write lease, retaining earlier saved changes; generation observes cancellation within its polling interval. Refreshing reconnects the UI to persisted progress through polling, not SSE replay. Completed turns record token usage and, when catalog pricing exists, an approximate model cost excluding caching adjustments, discounts and additional fees. Failed or stopped turns do not display a potentially incomplete cost estimate.
@@ -298,6 +300,29 @@ For a local preview of the complete classifier UI (including Runs and Needs revi
 set `CLASSIFIERS_ENABLED=1` in `.env` and restart `pnpm dev`. This exposes the
 existing database-backed classifier routes; the local server does not run the
 hosted Jev queue worker.
+
+## Agent organization tools
+
+Interactive chat can add/remove an existing conversation tag, change Open/Done
+using the current revision, star a message, and mark a whole conversation read or
+unread. These tools reuse API mutation services, retain mailbox scoping and the
+run lease, and record successful changes in the agent turn. Tag and status
+history identifies the agent acting on behalf of the authenticated operator.
+Single-choice and ordered-scale edits preserve the existing manual override rules.
+
+`draft_email` accepts multiple To recipients and optional Cc/Bcc. `get_draft`
+returns a bounded plain-text preview and `draft_version`; `update_draft` changes
+only supplied fields using that version. Omitting body preserves existing rich
+HTML; supplying body replaces it with escaped plain text. A stale version fails
+without overwriting newer edits. The composer also sends the version when saving.
+API clients can pass `draft_version` to `POST .../drafts` for the same protection;
+omission remains supported for older clients. `POST .../threads/:threadId/read`
+accepts `{ "read": false }` to mark unread; no body retains mark-read behavior.
+
+Single requested changes execute directly. The agent is instructed to present
+specific changes and obtain confirmation before acting on multiple conversations;
+no bulk-write tool is exposed. Automatic drafting keeps only its existing
+read-email, read-thread and draft-reply tools. Sending remains manual.
 
 ## Tag groups
 

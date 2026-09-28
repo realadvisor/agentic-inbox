@@ -84,6 +84,7 @@ export interface Email {
 	participants?: string;
 	needs_reply?: boolean;
 	has_draft?: boolean;
+	draft_version?: string | null;
 }
 
 export interface Attachment {
