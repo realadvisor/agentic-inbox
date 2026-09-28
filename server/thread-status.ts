@@ -1,3 +1,4 @@
+import { transaction } from "./transactions";
 import { HTTPException } from "hono/http-exception";
 import type { Database } from "./db";
 import type {
@@ -54,7 +55,7 @@ export async function changeThreadStatus(
 	input: StatusChange,
 	actor = "local-synthetic-user",
 ) {
-	return db.begin(async (tx) => {
+	return transaction(db, async (tx) => {
 		const [previous] = await tx<
 			StateRow[]
 		>`SELECT * FROM conversations WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} FOR UPDATE`;

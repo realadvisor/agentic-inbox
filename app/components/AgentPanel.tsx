@@ -400,6 +400,7 @@ function AgentChat({
 			client.invalidateQueries({ queryKey: ["emails", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["folders", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["search", mailboxId] }),
+			client.invalidateQueries({ queryKey: ["thread-status", mailboxId] }),
 		]);
 	};
 	const transport = useMemo(

@@ -17,6 +17,13 @@ import type { InboxChatMessage } from "../../shared/agent";
 import { draftIdFromOutput } from "../../shared/agent-messages";
 
 const labels: Record<string, string> = {
+	get_draft: "Read draft",
+	update_draft: "Updated draft",
+	set_thread_tag: "Updated conversation tag",
+	get_thread_status: "Read conversation status",
+	set_thread_status: "Updated conversation status",
+	set_email_starred: "Updated star",
+	set_thread_read: "Updated conversation read status",
 	list_emails: "Read inbox",
 	get_email: "Read email",
 	get_thread: "Read conversation",

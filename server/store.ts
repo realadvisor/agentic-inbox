@@ -103,7 +103,7 @@ export class InboxStore {
 			(
 				await this.db<
 					MessageRow[]
-				>`SELECT * FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
+				>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
 			)[0],
 		);
 		const attachments = await this.db<
@@ -119,7 +119,7 @@ export class InboxStore {
 	async thread(mailbox: string, thread: string) {
 		const rows = await this.db<
 			MessageRow[]
-		>`SELECT * FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
+		>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
 		const attachments = await this.db<
 			(Attachment & { email_id: string })[]
 		>`SELECT a.id, a.email_id, a.filename, a.mimetype, a.size

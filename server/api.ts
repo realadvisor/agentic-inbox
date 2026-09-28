@@ -1,3 +1,11 @@
+import {
+	draftContentSchema,
+	draftVersionSchema,
+	updateDraft,
+	updateMessageFlags,
+	messageFlagsSchema,
+	setThreadRead,
+} from "./email-actions";
 import { recipientSuggestions } from "./contacts";
 import {
 	statusChangeSchema,
@@ -35,15 +43,11 @@ const sendSchema = z
 		text: text.optional(),
 	})
 	.refine((value) => value.html || value.text, "Message body is required");
-const draftSchema = z.object({
-	to: z.string().max(4000).default(""),
-	cc: z.string().max(4000).default(""),
-	bcc: z.string().max(4000).default(""),
-	subject: z.string().max(1000).default(""),
-	body: text,
+const draftSchema = draftContentSchema.extend({
 	in_reply_to: id.optional(),
 	thread_id: id.optional(),
 	draft_id: id.optional(),
+	draft_version: draftVersionSchema.optional(),
 });
 const tagSchema = z
 	.object({
@@ -348,19 +352,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		),
 	);
 	app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
-		const input = z
-			.object({ read: z.boolean().optional(), starred: z.boolean().optional() })
-			.strict()
-			.refine((v) => Object.keys(v).length > 0)
-			.parse(await c.req.json());
+		const input = messageFlagsSchema.parse(await c.req.json());
 		const messageId = id.parse(c.req.param("id"));
-		const [row] = await db<MessageRow[]>`UPDATE emails SET ${db(
-			input,
-		)} WHERE mailbox_id = ${c.req.param(
-			"mailboxId",
-		)} AND id = ${messageId} RETURNING *`;
-		if (!row) throw new HTTPException(404);
-		return c.json(await store.message(row.mailbox_id, row.id));
+		await updateMessageFlags(db, c.req.param("mailboxId"), messageId, input);
+		return c.json(await store.message(c.req.param("mailboxId"), messageId));
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
 		const [outbound] =
@@ -424,9 +419,17 @@ export function createApi(db: Database, options: ApiOptions) {
 		},
 	);
 	app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c) => {
-		await db`UPDATE emails SET read = true WHERE mailbox_id = ${c.req.param(
-			"mailboxId",
-		)} AND thread_id = ${id.parse(c.req.param("threadId"))}`;
+		const body = await c.req.text();
+		const input = z
+			.object({ read: z.boolean().default(true) })
+			.strict()
+			.parse(body ? JSON.parse(body) : {});
+		await setThreadRead(
+			db,
+			c.req.param("mailboxId"),
+			id.parse(c.req.param("threadId")),
+			input.read,
+		);
 		return c.body(null, 204);
 	});
 	app.get("/api/v1/mailboxes/:mailboxId/folders", async (c) =>
@@ -472,11 +475,15 @@ export function createApi(db: Database, options: ApiOptions) {
 		} else if (threadId && !(await store.thread(mailbox.id, threadId)).length)
 			throw new HTTPException(404);
 		if (input.draft_id) {
-			const [row] =
-				await db`UPDATE emails SET recipient = ${input.to}, cc = ${input.cc}, bcc = ${input.bcc}, subject = ${input.subject}, body = ${input.body}, date = now()
-				WHERE mailbox_id = ${mailbox.id} AND id = ${input.draft_id} AND delivery_status = 'draft' RETURNING id`;
-			if (!row) throw new HTTPException(404);
-			return c.json({ draft_id: row.id });
+			return c.json(
+				await updateDraft(
+					db,
+					mailbox.id,
+					input.draft_id,
+					input,
+					input.draft_version,
+				),
+			);
 		}
 		const draft = await store.insert(mailbox.id, {
 			sender: mailbox.email,
@@ -491,7 +498,14 @@ export function createApi(db: Database, options: ApiOptions) {
 			thread_id: threadId,
 			in_reply_to: input.in_reply_to,
 		});
-		return c.json({ draft_id: draft?.id }, 201);
+		return c.json(
+			{
+				draft_id: draft!.id,
+				draft_version: (await store.message(mailbox.id, draft!.id))
+					.draft_version,
+			},
+			201,
+		);
 	});
 	for (const action of ["", "/:id/reply", "/:id/forward"]) {
 		app.post(`/api/v1/mailboxes/:mailboxId/emails${action}`, async (c) => {

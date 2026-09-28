@@ -268,9 +268,13 @@ const api = {
 			in_reply_to?: string;
 			thread_id?: string;
 			draft_id?: string;
+			draft_version?: string;
 		},
 	) =>
-		post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
+		post<{ draft_id: string; draft_version: string }>(
+			`/api/v1/mailboxes/${mailboxId}/drafts`,
+			draft,
+		),
 	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
