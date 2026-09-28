@@ -408,3 +408,70 @@ in delivery history. Manual retry preserves the event ID and payload. Redirects
 are rejected; destinations must be HTTPS public hostnames with public DNS answers.
 Completed event logs are retained for 30 days; pending deliveries remain recoverable
 through the existing 15-minute cron. Disabling an endpoint skips waiting deliveries.
+## Importing the Privacy and Info Groups history
+
+Use the offline import tools for an explicitly selected `topics.mbox`, not the
+whole Groups export. Pending moderation, membership files and unrelated groups
+are excluded. Keep the source and generated plans in private, ignored storage.
+These tools are intentionally restricted to Privacy/Info and the existing Neon
+inbox project; they are not an HTTP import endpoint.
+
+Apply migration 029 before importing. It adds a transaction-local
+`inbox.historical_import` flag to the classifier, agent and conversation-status
+and webhook triggers. Only an import transaction sets it: normal mail still creates jobs and
+reopens conversations. Imports retain foreign keys, duplicate constraints,
+conversation registration and contact indexing. Later migrations replacing these
+trigger functions must retain the guard; the importer refuses to apply without it.
+
+```sh
+python3 scripts/index-groups-import.py --name privacy \
+  --mbox /private/path/privacy.mbox --output .local/import-privacy
+pnpm exec tsx --env-file=.env.cloud scripts/plan-groups-import.ts \
+  --index .local/import-privacy/privacy-index.json
+pnpm exec tsx --env-file=.env.cloud scripts/import-groups.ts \
+  --plan .local/import-privacy/privacy-plan.json
+```
+
+Review the summary (counts, dates, duplicates, attachments and errors). The first
+script verifies MBOX boundaries and group headers, and the second verifies every
+message's group identity, MIME and original date. No write to Neon or R2 occurs
+until `--apply`. The original exported MIME bytes, including any MBOX quoting,
+are preserved unchanged. Historical messages up to 50 MiB are supported offline;
+the live inbound limit remains 10 MiB. Invalid records stop application.
+
+For apply, create ignored `.local/r2.json` with the existing account and bucket:
+
+```json
+{
+  "name": "inbox-history-import",
+  "account_id": "71c7813809b4adb2fc4766ba1fd5cf2d",
+  "compatibility_date": "2026-09-22",
+  "r2_buckets": [{
+    "binding": "ATTACHMENTS",
+    "bucket_name": "realadvisor-email-inbox-prototype",
+    "remote": true
+  }]
+}
+```
+
+Authenticate Wrangler normally, then run the same import command with
+`--limit 100 --apply` for a pilot, verify it, and rerun with `--apply` for the rest.
+Use `--name info` and its selected MBOX to prepare Info separately. Replies are
+linked by Message-ID/reference components, including historical parents of live
+messages. Conflicts between existing conversation IDs stop the import for review;
+existing tags, read/folder state and conversation status are never overwritten.
+
+Received history is archived and marked read; messages whose From is the public
+mailbox address go to Sent without being sent again. Uploads use eight bounded
+workers with retries, outside the database transaction. Each batch commits at
+most 100 emails and their attachments atomically. Deterministic IDs/object keys,
+per-message SHA-256 validation and a flushed private NDJSON manifest make retries
+safe. After an uncertain commit, rerun the same plan: the database's Message-ID
+constraint determines what remains. Do not regenerate the plan or its baseline
+snapshot midway through an import. Orphaned R2 objects from a failed batch can be
+reused on retry; the importer does not automatically delete objects.
+
+Before declaring completion, reconcile every source Message-ID with the target,
+verify imported dates/read/folder state and attachment counts, sample raw object
+hashes and attachment contents, and confirm no import-generated classifier or
+agent jobs or webhook events. Run classification separately only when explicitly requested.
