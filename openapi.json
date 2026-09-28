@@ -5587,7 +5587,7 @@
 		"/api/v1/mailboxes/{mailboxId}/recipients": {
 			"get": {
 				"tags": ["Mailboxes"],
-				"summary": "Suggest recipients from mailbox contact history",
+				"summary": "Suggest recipients from mailbox and All contact history",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -5617,7 +5617,7 @@
 				],
 				"responses": {
 					"200": {
-						"description": "Up to five suggestions, ordered by exact email match, sent frequency and recency.",
+						"description": "Up to five unique suggestions. Current-mailbox contacts rank before All contacts; within each source, exact email match, sent frequency and recency determine order.",
 						"content": {
 							"application/json": {
 								"schema": {

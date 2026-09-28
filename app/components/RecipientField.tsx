@@ -86,7 +86,12 @@ export default function RecipientField({
 						inputValue={input}
 						open={open && !error && (suggestions.length > 0 || unavailable)}
 						onOpenChange={setOpen}
-						onInputValueChange={setInput}
+						onInputValueChange={(next, details) => {
+							// Async results close the popup between keystrokes. The
+							// combobox must not reset our free-form text to its null selection.
+							if (details.reason === "input-change") setInput(next);
+							else details.cancel();
+						}}
 						onItemHighlighted={setHighlighted}
 						itemToStringLabel={(item) => item.email}
 						onValueChange={(item) => {
