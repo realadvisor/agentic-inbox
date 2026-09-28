@@ -25,7 +25,7 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 		await page.getByLabel("Endpoint URL").fill("https://hooks.example.com/n8n");
 		await expect(
 			page.getByRole("button", { name: "Save endpoint" }),
-		).toBeDisabled();
+		).toBeEnabled();
 		await page.getByLabel("Include tags", { exact: true }).click();
 		await page.getByRole("option", { name: names[0], exact: true }).click();
 		await page.getByLabel("Exclude tags", { exact: true }).click();
@@ -40,7 +40,7 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 		).toBeVisible();
 		const [saved] =
 			await db`SELECT * FROM webhook_endpoints WHERE mailbox_id=${mailbox}`;
-		expect(saved.events).toEqual(["conversation.matched"]);
+		expect(saved.events).toEqual(["conversation.classified"]);
 		expect(saved.include_tag_ids).toEqual([ids[0]]);
 		expect(saved.exclude_tag_ids).toEqual([ids[1]]);
 		await page.reload();
@@ -61,10 +61,10 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 			}),
 		).toBeVisible();
 		await page
-			.getByRole("checkbox", { name: "Tag conditions matched", exact: true })
+			.getByRole("checkbox", { name: "Classification completed", exact: true })
 			.uncheck();
 		await page
-			.getByRole("checkbox", { name: "Classification completed", exact: true })
+			.getByRole("checkbox", { name: "Email received", exact: true })
 			.check();
 		await page.getByRole("button", { name: "Save endpoint" }).click();
 		await expect(page.getByLabel("Endpoint URL")).toHaveCount(0);
@@ -72,7 +72,7 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 			await db`SELECT * FROM webhook_endpoints WHERE id=${saved.id}`;
 		expect(changed.include_tag_ids).toEqual([ids[0]]);
 		expect(changed.exclude_tag_ids).toEqual([ids[1]]);
-		expect(changed.events).toEqual(["conversation.classified"]);
+		expect(changed.events).toEqual(["email.received"]);
 	} finally {
 		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
 		if (ids.length) await db`DELETE FROM tags WHERE id IN ${db(ids)}`;

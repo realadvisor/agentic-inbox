@@ -12,7 +12,6 @@ const eventLabels: Record<string, string> = {
 	"conversation.status_changed": "Status changed",
 };
 const events = [
-	"conversation.matched",
 	"email.received",
 	"email.sent",
 	"conversation.tags_changed",
@@ -57,7 +56,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 		qc = useQueryClient();
 	const [editing, setEditing] = useState<Endpoint | null | undefined>(),
 		[url, setUrl] = useState(""),
-		[selected, setSelected] = useState<string[]>(["conversation.matched"]),
+		[selected, setSelected] = useState<string[]>(["conversation.classified"]),
 		[secret, setSecret] = useState(""),
 		[history, setHistory] = useState("");
 	const list = useQuery({
@@ -104,7 +103,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 	const edit = (e: Endpoint | null) => {
 		setEditing(e);
 		setUrl(e?.url ?? "");
-		setSelected(e?.events ?? ["conversation.matched"]);
+		setSelected(e?.events ?? ["conversation.classified"]);
 		setIncluded(e?.include_tag_ids ?? []);
 		setExcluded(e?.exclude_tag_ids ?? []);
 		setMatch(e?.tag_match ?? "any");
@@ -185,10 +184,16 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 								/>
 							))}
 						</div>
+						{selected.includes("conversation.classified") && (
+							<p className="text-xs text-kumo-subtle">
+								Jev finishes classification, then the tag conditions below are
+								checked.
+							</p>
+						)}
 						{selected.includes("conversation.matched") && (
 							<p className="text-xs text-kumo-subtle">
-								Tag conditions matched fires when a conversation starts meeting
-								the conditions below, including after Jev adds tags.
+								This endpoint also has an API-configured conversation-matching
+								subscription. Saving preserves that subscription.
 							</p>
 						)}
 					</fieldset>

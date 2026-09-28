@@ -386,8 +386,8 @@ outcomes; received events precede classification. No historical events are backf
 
 Tag filters in Settings support **any/all included tags** and **excluded tags** (exclusions win). Filters use stable tag IDs, including ordered-scale level tags. Renaming a tag does not change the filter; archived tags are no longer considered active.
 
-- **Conversation starts matching tags** (`conversation.matched`): sends once on a nonmatching → matching transition, including classifier-applied tags. Evaluation happens after all tag changes in the transaction, so temporary level swaps or exclusions applied in the same transaction do not trigger an event. Leaving and re-entering sends a new event ID.
-- **Selected events while tags match**: filters each selected event against its tag set when the event is recorded. An email-received event does not wait for later classification; use starts-matching for tag-driven n8n workflows.
+- **Conversation starts matching tags** (`conversation.matched`, API-only): sends once on a nonmatching → matching transition, including classifier-applied tags. Evaluation happens after all tag changes in the transaction, so temporary level swaps or exclusions applied in the same transaction do not trigger an event. Leaving and re-entering sends a new event ID.
+- **Selected events (Settings)**: filters each selected event against its tag set when the event is recorded. An email-received event does not wait for later classification; use `conversation.classified` to check tags after Jev finishes, or the API-only starts-matching event for entry into a matching tag set.
 
 Migration 030 adds filter fields and per-conversation matching state without creating tags or subscriptions. Creating/changing a filter or re-enabling an endpoint establishes a baseline: existing matches are not backfilled. Disabled subscriptions do not queue events. Historical imports update the matching baseline without sending. Queued deliveries retain their original `data.tag_ids` snapshot after tags or filters change; manual retries retain their event ID. Test pings deliberately bypass filters.
 
