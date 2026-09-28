@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { Database } from "../db";
 import { InboxStore } from "../store";
 import { liveSender } from "../mailboxes";
+import { classificationTools } from "./classification-tools";
 import {
 	createActionTools,
 	recipientList,
@@ -100,6 +101,7 @@ export interface Run {
 	emailId?: string;
 	model?: string;
 	automatic?: boolean;
+	classification?: { enabled: boolean; admin: boolean; kick?: () => void };
 }
 // The lease fences all tool mutations. A lost/expired run can never write later.
 export async function claimRun(db: Database, run: Run) {
@@ -488,6 +490,9 @@ export function createTools(
 					`new:${JSON.stringify([to, cc, bcc, subject])}`,
 				),
 		}),
+		...(run.classification?.enabled
+			? classificationTools(db, run, mutate)
+			: {}),
 		mark_email_read: tool({
 			description: "Mark a message read or unread when asked by the operator.",
 			inputSchema: z.object({ emailId: uuid, read: z.boolean() }),

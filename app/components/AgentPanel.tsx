@@ -401,6 +401,12 @@ function AgentChat({
 			client.invalidateQueries({ queryKey: ["thread-status", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["folders", mailboxId] }),
 			client.invalidateQueries({ queryKey: ["search", mailboxId] }),
+			client.invalidateQueries({
+				queryKey: ["classification-results", mailboxId],
+			}),
+			client.invalidateQueries({
+				queryKey: ["thread-reclassification", mailboxId],
+			}),
 		]);
 	};
 	const transport = useMemo(

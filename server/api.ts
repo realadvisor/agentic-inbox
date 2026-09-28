@@ -265,7 +265,20 @@ export function createApi(db: Database, options: ApiOptions) {
 		await store.mailbox(c.req.param("mailboxId"));
 		await next();
 	});
-	app.route("/", agentApi(db, { ...options.agent, actor: options.actor }));
+	app.route(
+		"/",
+		agentApi(db, {
+			...options.agent,
+			actor: options.actor,
+			classification: {
+				enabled: options.classifiersEnabled === true,
+				admin:
+					!isLive ||
+					(options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+				kick: options.kickClassifiers,
+			},
+		}),
+	);
 	const tagActor = () => {
 		if (isLive && !options.actor) throw new HTTPException(403);
 		return options.actor ?? "local-synthetic-user";
