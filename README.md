@@ -32,8 +32,12 @@ Migration 025 backfills addresses from received senders and confirmed outgoing
 recipients. A database trigger maintains the index on delivery, including local
 simulated sends; drafts and unconfirmed sends do not count. New inbound MIME
 supplies display names (older stored messages contain addresses only).
-Suggestions use indexed name/address prefixes and prioritize sent frequency,
-then recency, excluding recipients already selected and automated senders.
+Suggestions use indexed name/address prefixes. Current-mailbox contacts rank first,
+followed by contacts from the registered All mailbox, with duplicates removed.
+Within each source, exact addresses, sent frequency and recency determine order.
+Already-selected recipients and automated senders are excluded. Access is currently
+application-wide; shared sources must follow the same permissions if mailbox-level
+access controls are introduced. No additional backfill is needed for shared lookup.
 
 ## Conversation status
 

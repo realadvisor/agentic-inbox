@@ -158,3 +158,66 @@ test("backfill produces the same counts as live indexing and migration is repeat
 		after.length,
 	);
 });
+
+test("All supplies shared suggestions, with local contacts first and no duplicates", async () => {
+	const all = "all@ingest.realadvisor.com";
+	await store.createMailbox(all, "All");
+	try {
+		for (const sender of [
+			"shared-local@example.test",
+			"shared-only@example.test",
+			mailbox,
+		]) {
+			await store.insert(all, {
+				sender,
+				recipient: all,
+				subject: "Shared",
+				body: "",
+			});
+		}
+		await store.insert(mailbox, {
+			sender: "shared-local@example.test",
+			recipient: mailbox,
+			subject: "Local",
+			body: "",
+		});
+		await store.insert(other, {
+			sender: "shared-private@example.test",
+			recipient: other,
+			subject: "Private",
+			body: "",
+		});
+		await db`UPDATE mailbox_contacts SET sent_count=100 WHERE mailbox_id=${all}`;
+		assert.deepEqual(
+			(await recipientSuggestions(db, mailbox, "shared")).map((c) => c.email),
+			["shared-local@example.test", "shared-only@example.test"],
+		);
+		assert.deepEqual(
+			(
+				await recipientSuggestions(db, mailbox, "shared", [
+					"SHARED-LOCAL@example.test",
+				])
+			).map((c) => c.email),
+			["shared-only@example.test"],
+		);
+		assert.equal(
+			(await recipientSuggestions(db, mailbox, "contacts@")).length,
+			0,
+		);
+		assert.equal((await recipientSuggestions(db, all, "shared")).length, 2);
+		const response = await api.request(
+			`http://localhost/api/v1/mailboxes/${mailbox}/recipients?q=shared`,
+		);
+		assert.equal(response.status, 200);
+		assert.deepEqual(
+			(await response.json()).map((c: { email: string }) => c.email),
+			["shared-local@example.test", "shared-only@example.test"],
+		);
+	} finally {
+		await db`DELETE FROM mailboxes WHERE id=${all}`;
+	}
+	assert.deepEqual(
+		(await recipientSuggestions(db, mailbox, "shared")).map((c) => c.email),
+		["shared-local@example.test"],
+	);
+});
