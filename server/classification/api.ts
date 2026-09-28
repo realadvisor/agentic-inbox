@@ -1,3 +1,5 @@
+import { inspectClassifications } from "./inspect";
+import { reviewInput, reviewClassification } from "./review";
 import {
 	decisionRulesSchema,
 	decisionRules,
@@ -93,6 +95,15 @@ export function classifierApi(
 			);
 		await next();
 	});
+	app.get("/threads/:mailbox/:thread/classifications", async (c) =>
+		c.json(
+			await inspectClassifications(
+				db,
+				c.req.param("mailbox"),
+				id.parse(c.req.param("thread")),
+			),
+		),
+	);
 	app.route("/", rerunApi(db, options.admin, options.kick));
 	app.route("/examples", examplesApi(db, options.admin, options.actor));
 	app.route("/", classifierTestApi(db, options.key, options.transport));
@@ -248,7 +259,7 @@ export function classifierApi(
 			const [created] =
 				await tx`INSERT INTO classifier_runs(classifier_id,revision,actor) VALUES(${classifierId},${classifier.revision},${options.actor}) RETURNING *`;
 			await tx`INSERT INTO classifier_run_items(run_id,mailbox_id,thread_id,status)
-    SELECT ${created.id},t.mailbox_id,t.thread_id,CASE WHEN tag_manually_overridden(t.mailbox_id,t.thread_id,${classifier.tag_id}) OR (${!data.reset} AND EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.mailbox_id=t.mailbox_id AND j.thread_id=t.thread_id AND j.classifier_id=${classifierId} AND j.source='human')) THEN 'skipped' ELSE 'pending' END
+    SELECT ${created.id},t.mailbox_id,t.thread_id,CASE WHEN tag_manually_overridden(t.mailbox_id,t.thread_id,${classifier.tag_id}) OR (${!data.reset} AND EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.mailbox_id=t.mailbox_id AND j.thread_id=t.thread_id AND j.classifier_id=${classifierId} AND j.source IN ('human','agent'))) THEN 'skipped' ELSE 'pending' END
     FROM jsonb_to_recordset(${tx.json(targets)}) AS t(mailbox_id text,thread_id uuid,generation integer)`;
 			await tx`INSERT INTO conversation_classifications(mailbox_id,thread_id,classifier_id,revision,generation,run_id,priority)
     SELECT i.mailbox_id,i.thread_id,${classifierId},${classifier.revision},c.generation,${created.id},2 FROM classifier_run_items i JOIN conversations c USING(mailbox_id,thread_id) WHERE i.run_id=${created.id} AND i.status='pending'
@@ -316,30 +327,16 @@ export function classifierApi(
 		const classifierId = id.parse(c.req.param("classifier")),
 			thread = id.parse(c.req.param("thread")),
 			mailbox = c.req.param("mailbox");
-		const data = z
-			.object({ answer: z.boolean(), revision: z.number().int(), token: id })
-			.strict()
-			.parse(await c.req.json());
+		const data = reviewInput.parse(await c.req.json());
 		await db.begin(async (tx) => {
-			const [classifier] =
-				await tx`SELECT *,to_json(mailbox_ids) AS mailbox_ids FROM classifiers WHERE id=${classifierId} FOR UPDATE`;
-			const [reviewJob] =
-				await tx`SELECT priority FROM conversation_classifications WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND classifier_id=${classifierId} AND token=${data.token}`;
-			if (
-				!classifier ||
-				(!classifier.enabled && reviewJob?.priority !== 2) ||
-				classifier.revision !== data.revision
-			)
-				fail(409, "Classifier changed; refresh and try again");
-			await tx`SELECT 1 FROM conversations WHERE mailbox_id=${mailbox} AND thread_id=${thread} FOR UPDATE`;
-			const [row] =
-				await tx`UPDATE conversation_classifications SET answer=${data.answer},source='human',actor=${options.actor},status='complete',token=gen_random_uuid(),lease_until=NULL,updated_at=now() WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND classifier_id=${classifierId} AND token=${data.token} RETURNING *`;
-			if (!row) fail(409, "Conversation changed; refresh and try again");
-			const [tag] =
-				await tx`SELECT group_id FROM tags WHERE id=${classifier.tag_id}`;
-			await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${mailbox},${thread},${classifier.tag_id},${tag.group_id ? "manual" : "classifier"},${options.actor},${data.answer ? null : tx`now()`}) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET source=excluded.source,actor=excluded.actor,removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;
-			if (row.run_id)
-				await tx`UPDATE classifier_run_items SET status='complete' WHERE run_id=${row.run_id} AND mailbox_id=${mailbox} AND thread_id=${thread} AND status='pending'`;
+			await reviewClassification(
+				tx as unknown as Database,
+				mailbox,
+				thread,
+				classifierId,
+				data,
+				options.actor,
+			);
 		});
 		return c.body(null, 204);
 	});

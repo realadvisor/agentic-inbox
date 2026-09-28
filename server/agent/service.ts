@@ -1,3 +1,4 @@
+import { classificationTools } from "./classification-tools";
 import { buildHistory } from "./history";
 import { agentErrorMessage } from "./errors";
 import { modelIdSchema, requireModel } from "./catalog";
@@ -86,6 +87,7 @@ export interface Run {
 	emailId?: string;
 	model?: string;
 	automatic?: boolean;
+	classification?: { enabled: boolean; admin: boolean; kick?: () => void };
 }
 // The lease fences all tool mutations. A lost/expired run can never write later.
 export async function claimRun(db: Database, run: Run) {
@@ -420,6 +422,9 @@ export function createTools(
 					`new:${JSON.stringify([to, subject])}`,
 				),
 		}),
+		...(run.classification?.enabled
+			? classificationTools(db, run, mutate)
+			: {}),
 		mark_email_read: tool({
 			description: "Mark a message read or unread when asked by the operator.",
 			inputSchema: z.object({ emailId: uuid, read: z.boolean() }),

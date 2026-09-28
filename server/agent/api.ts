@@ -31,6 +31,7 @@ export interface AgentOptions {
 	fetchCatalog?: CatalogFetch;
 	autoDraftAvailable?: boolean;
 	actor?: string;
+	classification?: { enabled: boolean; admin: boolean; kick?: () => void };
 	disconnectSignal?: AbortSignal;
 	waitUntil?: (task: Promise<unknown>) => void;
 }
@@ -165,6 +166,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 			...input,
 			mailbox: c.req.param("mailboxId"),
 			actor: options.actor ?? "local-synthetic-user",
+			classification: options.classification,
 		};
 		await requireModel(
 			db,

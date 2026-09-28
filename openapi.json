@@ -5628,6 +5628,114 @@
 					}
 				}
 			}
+		},
+		"/api/v1/classification/threads/{mailbox}/{thread}/classifications": {
+			"get": {
+				"summary": "Inspect current conversation classifications",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					{
+						"name": "thread",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Current classification records",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"thread_id",
+										"generation",
+										"truncated",
+										"explanation",
+										"results"
+									],
+									"properties": {
+										"thread_id": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"generation": {
+											"type": "integer"
+										},
+										"truncated": {
+											"type": "boolean"
+										},
+										"explanation": {
+											"type": "string"
+										},
+										"results": {
+											"type": "array",
+											"maxItems": 100,
+											"items": {
+												"type": "object",
+												"properties": {
+													"classifier_id": {
+														"type": "string",
+														"format": "uuid"
+													},
+													"revision": {
+														"type": "integer"
+													},
+													"token": {
+														"type": "string",
+														"format": "uuid"
+													},
+													"source": {
+														"type": "string",
+														"enum": ["jev", "human", "agent"]
+													},
+													"score": {
+														"type": "number",
+														"nullable": true
+													},
+													"confidence": {
+														"type": "number",
+														"nullable": true
+													},
+													"manually_overridden": {
+														"type": "boolean"
+													},
+													"levels": {
+														"type": "array",
+														"items": {
+															"type": "object"
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Conversation not found"
+					},
+					"503": {
+						"description": "Classification disabled"
+					}
+				},
+				"operationId": "inspectThreadClassifications",
+				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled."
+			}
 		}
 	},
 	"components": {
