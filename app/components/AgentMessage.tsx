@@ -28,6 +28,8 @@ const labels: Record<string, string> = {
 	get_email: "Read email",
 	get_thread: "Read conversation",
 	search_emails: "Searched emails",
+	list_tag_groups: "Read tag definitions",
+	search_recipients: "Searched recipients",
 	draft_reply: "Drafted reply",
 	draft_email: "Created draft",
 	mark_email_read: "Updated read status",
