@@ -365,11 +365,11 @@ export function createTools(
 			execute: async ({ page }) => {
 				const groups = await listTagGroups(db, page);
 				const standalone =
-					await db`SELECT id,name,color,description FROM tags WHERE group_id IS NULL AND archived_at IS NULL ORDER BY lower(name),id LIMIT 51 OFFSET ${(page - 1) * 50}`;
+					await db`SELECT id,name,color,description FROM tags WHERE group_id IS NULL AND archived_at IS NULL ORDER BY lower(name),id LIMIT 11 OFFSET ${(page - 1) * 10}`;
 				return {
 					page,
-					has_more: groups.length > 50 || standalone.length > 50,
-					groups: groups.slice(0, 50).map((row) => {
+					has_more: groups.length > 5 || standalone.length > 10,
+					groups: groups.slice(0, 5).map((row) => {
 						const group = row as TagGroup;
 						return {
 							...group,
@@ -386,7 +386,7 @@ export function createTools(
 								: {}),
 						};
 					}),
-					standalone_tags: standalone.slice(0, 50),
+					standalone_tags: standalone.slice(0, 10),
 				};
 			},
 		}),

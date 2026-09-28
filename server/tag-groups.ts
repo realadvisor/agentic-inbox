@@ -5,7 +5,7 @@ import type { Database } from "./db";
 import { groupQuestion, tagGroupInput } from "../shared/tag-groups";
 
 export async function listTagGroups(db: Database, page?: number) {
-	return db`SELECT g.*,coalesce((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL),'[]'::json) AS tags FROM tag_groups g ORDER BY lower(g.name),g.id ${page ? db`LIMIT 51 OFFSET ${(page - 1) * 50}` : db``}`;
+	return db`SELECT g.*,coalesce((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL),'[]'::json) AS tags FROM tag_groups g ORDER BY lower(g.name),g.id ${page ? db`LIMIT 6 OFFSET ${(page - 1) * 5}` : db``}`;
 }
 
 export function tagGroupsApi(db: Database, admin: boolean) {
