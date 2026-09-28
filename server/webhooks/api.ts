@@ -8,12 +8,16 @@ export const events = [
 	"conversation.tags_changed",
 	"conversation.classified",
 	"conversation.status_changed",
+	"conversation.matched",
 ] as const;
 const input = z
 	.object({
 		url: z.string().max(2000),
-		events: z.array(z.enum(events)).min(1).max(5),
+		events: z.array(z.enum(events)).min(1).max(6),
 		enabled: z.boolean().default(true),
+		include_tag_ids: z.array(z.string().uuid()).max(50).optional(),
+		exclude_tag_ids: z.array(z.string().uuid()).max(50).optional(),
+		tag_match: z.enum(["any", "all"]).optional(),
 	})
 	.strict();
 const uuid = z.string().uuid();
@@ -30,45 +34,133 @@ export function webhookApi(
 	});
 	app.get("/:mailbox", async (c) =>
 		c.json(
-			await db`SELECT id,url,events,enabled,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} ORDER BY created_at DESC`,
+			await db`SELECT id,url,events,enabled,include_tag_ids,exclude_tag_ids,tag_match,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} ORDER BY created_at DESC`,
 		),
 	);
-	app.post("/:mailbox", async (c) => {
-		if (!options.secretKey)
-			return c.json(
-				{ error: "Configure WEBHOOK_SECRET_KEY before adding endpoints" },
-				503,
-			);
-		const data = input.parse(await c.req.json());
-		try {
-			validateUrl(data.url);
-		} catch {
-			return c.json(
-				{
-					error:
-						"Use a public HTTPS hostname without credentials or a custom port",
-				},
-				400,
-			);
-		}
-		const secret =
-			"whsec_" +
-			Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
-		const [row] =
-			await db`INSERT INTO webhook_endpoints(mailbox_id,url,events,enabled,secret) VALUES(${c.req.param("mailbox")},${data.url},${data.events},${data.enabled},${await encryptSecret(secret, options.secretKey)}) RETURNING id`;
-		return c.json({ ...row, secret }, 201);
-	});
-	app.put("/:mailbox/:id", async (c) => {
-		const data = input.parse(await c.req.json());
-		try {
-			validateUrl(data.url);
-		} catch {
-			return c.json({ error: "Invalid destination URL" }, 400);
-		}
-		const rows =
-			await db`UPDATE webhook_endpoints SET url=${data.url},events=${data.events},enabled=${data.enabled} WHERE id=${uuid.parse(c.req.param("id"))} AND mailbox_id=${c.req.param("mailbox")} RETURNING id`;
-		return c.json({ success: rows.length > 0 }, rows.length ? 200 : 404);
-	});
+	for (const method of ["post", "put"] as const) {
+		app[method](
+			method === "post" ? "/:mailbox" : "/:mailbox/:id",
+			async (c) => {
+				if (method === "post" && !options.secretKey)
+					return c.json(
+						{ error: "Configure WEBHOOK_SECRET_KEY before adding endpoints" },
+						503,
+					);
+				const parsed = input.safeParse(await c.req.json());
+				if (!parsed.success)
+					return c.json({ error: parsed.error.issues[0].message }, 400);
+				const data = parsed.data;
+				try {
+					validateUrl(data.url);
+				} catch {
+					return c.json(
+						{
+							error:
+								"Use a public HTTPS hostname without credentials or a custom port",
+						},
+						400,
+					);
+				}
+				const mailbox = c.req.param("mailbox");
+				const endpointId =
+					method === "post"
+						? crypto.randomUUID()
+						: uuid.parse(c.req.param("id"));
+				const secret =
+					method === "post"
+						? "whsec_" +
+							Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+								"hex",
+							)
+						: undefined;
+				const encrypted = secret
+					? await encryptSecret(secret, options.secretKey!)
+					: null;
+				const result = await db.begin(async (tx) => {
+					const [existing] =
+						await tx`SELECT * FROM webhook_endpoints WHERE id=${endpointId} AND mailbox_id=${mailbox} FOR UPDATE`;
+					if (method === "put" && !existing)
+						return { error: "Endpoint not found", status: 404 as const };
+					const included = [
+						...new Set(data.include_tag_ids ?? existing?.include_tag_ids ?? []),
+					] as string[];
+					const excluded = [
+						...new Set(data.exclude_tag_ids ?? existing?.exclude_tag_ids ?? []),
+					] as string[];
+					const mode = data.tag_match ?? existing?.tag_match ?? "any";
+					if (included.some((id) => excluded.includes(id)))
+						return {
+							error: "A tag cannot be both included and excluded",
+							status: 400 as const,
+						};
+					if (
+						data.events.includes("conversation.matched") &&
+						!included.length &&
+						!excluded.length
+					)
+						return {
+							error:
+								"Choose at least one tag for a starts-matching subscription",
+							status: 400 as const,
+						};
+					// Existing archived filters must remain editable/disableable; only
+					// newly selected IDs need to be active.
+					const retained = new Set<string>([
+						...(existing?.include_tag_ids ?? []),
+						...(existing?.exclude_tag_ids ?? []),
+					]);
+					const ids = [...included, ...excluded].filter(
+						(id) => !retained.has(id),
+					);
+					if (ids.length) {
+						const tags =
+							await tx`SELECT id FROM tags WHERE id IN ${tx(ids)} AND archived_at IS NULL`;
+						if (tags.length !== ids.length)
+							return {
+								error: "Choose existing, active tags",
+								status: 400 as const,
+							};
+					}
+					if (method === "post") {
+						const [box] =
+							await tx`SELECT id FROM mailboxes WHERE id=${mailbox}`;
+						if (!box)
+							return { error: "Mailbox not found", status: 404 as const };
+						await tx`INSERT INTO webhook_endpoints(id,mailbox_id,url,events,enabled,secret,include_tag_ids,exclude_tag_ids,tag_match)
+					 VALUES(${endpointId},${mailbox},${data.url},${data.events},${data.enabled},${encrypted!},${included},${excluded},${mode})`;
+					} else {
+						await tx`UPDATE webhook_endpoints SET url=${data.url},events=${data.events},enabled=${data.enabled},include_tag_ids=${included},exclude_tag_ids=${excluded},tag_match=${mode} WHERE id=${endpointId}`;
+					}
+					// Establish a baseline without sending existing conversations. Run on filter
+					// changes/re-enable only; URL edits must not reset transition tracking.
+					const reset =
+						!existing ||
+						(!existing.enabled && data.enabled) ||
+						JSON.stringify(existing.include_tag_ids) !==
+							JSON.stringify(included) ||
+						JSON.stringify(existing.exclude_tag_ids) !==
+							JSON.stringify(excluded) ||
+						existing.tag_match !== mode ||
+						(!existing.events.includes("conversation.matched") &&
+							data.events.includes("conversation.matched"));
+					if (reset) {
+						await tx`DELETE FROM webhook_matches WHERE endpoint_id=${endpointId}`;
+						if (data.events.includes("conversation.matched"))
+							await tx`INSERT INTO webhook_matches(endpoint_id,thread_id,matched)
+						 SELECT ${endpointId},thread_id,true FROM conversations WHERE mailbox_id=${mailbox}
+						 AND webhook_tags_match(webhook_thread_tags(mailbox_id,thread_id),${included}::uuid[],${excluded}::uuid[],${mode})`;
+					}
+					return { id: endpointId };
+				});
+				if ("error" in result)
+					return c.json({ error: result.error }, result.status!);
+				return c.json(
+					secret ? { id: endpointId, secret } : { success: true },
+					method === "post" ? 201 : 200,
+				);
+			},
+		);
+	}
 	app.delete("/:mailbox/:id", async (c) => {
 		await db`DELETE FROM webhook_endpoints WHERE id=${uuid.parse(c.req.param("id"))} AND mailbox_id=${c.req.param("mailbox")}`;
 		return c.json({ success: true });

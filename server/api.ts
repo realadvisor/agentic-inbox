@@ -175,6 +175,8 @@ export function createApi(db: Database, options: ApiOptions) {
 			canCreateMailboxes: canCreate,
 			classifierPreview: !isLive && options.classifierPreview === true,
 			classifiersEnabled: options.classifiersEnabled === true,
+			canManageWebhooks:
+				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
 			canManageClassifiers:
 				options.classifiersEnabled === true &&
 				(!isLive ||

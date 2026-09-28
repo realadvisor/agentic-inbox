@@ -384,6 +384,28 @@ are excluded. `conversation.classified` contains the results when all pending
 questions for that conversation generation have settled, including review/error
 outcomes; received events precede classification. No historical events are backfilled.
 
+Tag filters in Settings support **any/all included tags** and **excluded tags** (exclusions win). Filters use stable tag IDs, including ordered-scale level tags. Renaming a tag does not change the filter; archived tags are no longer considered active.
+
+- **Conversation starts matching tags** (`conversation.matched`): sends once on a nonmatching → matching transition, including classifier-applied tags. Evaluation happens after all tag changes in the transaction, so temporary level swaps or exclusions applied in the same transaction do not trigger an event. Leaving and re-entering sends a new event ID.
+- **Selected events while tags match**: filters each selected event against its tag set when the event is recorded. An email-received event does not wait for later classification; use starts-matching for tag-driven n8n workflows.
+
+Migration 030 adds filter fields and per-conversation matching state without creating tags or subscriptions. Creating/changing a filter or re-enabling an endpoint establishes a baseline: existing matches are not backfilled. Disabled subscriptions do not queue events. Historical imports update the matching baseline without sending. Queued deliveries retain their original `data.tag_ids` snapshot after tags or filters change; manual retries retain their event ID. Test pings deliberately bypass filters.
+
+Example subscription (administrator browser/API session):
+
+```json
+{
+  "url": "https://your-n8n.example/webhook/inbox",
+  "events": ["conversation.matched"],
+  "include_tag_ids": ["<listing-inquiry-tag-uuid>"],
+  "exclude_tag_ids": ["<spam-tag-uuid>"],
+  "tag_match": "any",
+  "enabled": true
+}
+```
+
+n8n receivers should verify the existing signature and deduplicate by event ID. Delivery remains at least once. Mailbox API service credentials are separate and are not introduced by tag filters.
+
 Migration 028 captures subscribed events and delivery intent transactionally.
 Google Cloud Tasks `inbox-webhooks` (5 concurrent) carries only delivery IDs to the
 existing authenticated task handler. Run `scripts/setup-cloud-tasks.sh` before
