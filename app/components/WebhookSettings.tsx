@@ -180,33 +180,76 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						/>
 						<p className="text-xs text-kumo-subtle">
 							{trigger === "enters"
-								? "Send once when the final tag set starts matching, including tags assigned by Jev. Send again only after it stops matching and matches again. Existing matches are not sent when you save."
-								: "Send each selected event only when the conversation's tags match at that moment. Without tag filters, all selected events are sent."}
+								? "Send when a conversation begins to meet these conditions, including after Jev adds tags. Existing matches are skipped."
+								: "Send selected events only for conversations that meet these conditions."}
 						</p>
 					</div>
-					<div className="grid gap-4 sm:grid-cols-2">
+					<section
+						aria-label="Tag conditions"
+						className="rounded-lg border border-kumo-line"
+					>
 						{[
 							{
 								label: "Include tags",
+								title: "Conversation has",
+								hint: "Choose the tags that should trigger this webhook.",
 								values: included,
 								other: excluded,
 								set: setIncluded,
 							},
 							{
 								label: "Exclude tags",
+								title: "But does not have",
+								hint: "Skip conversations with any of these tags.",
 								values: excluded,
 								other: included,
 								set: setExcluded,
 							},
 						].map((group) => (
-							<div key={group.label} className="min-w-0 space-y-2">
-								<div className="text-sm font-medium">{group.label}</div>
+							<div
+								key={group.label}
+								className="min-w-0 p-4 space-y-3 border-b border-kumo-line last:border-b-0"
+							>
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<div className="text-sm font-medium">{group.title}</div>
+									{group.label === "Include tags" ? (
+										<div
+											role="group"
+											aria-label="Match included tags"
+											className="inline-flex rounded-md bg-kumo-control p-0.5 ring-1 ring-kumo-line"
+										>
+											{[
+												{ value: "any", label: "Any tag" },
+												{ value: "all", label: "All tags" },
+											].map((option) => (
+												<button
+													key={option.value}
+													type="button"
+													aria-pressed={match === option.value}
+													onClick={() => setMatch(option.value)}
+													className={`rounded px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 ${match === option.value ? "bg-kumo-base text-kumo-default shadow-sm" : "text-kumo-subtle hover:text-kumo-default"}`}
+												>
+													{option.label}
+												</button>
+											))}
+										</div>
+									) : (
+										<span className="text-xs text-kumo-subtle">Optional</span>
+									)}
+								</div>
+								<p className="text-xs text-kumo-subtle">{group.hint}</p>
 								<AppSelect
 									label={group.label}
 									value=""
 									disabled={tags.isLoading || !!tags.error}
 									options={[
-										{ value: "", label: "Choose a tag…" },
+										{
+											value: "",
+											label:
+												group.label === "Include tags"
+													? "+ Add a tag"
+													: "+ Add an exclusion",
+										},
 										...(tags.data ?? [])
 											.filter(
 												(t) =>
@@ -233,6 +276,15 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 												group.set(group.values.filter((v) => v !== id))
 											}
 										>
+											<span
+												aria-hidden="true"
+												className="size-2 shrink-0 rounded-full"
+												style={{
+													backgroundColor:
+														tags.data?.find((t) => t.id === id)?.color ??
+														"#94a3b8",
+												}}
+											/>
 											<span className="truncate">{tagLabel(id)}</span>
 											<span aria-hidden="true">×</span>
 										</Button>
@@ -240,26 +292,18 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 								</div>
 							</div>
 						))}
-					</div>
+					</section>
 					{tags.error && (
 						<p role="alert" className="text-sm text-kumo-danger">
 							Could not load tags. Reload before changing filters.
 						</p>
 					)}
-					{included.length > 1 && (
-						<AppSelect
-							label="Match included tags"
-							value={match}
-							onChange={setMatch}
-							options={[
-								{ value: "any", label: "Match any included tag" },
-								{ value: "all", label: "Match all included tags" },
-							]}
-						/>
-					)}
-					<p className="text-xs text-kumo-subtle">
-						Any excluded tag prevents delivery. Filters use tag IDs, so renaming
-						a tag keeps the filter working.
+					<p className="text-xs text-kumo-subtle" aria-live="polite">
+						{included.length || excluded.length
+							? `Matches ${included.length === 1 ? "the selected tag" : included.length ? `${match === "all" ? "all" : "any"} of ${included.length} selected tags` : "any conversation"}${excluded.length ? `, excluding ${excluded.length} tag${excluded.length === 1 ? "" : "s"}` : ""}.`
+							: trigger === "enters"
+								? "Add at least one tag or exclusion to define a condition."
+								: "No conditions added. All selected events will be sent."}
 					</p>
 					{trigger === "events" && (
 						<div className="grid grid-cols-1 gap-3">
