@@ -198,3 +198,34 @@ test("score search exposes current confidence and review state with scale thresh
 	assert.deepEqual(scale.boundaries, [0.4, 1.6]);
 	assert.equal(scale.maximum, 2);
 });
+
+test("tag discovery pages both collections without dropping or repeating entries", async () => {
+	for (let index = 0; index < 7; index++)
+		await db`INSERT INTO tag_groups(id,name,selection,instructions,enabled) VALUES(${randomUUID()},${`Page group ${index}`},'single','',false)`;
+	for (let index = 0; index < 12; index++)
+		await db`INSERT INTO tags(id,name,color) VALUES(${randomUUID()},${`Page tag ${index}`},'#2563eb')`;
+	const groupIds = new Set<string>(),
+		tagIds = new Set<string>();
+	let page = 1;
+	while (true) {
+		const result = await tools.list_tag_groups!.execute!({ page }, opts);
+		assert.ok("groups" in result);
+		assert.ok(result.groups.length <= 5);
+		assert.ok(result.standalone_tags.length <= 10);
+		for (const group of result.groups) {
+			assert.ok(!groupIds.has(group.id));
+			groupIds.add(group.id);
+		}
+		for (const tag of result.standalone_tags) {
+			assert.ok(!tagIds.has(tag.id));
+			tagIds.add(tag.id);
+		}
+		if (!result.has_more) break;
+		assert.ok(++page < 10);
+	}
+	const [groups] = await db`SELECT count(*)::int AS count FROM tag_groups`;
+	const [tags] =
+		await db`SELECT count(*)::int AS count FROM tags WHERE group_id IS NULL AND archived_at IS NULL`;
+	assert.equal(groupIds.size, groups.count);
+	assert.equal(tagIds.size, tags.count);
+});
