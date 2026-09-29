@@ -8,7 +8,7 @@ import { AppSelect } from "./AppSelect";
 import { DecisionRules } from "./DecisionRules";
 import type { DecisionRules as Rules } from "../../shared/decision-rules";
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog } from "@cloudflare/kumo";
 import { useMutation } from "@tanstack/react-query";
 import { useTagMutation } from "~/queries/tags";
@@ -278,6 +278,7 @@ export function RunDialog({
 	close: () => void;
 	done: (mailboxes: string[]) => void;
 }) {
+	const qc = useQueryClient();
 	const [chosen, setChosen] = useState(() =>
 		availableClassifiers
 			.filter(
@@ -310,13 +311,11 @@ export function RunDialog({
 	const [selected, setSelected] = useState<string[] | null>(
 		initialMailbox ? [initialMailbox] : null,
 	);
-	const [selection, setSelection] = useState(
-		chooseClassifiers ? "all" : "unprocessed",
-	);
+	const [selection, setSelection] = useState("unprocessed");
 	const [reset, setReset] = useState(false);
 	const [from, setFrom] = useState("");
 	const [to, setTo] = useState("");
-	const [limit, setLimit] = useState("5000");
+	const [limit, setLimit] = useState("");
 
 	const allowed = (mailboxes.data ?? []).filter((m) =>
 		classifiers.every(
@@ -329,9 +328,10 @@ export function RunDialog({
 	const [started, setStarted] = useState<string[]>([]);
 	const validRange =
 		(!from || !to || from <= to) &&
-		Number.isInteger(Number(limit)) &&
-		Number(limit) >= 1 &&
-		Number(limit) <= 5000;
+		(!limit ||
+			(Number.isInteger(Number(limit)) &&
+				Number(limit) >= 1 &&
+				Number(limit) <= 250000));
 	const start = from ? new Date(from + "T00:00:00") : null;
 	const end = to ? new Date(to + "T00:00:00") : null;
 	if (end) end.setDate(end.getDate() + 1);
@@ -339,22 +339,18 @@ export function RunDialog({
 		mailbox_ids: targets,
 		selection,
 		reset,
-		enable: false,
+		include_archived: true,
 		received_from: start?.toISOString(),
 		received_before: end?.toISOString(),
-		limit: Number(limit),
+		limit: limit ? Number(limit) : undefined,
 	};
 	const preview = useQuery({
 		queryKey: ["classifier-run-preview", classifiers.map((c) => c.id), filters],
 		queryFn: () =>
-			classifierRequest<{ count: number; counts: Record<string, number> }>(
-				"/runs/preview",
-				"POST",
-				{
-					...filters,
-					classifier_ids: classifiers.map((c) => c.id),
-				},
-			),
+			classifierRequest<{ count: number }>("/backfills/preview", "POST", {
+				...filters,
+				classifier_ids: classifiers.map((c) => c.id),
+			}),
 		enabled:
 			!mode.data?.classifierPreview &&
 			targets.length > 0 &&
@@ -364,12 +360,15 @@ export function RunDialog({
 	});
 	const run = useMutation({
 		mutationFn: async () => {
+			if (!mode.data?.classifierPreview) {
+				await classifierRequest("/backfills", "POST", {
+					...filters,
+					classifier_ids: classifiers.map((c) => c.id),
+				});
+				return;
+			}
 			for (const classifier of classifiers) {
-				if (
-					started.includes(classifier.id) ||
-					preview.data?.counts[classifier.id] === 0
-				)
-					continue;
+				if (started.includes(classifier.id)) continue;
 				await classifierRequest(
 					"/classifiers/" + classifier.id + "/runs",
 					"POST",
@@ -378,7 +377,11 @@ export function RunDialog({
 				setStarted((ids) => [...ids, classifier.id]);
 			}
 		},
-		onSuccess: () => done(targets),
+		onSuccess: () => {
+			void qc.invalidateQueries({ queryKey: ["backfills"] });
+			void qc.invalidateQueries({ queryKey: ["classifiers"] });
+			done(targets);
+		},
 	});
 	return (
 		<Dialog.Root
@@ -403,7 +406,7 @@ export function RunDialog({
 						: classifiers.length === 1
 							? classifiers[0].name
 							: "All tags in this group"}{" "}
-					· Active conversations only
+					· Includes archived conversations; excludes spam and trash
 				</p>
 				<form
 					className="space-y-5"
@@ -497,8 +500,14 @@ export function RunDialog({
 								label="Conversations"
 								value={selection}
 								options={[
-									{ value: "unprocessed", label: "Not yet processed" },
-									{ value: "all", label: "All active conversations" },
+									{
+										value: "unprocessed",
+										label: "Missing or outdated results (recommended)",
+									},
+									{
+										value: "all",
+										label: "Force reprocess, including current results",
+									},
 								]}
 								onChange={(value) => {
 									setSelection(value);
@@ -529,14 +538,15 @@ export function RunDialog({
 									<KumoInput
 										type="number"
 										min={1}
-										max={5000}
+										max={250000}
+										placeholder="All matching conversations"
 										step={1}
 										className={field + " mt-1.5"}
 										value={limit}
 										onChange={(e) => setLimit(e.target.value)}
 									/>
 									<small className="block text-kumo-subtle mt-2">
-										Newest matching conversations first. Up to 5,000.
+										Leave empty to process all matching conversations.
 									</small>
 								</label>
 								<div
@@ -545,7 +555,7 @@ export function RunDialog({
 									className="rounded-lg bg-kumo-control p-3 text-sm"
 								>
 									{!validRange
-										? "Choose a valid date range and a count between 1 and 5,000."
+										? "Choose a valid date range and an optional limit up to 250,000."
 										: !classifiers.length
 											? "Select at least one tag or group."
 											: !targets.length
@@ -571,8 +581,8 @@ export function RunDialog({
 										<span>
 											Reset manual classifier corrections
 											<small className="block text-kumo-subtle">
-												Ordinary manual tags stay. Choose all active to reset
-												corrections.
+												Ordinary manual tags stay. Choose force reprocessing to
+												reset corrections.
 											</small>
 										</span>
 									</>
@@ -582,7 +592,7 @@ export function RunDialog({
 						<p className="text-xs text-kumo-subtle">
 							{mode.data?.classifierPreview
 								? "Preview runs use stored fixture answers."
-								: "Runs continue after you close this page. Conversation text and metadata are sent to Typesafe.ai. Up to 5,000 conversations per run."}
+								: "Runs continue on the server after you close this page. Track progress in Classifier runs. Matching results are reused where safe; new evaluations send conversation text and metadata to Typesafe.ai."}
 						</p>
 						{run.error && (
 							<p role="alert" className="text-sm text-kumo-danger">

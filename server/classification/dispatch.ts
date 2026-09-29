@@ -1,3 +1,4 @@
+import { advanceBackfills } from "./backfills";
 import { z } from "zod";
 import type { Database } from "../db";
 import { processJob, failDelivery, finishRuns } from "./queue";
@@ -47,6 +48,7 @@ export interface ClassifierQueues {
  * Commit the marker only after broker acceptance. Ambiguous sends may duplicate;
  * the stable token and consumer lease make those deliveries safe. */
 export async function publishOutbox(db: Database, queues: ClassifierQueues) {
+	const advanced = await advanceBackfills(db);
 	return db.begin(async (tx) => {
 		const rows =
 			await tx`SELECT o.job_token,j.priority,j.mailbox_id,j.thread_id,j.generation,greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay
@@ -85,7 +87,7 @@ export async function publishOutbox(db: Database, queues: ClassifierQueues) {
 		}
 		if (rows.length)
 			await tx`UPDATE classifier_outbox SET published_at=now() WHERE job_token IN ${tx(rows.map((r) => r.job_token))}`;
-		return rows.length;
+		return advanced ? Math.max(100, rows.length) : rows.length;
 	});
 }
 

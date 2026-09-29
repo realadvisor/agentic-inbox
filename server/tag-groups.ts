@@ -1,3 +1,5 @@
+import { exampleConfig } from "../shared/jev-examples";
+import { decisionRules } from "../shared/decision-rules";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -33,6 +35,28 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 						"This group changed. Close the editor and reload before saving.",
 				});
 			const rules = input.decision_rules ?? old?.decision_rules ?? {};
+			const previousTags = old
+				? await tx`SELECT id,name,color,description FROM tags WHERE group_id=${groupId} AND archived_at IS NULL ORDER BY position,id`
+				: [];
+			const semanticChanged =
+				!old ||
+				JSON.stringify(previousTags.map((t) => t.id)) !==
+					JSON.stringify(input.tags.map((t) => t.id)) ||
+				exampleConfig({
+					name: old.name,
+					selection: old.selection,
+					instructions: old.instructions,
+					enabled: old.enabled,
+					tags: previousTags.map((t) => ({
+						id: t.id,
+						name: t.name,
+						color: t.color,
+						description: t.description,
+					})),
+				}) !== exampleConfig(input) ||
+				JSON.stringify(decisionRules(old.decision_rules)) !==
+					JSON.stringify(decisionRules(rules));
+			const invalidate = semanticChanged || old?.enabled !== input.enabled;
 			tagGroupInput.parse({ ...input, decision_rules: rules });
 			const tagIds = input.tags.map((tag) => tag.id);
 			const foreign =
@@ -54,7 +78,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 			// cancel old jobs and historical runs, and classify new mail after enabling.
 			const classifiers =
 				await tx`SELECT c.id FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.group_id=${groupId} ORDER BY c.id FOR UPDATE OF c`;
-			if (classifiers.length) {
+			if (classifiers.length && invalidate) {
 				const ids = classifiers.map((c) => c.id);
 				await tx`UPDATE classifier_runs SET status='cancelled' WHERE classifier_id IN ${tx(ids)} AND status='running'`;
 				await tx`UPDATE classifier_run_items i SET status='skipped' FROM classifier_runs r WHERE r.id=i.run_id AND r.classifier_id IN ${tx(ids)} AND i.status='pending'`;
@@ -87,7 +111,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 			await tx`UPDATE tags SET name=id::text WHERE group_id=${groupId} AND archived_at IS NULL`;
 			for (const [position, tag] of input.tags.entries()) {
 				await tx`INSERT INTO tags(id,name,color,group_id,position,description) VALUES(${tag.id},${tag.name},${tag.color},${groupId},${position},${tag.description}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color,description=excluded.description,position=excluded.position,archived_at=NULL,updated_at=now()`;
-				await tx`INSERT INTO classifiers(tag_id,question,enabled,decision_rules) VALUES(${tag.id},${groupQuestion(input, tag)},${input.enabled},${tx.json(rules)}) ON CONFLICT(tag_id) DO UPDATE SET question=excluded.question,enabled=excluded.enabled,decision_rules=excluded.decision_rules,revision=classifiers.revision+1,updated_at=now()`;
+				await tx`INSERT INTO classifiers(tag_id,question,enabled,decision_rules) VALUES(${tag.id},${groupQuestion(input, tag)},${input.enabled},${tx.json(rules)}) ON CONFLICT(tag_id) DO UPDATE SET question=excluded.question,enabled=excluded.enabled,decision_rules=excluded.decision_rules,revision=classifiers.revision+${invalidate ? 1 : 0},updated_at=now()`;
 			}
 			const [group] =
 				await tx`UPDATE tag_groups SET decision_rules=${tx.json(rules)},name=${input.name},selection=${input.selection},instructions=${input.instructions},enabled=${input.enabled},revision=revision+${creating ? 0 : 1},updated_at=now() WHERE id=${groupId} RETURNING *`;

@@ -206,7 +206,13 @@ The preview APIs mount only in the local Node entrypoint with `CLASSIFIER_PREVIE
 
 ## Live Jev classifiers
 
-Settings → Tags configures Jev instructions within each tag or group editor. Migration 006 seeds Needs reply, Privacy: Deletion and Privacy: Data access, all **inactive**. Only `MAILBOX_ADMINS` can create/edit/enable classifiers or run/cancel batches. All authenticated inbox users can review uncertain results. Activating a classifier applies to new mail and confirmed sent replies; it never starts a historical scan. **Reprocess conversations** works independently of automatic assignment and explicitly queues active conversations (up to 5,000 per batch), with mailbox scope, unprocessed/all, optional dates based on the latest received email, and a maximum of 1–5,000 conversations per classifier (newest first). Settings → Runs also offers **Reprocess emails**, preselecting the current mailbox and active classifiers; tag groups are selected as a unit. The tag/group drawer remains a shortcut to the same dialog. A read-only preview counts unique selected conversations before starting; date boundaries follow the browser’s local timezone. Classifier corrections can optionally be reset. Spam/trash/archive-only conversations are excluded.
+Settings → Tags configures Jev instructions within each tag or group editor. Migration 006 seeds Needs reply, Privacy: Deletion and Privacy: Data access, all **inactive**. Only `MAILBOX_ADMINS` can create/edit/enable classifiers or run/cancel batches. All authenticated inbox users can review uncertain results. Activating a classifier applies to new mail and confirmed sent replies; it never starts a historical scan. **Reprocess conversations** and Settings → Runs → **Reprocess emails** create a durable server-side backfill. The default is **Missing or outdated results**; there is no default size cap. Optional mailbox scope, received-date range (latest received message, in the browser’s timezone), and a limit up to 250,000 narrow the selection. Archived received conversations are included; spam, trash, and sent-only/draft-only conversations are excluded. Groups are selected as a unit. The preview counts matching conversations, including those the worker may skip as current or protected. Manual tags and reviewed human/agent answers are preserved unless classifier corrections are explicitly reset in force mode.
+
+Migration 033 separates backfill preparation/admission from the HTTP request. `POST /api/v1/classification/backfills` atomically records all selected tag runs and returns 202; the existing server dispatcher prepares the selection and admits pages of 100 with at most 500 outstanding jobs per classifier. Completion/cancellation and replaced jobs reconcile progress in Postgres. Dispatch, ingestion and the scheduled recovery path keep work moving after closing the browser. Progress cards persist across reloads and group the tag runs into a single batch, with processed, already-current, reused, skipped, failed and remaining counts. Counts are tag evaluations, so one conversation evaluated by five tags contributes five units. Cancel uses the existing classifier cancel endpoint. Starting another missing/outdated run retries errors and skips successful current work.
+
+A result’s evaluation key includes the classifier revision, teaching examples (including removals), optional reviewed examples and an explicit engine/model contract marker; conversation generation tracks changed messages. No-op saves and cosmetic group color edits preserve evaluation versions and jobs. Existing results from before migration 033 have no evaluation key and need one successful evaluation to establish it; nothing is automatically reprocessed by migration. A future model/prompt-contract change must bump the engine marker, or an operator can explicitly choose **Force reprocess** for a refreshed `jev-latest` evaluation.
+
+Backfills also share successful results for identical complete classifier inputs, using a SHA-256 cache key and an expiring owner lease to avoid concurrent duplicate calls. The evaluation clock is pinned to the batch start so time-sensitive questions are consistent within the batch. The key includes that clock, mailbox perspective, sender/recipients, chronological conversation content, dates, attachment counts, effective questions/examples, model, target option and decision rules. Different recipients, mailbox perspectives or later replies cannot reuse a result. Mail records are never merged or deleted. Reuse is conservative and scoped to equal effective input during a backfill; it is not a global subject/body deduplication rule. Cache entries expire with the 30-day history maintenance; failed calls are never cached. The legacy single-classifier `/runs` API remains compatible with its 5,000 active-conversation limit.
 
 ### Google Cloud Tasks
 
@@ -405,12 +411,12 @@ Example subscription (administrator browser/API session):
 
 ```json
 {
-  "url": "https://your-n8n.example/webhook/inbox",
-  "events": ["conversation.matched"],
-  "include_tag_ids": ["<listing-inquiry-tag-uuid>"],
-  "exclude_tag_ids": ["<spam-tag-uuid>"],
-  "tag_match": "any",
-  "enabled": true
+	"url": "https://your-n8n.example/webhook/inbox",
+	"events": ["conversation.matched"],
+	"include_tag_ids": ["<listing-inquiry-tag-uuid>"],
+	"exclude_tag_ids": ["<spam-tag-uuid>"],
+	"tag_match": "any",
+	"enabled": true
 }
 ```
 
@@ -440,6 +446,7 @@ in delivery history. Manual retry preserves the event ID and payload. Redirects
 are rejected; destinations must be HTTPS public hostnames with public DNS answers.
 Completed event logs are retained for 30 days; pending deliveries remain recoverable
 through the existing 15-minute cron. Disabling an endpoint skips waiting deliveries.
+
 ## Importing the Privacy and Info Groups history
 
 Use the offline import tools for an explicitly selected `topics.mbox`, not the
@@ -475,14 +482,16 @@ For apply, create ignored `.local/r2.json` with the existing account and bucket:
 
 ```json
 {
-  "name": "inbox-history-import",
-  "account_id": "71c7813809b4adb2fc4766ba1fd5cf2d",
-  "compatibility_date": "2026-09-22",
-  "r2_buckets": [{
-    "binding": "ATTACHMENTS",
-    "bucket_name": "realadvisor-email-inbox-prototype",
-    "remote": true
-  }]
+	"name": "inbox-history-import",
+	"account_id": "71c7813809b4adb2fc4766ba1fd5cf2d",
+	"compatibility_date": "2026-09-22",
+	"r2_buckets": [
+		{
+			"binding": "ATTACHMENTS",
+			"bucket_name": "realadvisor-email-inbox-prototype",
+			"remote": true
+		}
+	]
 }
 ```
 
@@ -517,7 +526,7 @@ admins additionally manage membership, mailbox settings, tag/classifier settings
 models and webhooks. Changes are audited in `inbox_member_audit`. The API protects
 the last administrator under a transaction lock. No invitation email is sent.
 
-Migration 032 adds membership tables. Production membership enforcement remains
+Migration 033 adds membership tables. Production membership enforcement remains
 **off** until `ACCESS_MEMBERSHIP_ENABLED=true` is configured. Before enabling it,
 reconcile and import the existing approved Cloudflare Access users and roles;
 retain at least one admin. On an empty installation, a verified identity listed

@@ -387,7 +387,7 @@
 				"operationId": "postCreateMailbox",
 				"summary": "Create mailbox",
 				"tags": ["Mailboxes"],
-				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1–64 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
+				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1\u201364 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -6266,6 +6266,143 @@
 					}
 				}
 			}
+		},
+		"/api/v1/classification/backfills": {
+			"post": {
+				"operationId": "startClassifierBackfill",
+				"tags": ["Classifiers"],
+				"summary": "Start a resumable classifier backfill",
+				"description": "Administrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run\u2019s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/BackfillInput"
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Runs accepted",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "string",
+												"format": "uuid"
+											},
+											"batch_id": {
+												"type": "string",
+												"format": "uuid"
+											},
+											"status": {
+												"type": "string"
+											},
+											"prepared": {
+												"type": "boolean"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid selection"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"404": {
+						"description": "Classifier not found"
+					},
+					"409": {
+						"description": "Selected classifier already running"
+					}
+				}
+			},
+			"get": {
+				"operationId": "listClassifierBackfills",
+				"tags": ["Classifiers"],
+				"summary": "Read durable reprocessing progress",
+				"description": "Returns every active run plus all tag runs from the ten most recent batches. Counts are per conversation/tag evaluation; reused is a subset of processed and unchanged a subset of skipped. Preparing runs have prepared=false and no final total yet.",
+				"parameters": [
+					{
+						"in": "query",
+						"name": "mailbox",
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Progress",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/BackfillProgress"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/classification/backfills/preview": {
+			"post": {
+				"operationId": "previewClassifierBackfill",
+				"tags": ["Classifiers"],
+				"summary": "Count the historical conversation selection",
+				"description": "Read-only. Counts matching conversations once, including current and protected results; the worker reports actual skipped/reused counts after starting. Mail may change between preview and snapshot.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/BackfillInput"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Selection size",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["count"],
+									"properties": {
+										"count": {
+											"type": "integer"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid selection"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"404": {
+						"description": "Classifier not found"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -7165,6 +7302,126 @@
 							"maximum": 9
 						},
 						"description": "Score only: one strictly increasing boundary per gap, below the maximum level index. Equality selects the higher level. Defaults to midpoint boundaries."
+					}
+				}
+			},
+			"BackfillInput": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["classifier_ids", "mailbox_ids"],
+				"properties": {
+					"classifier_ids": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 50,
+						"items": {
+							"type": "string",
+							"format": "uuid"
+						}
+					},
+					"mailbox_ids": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 50,
+						"items": {
+							"type": "string",
+							"format": "email"
+						}
+					},
+					"selection": {
+						"type": "string",
+						"enum": ["unprocessed", "all"],
+						"default": "unprocessed"
+					},
+					"reset": {
+						"type": "boolean",
+						"default": false
+					},
+					"include_archived": {
+						"type": "boolean",
+						"default": true
+					},
+					"received_from": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"received_before": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"limit": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 250000,
+						"description": "Omit to select all matching conversations."
+					}
+				}
+			},
+			"BackfillProgress": {
+				"type": "object",
+				"properties": {
+					"revision": {
+						"type": "integer"
+					},
+					"total": {
+						"type": "integer"
+					},
+					"processed": {
+						"type": "integer"
+					},
+					"pending": {
+						"type": "integer"
+					},
+					"waiting": {
+						"type": "integer"
+					},
+					"review": {
+						"type": "integer"
+					},
+					"failed": {
+						"type": "integer"
+					},
+					"skipped": {
+						"type": "integer"
+					},
+					"reused": {
+						"type": "integer"
+					},
+					"unchanged": {
+						"type": "integer"
+					},
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"batch_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"classifier_id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["running", "completed", "cancelled"]
+					},
+					"prepared": {
+						"type": "boolean"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"last_progress_at": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"request": {
+						"$ref": "#/components/schemas/BackfillInput"
 					}
 				}
 			}

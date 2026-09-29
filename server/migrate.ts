@@ -34,6 +34,7 @@ export async function migrate(db: Database) {
 		[30, "030_webhook_tag_filters.sql"],
 		[31, "031_classifier_history.sql"],
 		[32, "032_inbox_members.sql"],
+		[33, "033_classifier_backfills.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),
