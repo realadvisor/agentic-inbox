@@ -48,3 +48,53 @@ test("Access verifies signatures, audience and expiration before accepting ident
 		globalThis.fetch = originalFetch;
 	}
 });
+
+test("Access accepts service tokens via common_name when email is absent", async () => {
+	const { publicKey, privateKey } = await generateKeyPair("RS256");
+	const jwk = {
+		...(await exportJWK(publicKey)),
+		kid: "svc-key",
+		alg: "RS256",
+		use: "sig",
+	};
+	const issuer = "https://service-test.cloudflareaccess.com";
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = async (input) => {
+		assert.equal(String(input), `${issuer}/cdn-cgi/access/certs`);
+		return Response.json({ keys: [jwk] });
+	};
+	try {
+		const clientId = "cbad515f2134f6b19ee8405fdd98e226.access";
+		const now = Math.floor(Date.now() / 1000);
+		const token = await new SignJWT({
+			type: "app",
+			common_name: clientId,
+		})
+			.setProtectedHeader({ alg: "RS256", kid: "svc-key" })
+			.setIssuer(issuer)
+			.setAudience("inbox")
+			.setSubject("")
+			.setIssuedAt(now)
+			.setExpirationTime(now + 60)
+			.sign(privateKey);
+		const identity = await verifyAccess(token, issuer, "inbox");
+		assert.equal(identity.email, clientId);
+		assert.equal(identity.subject, clientId);
+
+		await assert.rejects(
+			verifyAccess(
+				await new SignJWT({ type: "app" })
+					.setProtectedHeader({ alg: "RS256", kid: "svc-key" })
+					.setIssuer(issuer)
+					.setAudience("inbox")
+					.setIssuedAt(now)
+					.setExpirationTime(now + 60)
+					.sign(privateKey),
+				issuer,
+				"inbox",
+			),
+		);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
