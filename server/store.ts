@@ -195,7 +195,10 @@ export class InboxStore {
 				this
 					.db`EXISTS (SELECT 1 FROM conversations workflow WHERE workflow.mailbox_id = e.mailbox_id AND workflow.thread_id = e.thread_id AND workflow.status = ${params.status})`,
 			);
-		if (params.folder) conditions.push(this.db`e.folder_id = ${params.folder}`);
+		if (params.folder === "all")
+			conditions.push(this.db`e.delivery_status = 'received'`);
+		else if (params.folder)
+			conditions.push(this.db`e.folder_id = ${params.folder}`);
 		if (params.thread_id)
 			conditions.push(this.db`e.thread_id = ${params.thread_id}`);
 		if (params.query) {

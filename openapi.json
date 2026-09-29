@@ -836,6 +836,7 @@
 					{
 						"name": "folder",
 						"in": "query",
+						"description": "Folder ID, or all for received emails across every folder (excluding outgoing messages and drafts).",
 						"schema": {
 							"type": "string"
 						}
@@ -1258,6 +1259,7 @@
 					{
 						"name": "folder",
 						"in": "query",
+						"description": "Folder ID, or all for received emails across every folder (excluding outgoing messages and drafts).",
 						"schema": {
 							"type": "string"
 						}

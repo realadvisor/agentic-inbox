@@ -6,6 +6,7 @@
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
+	StackIcon,
 	ClipboardTextIcon,
 	CaretLeftIcon,
 	FileIcon,
@@ -36,6 +37,7 @@ import { RenameFolder } from "./RenameFolder";
 import { useUIStore } from "~/hooks/useUIStore";
 
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
+	all: <StackIcon size={18} weight="regular" />,
 	[Folders.INBOX]: <TrayIcon size={18} weight="regular" />,
 	[Folders.SENT]: <PaperPlaneTiltIcon size={18} weight="regular" />,
 	[Folders.DRAFT]: <FileIcon size={18} weight="regular" />,
@@ -45,6 +47,7 @@ const FOLDER_ICONS: Record<string, React.ReactNode> = {
 
 const SYSTEM_FOLDER_LINKS = [
 	{ id: Folders.INBOX, label: "Inbox" },
+	{ id: "all", label: "All" },
 	{ id: Folders.SENT, label: "Sent" },
 	{ id: Folders.DRAFT, label: "Drafts" },
 	{ id: Folders.ARCHIVE, label: "Archive" },
