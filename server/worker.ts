@@ -1,3 +1,4 @@
+import { resolveMember } from "./members";
 import { deliverWebhook, publishWebhooks } from "./webhooks/delivery";
 import {
 	cloudTaskQueues,
@@ -40,6 +41,7 @@ export interface WorkerEnv extends CloudTasksEnv {
 	ACCESS_AUDIENCE?: string;
 	INBOUND_ENABLED?: string;
 	MAILBOX_ADMINS?: string;
+	ACCESS_MEMBERSHIP_ENABLED?: string;
 	MAILBOX_CREATION_ENABLED?: string;
 	EMAIL?: MailSender;
 	HYPERDRIVE: { connectionString: string };
@@ -163,7 +165,29 @@ worker.all("/api/*", async (c) => {
 	});
 	const agentTasks: Promise<unknown>[] = [];
 	try {
+		const membershipEnabled = c.env.ACCESS_MEMBERSHIP_ENABLED === "true";
+		const actorRole =
+			membershipEnabled && c.env.MAIL_MODE === "live"
+				? await resolveMember(
+						db,
+						c.get("actor"),
+						(c.env.MAILBOX_ADMINS ?? "")
+							.split(",")
+							.map((v) => v.trim())
+							.filter(Boolean),
+					)
+				: undefined;
+		if (actorRole === null)
+			return c.json(
+				{
+					error:
+						"You do not have inbox access. Ask an administrator to add your @realadvisor.com email.",
+				},
+				403,
+			);
 		const response = await createApi(db, {
+			membershipEnabled,
+			actorRole: actorRole ?? undefined,
 			jevKey: c.env.TYPESAFE_API_KEY,
 			kickClassifiers: (tokens = []) => {
 				if (!tokens.length || !queuesEnabled(c.env)) return;

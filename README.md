@@ -507,3 +507,28 @@ Before declaring completion, reconcile every source Message-ID with the target,
 verify imported dates/read/folder state and attachment counts, sample raw object
 hashes and attachment contents, and confirm no import-generated classifier or
 agent jobs or webhook events. Run classification separately only when explicitly requested.
+
+## Inbox members and roles
+
+Settings → Access lists people with access to **all** mailboxes. Admins may add
+exact `@realadvisor.com` email addresses, choose Admin or User, change roles and
+remove access. Users can read/send mail, manage conversations and review results;
+admins additionally manage membership, mailbox settings, tag/classifier settings,
+models and webhooks. Changes are audited in `inbox_member_audit`. The API protects
+the last administrator under a transaction lock. No invitation email is sent.
+
+Migration 032 adds membership tables. Production membership enforcement remains
+**off** until `ACCESS_MEMBERSHIP_ENABLED=true` is configured. Before enabling it,
+reconcile and import the existing approved Cloudflare Access users and roles;
+retain at least one admin. On an empty installation, a verified identity listed
+in `MAILBOX_ADMINS` can bootstrap those admins. After initialization, that variable
+cannot restore a removed or demoted member. The Worker reads the current database
+role on each API request; removal blocks subsequent API requests even with an
+existing Access session.
+
+Cloudflare Access remains the authentication layer. Configure its inbox-only
+login policy to admit corporate identities **only after** the database membership
+gate is deployed and enabled. Corporate-domain authentication alone must not grant
+mailbox access: an explicit database membership is also required. Until that
+rollout, adding a name in a development preview does not grant production access.
+The local preview uses a synthetic administrator and its separate database.

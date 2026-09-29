@@ -173,6 +173,7 @@ const api = {
 		get<{
 			domains: string[];
 			emailAddresses: string[];
+			access?: { role: "admin" | "user"; managed: boolean };
 			canCreateMailboxes: boolean;
 			canDeleteMailboxes: boolean;
 			mode: "live" | "synthetic";

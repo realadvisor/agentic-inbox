@@ -200,7 +200,9 @@
 										"classifiersEnabled": {
 											"type": "boolean"
 										},
-										"canManageWebhooks": { "type": "boolean" },
+										"canManageWebhooks": {
+											"type": "boolean"
+										},
 										"canManageClassifiers": {
 											"type": "boolean"
 										}
@@ -385,7 +387,7 @@
 				"operationId": "postCreateMailbox",
 				"summary": "Create mailbox",
 				"tags": ["Mailboxes"],
-				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1\u201364 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
+				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1–64 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -6113,6 +6115,154 @@
 					},
 					"403": {
 						"description": "Administrator access required"
+					}
+				}
+			}
+		},
+		"/api/v1/access/members": {
+			"get": {
+				"operationId": "getInboxMembers",
+				"summary": "List inbox members",
+				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
+				"tags": ["System"],
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "Success"
+					},
+					"403": {
+						"description": "Administrator or membership required"
+					},
+					"409": {
+						"description": "Duplicate member or last administrator"
+					},
+					"503": {
+						"description": "Membership management not enabled"
+					}
+				}
+			},
+			"post": {
+				"operationId": "postInboxMembers",
+				"summary": "Add an inbox member",
+				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
+				"tags": ["System"],
+				"parameters": [],
+				"responses": {
+					"201": {
+						"description": "Success"
+					},
+					"403": {
+						"description": "Administrator or membership required"
+					},
+					"409": {
+						"description": "Duplicate member or last administrator"
+					},
+					"503": {
+						"description": "Membership management not enabled"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"role": {
+										"type": "string",
+										"enum": ["admin", "user"]
+									},
+									"email": {
+										"type": "string",
+										"format": "email"
+									}
+								},
+								"required": ["email"]
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/access/members/{email}": {
+			"put": {
+				"operationId": "putInboxMembers",
+				"summary": "Change member role",
+				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
+				"tags": ["System"],
+				"parameters": [
+					{
+						"name": "email",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Success"
+					},
+					"403": {
+						"description": "Administrator or membership required"
+					},
+					"409": {
+						"description": "Duplicate member or last administrator"
+					},
+					"503": {
+						"description": "Membership management not enabled"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"properties": {
+									"role": {
+										"type": "string",
+										"enum": ["admin", "user"]
+									}
+								},
+								"required": ["role"]
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteInboxMembers",
+				"summary": "Remove inbox access",
+				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
+				"tags": ["System"],
+				"parameters": [
+					{
+						"name": "email",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "email"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Success"
+					},
+					"403": {
+						"description": "Administrator or membership required"
+					},
+					"409": {
+						"description": "Duplicate member or last administrator"
+					},
+					"503": {
+						"description": "Membership management not enabled"
 					}
 				}
 			}

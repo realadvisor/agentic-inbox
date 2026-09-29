@@ -1,3 +1,4 @@
+import AccessSettings from "~/components/AccessSettings";
 import WebhookSettings from "~/components/WebhookSettings";
 import AgentModelSettings from "~/components/AgentModelSettings";
 import ClassifierRuns from "~/components/ClassifierRuns";
@@ -22,8 +23,13 @@ export default function SettingsRoute() {
 		mode.data?.classifierPreview || mode.data?.classifiersEnabled;
 	const [params, setParams] = useSearchParams();
 	const requestedTab = params.get("tab");
+	const admin = !mode.data?.access?.managed || mode.data.access.role !== "user";
 	const tab =
-		requestedTab === "classifiers" ? "tags" : (requestedTab ?? "tags");
+		!admin && requestedTab !== "access"
+			? "access"
+			: requestedTab === "classifiers"
+				? "tags"
+				: (requestedTab ?? "tags");
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 
@@ -72,9 +78,8 @@ export default function SettingsRoute() {
 
 			<div className="flex flex-wrap gap-2 mb-6" aria-label="Settings sections">
 				{[
-					"account",
-					"tags",
-					"models",
+					...(admin ? ["account", "tags", "models"] : []),
+					"access",
 					...(mode.data?.canManageWebhooks ? ["webhooks"] : []),
 					...(hasClassifiers && mode.data?.canManageClassifiers
 						? ["runs"]
@@ -89,7 +94,9 @@ export default function SettingsRoute() {
 					</Button>
 				))}
 			</div>
-			{tab === "webhooks" && mode.data?.canManageWebhooks ? (
+			{tab === "access" ? (
+				<AccessSettings />
+			) : tab === "webhooks" && mode.data?.canManageWebhooks ? (
 				<WebhookSettings mailboxId={mailboxId!} />
 			) : tab === "models" ? (
 				<AgentModelSettings key={mailboxId} mailboxId={mailboxId!} />

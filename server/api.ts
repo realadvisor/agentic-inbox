@@ -1,3 +1,4 @@
+import { membersApi, type MemberRole } from "./members";
 import { webhookApi } from "./webhooks/api";
 import {
 	draftContentSchema,
@@ -79,6 +80,8 @@ const querySchema = z.object({
 
 export interface ApiOptions {
 	webhookSecretKey?: string;
+	actorRole?: MemberRole;
+	membershipEnabled?: boolean;
 	agent?: AgentOptions;
 	jevKey?: string;
 	jevTransport?: typeof fetch;
@@ -101,14 +104,21 @@ export function createApi(db: Database, options: ApiOptions) {
 		classifierPreview: options.classifierPreview,
 	});
 	const isLive = options.mode === "live";
+	const isAdmin =
+		!isLive ||
+		(options.actorRole
+			? options.actorRole === "admin"
+			: (options.mailboxAdmins ?? []).includes(
+					options.actor?.toLowerCase() ?? "",
+				));
 	const canCreate =
 		!isLive ||
-		(options.mailboxCreationEnabled === true &&
-			!!options.actor &&
-			(options.mailboxAdmins ?? []).includes(options.actor.toLowerCase()));
+		(options.mailboxCreationEnabled === true && !!options.actor && isAdmin);
 	const app = new Hono();
 	app.use("*", bodyLimit({ maxSize: 256_000 }));
 	app.use("*", async (c, next) => {
+		if (isLive && options.membershipEnabled && !options.actorRole)
+			throw new HTTPException(403, { message: "Inbox membership required" });
 		// Local origin checks are retained; the Worker authenticates remote requests.
 		const host = c.req.header("host") ?? new URL(c.req.url).host;
 		if (
@@ -153,8 +163,48 @@ export function createApi(db: Database, options: ApiOptions) {
 		"/api/v1/webhooks",
 		webhookApi(db, {
 			secretKey: options.webhookSecretKey,
-			canManage:
-				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+			canManage: isAdmin,
+		}),
+	);
+
+	app.use("/api/*", async (c, next) => {
+		if (
+			options.membershipEnabled &&
+			!isAdmin &&
+			!["GET", "HEAD", "OPTIONS"].includes(c.req.method)
+		) {
+			const path = c.req.path;
+			if (
+				/^\/api\/v1\/tags(?:\/|$)/.test(path) ||
+				path === "/api/v1/agent/models/refresh" ||
+				/\/agent\/settings$/.test(path) ||
+				/^\/api\/v1\/mailboxes\/[^/]+$/.test(path)
+			)
+				throw new HTTPException(403, {
+					message: "Administrator access required",
+				});
+		}
+		await next();
+	});
+	app.use("/api/v1/access/members", async (c, next) => {
+		if (isLive && !options.membershipEnabled)
+			throw new HTTPException(503, {
+				message: "Member management is not enabled",
+			});
+		await next();
+	});
+	app.use("/api/v1/access/members/*", async (c, next) => {
+		if (isLive && !options.membershipEnabled)
+			throw new HTTPException(503, {
+				message: "Member management is not enabled",
+			});
+		await next();
+	});
+	app.route(
+		"/api/v1/access/members",
+		membersApi(db, {
+			actor: options.actor?.toLowerCase() ?? "local-preview",
+			admin: isAdmin,
 		}),
 	);
 
@@ -172,26 +222,20 @@ export function createApi(db: Database, options: ApiOptions) {
 			domains:
 				options.mode === "live" ? ["ingest.realadvisor.com"] : ["example.test"],
 			emailAddresses: [],
+			access: {
+				role: isAdmin ? "admin" : "user",
+				managed: options.membershipEnabled === true || !isLive,
+			},
 			canCreateMailboxes: canCreate,
 			classifierPreview: !isLive && options.classifierPreview === true,
 			classifiersEnabled: options.classifiersEnabled === true,
-			canManageWebhooks:
-				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
-			canManageClassifiers:
-				options.classifiersEnabled === true &&
-				(!isLive ||
-					(options.mailboxAdmins ?? []).includes(options.actor ?? "")),
+			canManageWebhooks: isAdmin,
+			canManageClassifiers: options.classifiersEnabled === true && isAdmin,
 			canDeleteMailboxes: !isLive,
 			mode: options.mode ?? "synthetic",
 		}),
 	);
-	app.route(
-		"/api/v1/tag-groups",
-		tagGroupsApi(
-			db,
-			!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
-		),
-	);
+	app.route("/api/v1/tag-groups", tagGroupsApi(db, isAdmin));
 	app.get("/api/v1/tags", async (c) =>
 		c.json(
 			await db`SELECT t.*,g.name AS group_name,g.selection AS group_selection FROM tags t LEFT JOIN tag_groups g ON g.id=t.group_id WHERE t.archived_at IS NULL ORDER BY g.name,t.position,lower(t.name),t.id`,
@@ -285,9 +329,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			actor: options.actor,
 			classification: {
 				enabled: options.classifiersEnabled === true,
-				admin:
-					!isLive ||
-					(options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+				admin: isAdmin,
 				kick: options.kickClassifiers,
 			},
 		}),
@@ -610,8 +652,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		"/api/v1/classification",
 		classifierApi(db, {
 			enabled: options.classifiersEnabled === true,
-			admin:
-				!isLive || (options.mailboxAdmins ?? []).includes(options.actor ?? ""),
+			admin: isAdmin,
 			actor: options.actor ?? "local",
 			kick: options.kickClassifiers,
 			key: options.jevKey,
