@@ -35,6 +35,7 @@ export async function migrate(db: Database) {
 		[31, "031_classifier_history.sql"],
 		[32, "032_inbox_members.sql"],
 		[33, "033_classifier_backfills.sql"],
+		[34, "034_inbox_members_rollout.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),

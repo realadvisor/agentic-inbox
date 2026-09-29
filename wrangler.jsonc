@@ -24,6 +24,8 @@
 		"CLOUD_TASKS_LOCATION": "europe-west1",
 		"CLOUD_TASKS_SERVICE_ACCOUNT": "inbox-classifications@realadvisor-prod.iam.gserviceaccount.com",
 		"MAILBOX_ADMINS": "jonas@realadvisor.com",
+		"ACCESS_MEMBERSHIP_ENABLED": "true",
+		"ACCESS_SERVICE_CLIENT_IDS": "cbad515f2134f6b19ee8405fdd98e226.access",
 		"MAILBOX_CREATION_ENABLED": "true",
 		"INBOUND_ENABLED": "true",
 		"ACCESS_ISSUER": "https://realadvisor.cloudflareaccess.com",

@@ -526,10 +526,10 @@ admins additionally manage membership, mailbox settings, tag/classifier settings
 models and webhooks. Changes are audited in `inbox_member_audit`. The API protects
 the last administrator under a transaction lock. No invitation email is sent.
 
-Migration 033 adds membership tables. Production membership enforcement remains
-**off** until `ACCESS_MEMBERSHIP_ENABLED=true` is configured. Before enabling it,
-reconcile and import the existing approved Cloudflare Access users and roles;
-retain at least one admin. On an empty installation, a verified identity listed
+Migration 032 adds membership tables. Migration 034 imports the existing inbox
+policy users and the requested Anastasia membership without overwriting existing
+roles. Production enables `ACCESS_MEMBERSHIP_ENABLED=true` after that migration
+succeeds. Future membership changes belong in Settings → Access. On an empty installation, a verified identity listed
 in `MAILBOX_ADMINS` can bootstrap those admins. After initialization, that variable
 cannot restore a removed or demoted member. The Worker reads the current database
 role on each API request; removal blocks subsequent API requests even with an
