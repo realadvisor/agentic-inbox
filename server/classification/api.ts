@@ -1,3 +1,4 @@
+import { backfillsApi } from "./backfills";
 import { inspectClassifications } from "./inspect";
 import { reviewInput, reviewClassification } from "./review";
 import {
@@ -104,6 +105,7 @@ export function classifierApi(
 			),
 		),
 	);
+	app.route("/backfills", backfillsApi(db, options.kick, options.actor));
 	app.route("/", rerunApi(db, options.admin, options.kick));
 	app.route("/examples", examplesApi(db, options.admin, options.actor));
 	app.route("/", classifierTestApi(db, options.key, options.transport));
@@ -117,7 +119,7 @@ export function classifierApi(
      count(*) FILTER(WHERE i.status='review')::int AS review,
      count(*) FILTER(WHERE i.status='failed')::int AS failed,
      count(*) FILTER(WHERE i.status='skipped')::int AS skipped
-    FROM classifier_runs r JOIN classifier_run_items i ON i.run_id=r.id WHERE r.classifier_id=c.id GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1) s) AS run,
+    FROM classifier_runs r LEFT JOIN classifier_run_items i ON i.run_id=r.id WHERE r.classifier_id=c.id GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1) s) AS run,
    (SELECT count(*)::int FROM conversation_classifications j WHERE j.classifier_id=c.id AND j.status='error') AS errors
    FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.archived_at IS NULL ORDER BY c.updated_at,c.id`,
 		);
@@ -172,20 +174,21 @@ export function classifierApi(
 					JSON.stringify(
 						decisionRules(data.decision_rules ?? old.decision_rules),
 					) ||
+				(data.include_reviewed_examples ?? old.include_reviewed_examples) !==
+					old.include_reviewed_examples ||
 				old.question !== data.question ||
 				old.tag_id !== data.tag_id ||
 				JSON.stringify([...old.mailbox_ids].sort()) !==
 					JSON.stringify(values.mailbox_ids);
-			if (changed || !data.enabled || old.enabled !== data.enabled) {
+			if (changed || old.enabled !== data.enabled) {
 				await tx`UPDATE classifier_runs SET status='cancelled' WHERE classifier_id=${classifierId} AND status='running'`;
 				await tx`DELETE FROM conversation_classifications WHERE classifier_id=${classifierId}`;
 				await tx`DELETE FROM conversation_tags WHERE tag_id=${old.tag_id} AND source='classifier'`;
 			}
 			const [updated] =
-				await tx`UPDATE classifiers SET decision_rules=${tx.json(data.decision_rules ?? old.decision_rules)},question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},include_reviewed_examples=${data.include_reviewed_examples ?? old.include_reviewed_examples},revision=revision+1,updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
+				await tx`UPDATE classifiers SET decision_rules=${tx.json(data.decision_rules ?? old.decision_rules)},question=${values.question},tag_id=${values.tag_id},mailbox_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(values.mailbox_ids)})),enabled=${values.enabled},include_reviewed_examples=${data.include_reviewed_examples ?? old.include_reviewed_examples},revision=revision+${changed || old.enabled !== data.enabled ? 1 : 0},updated_at=now() WHERE id=${classifierId} RETURNING *,to_json(mailbox_ids) AS mailbox_ids`;
 			// Enabling does not implicitly classify historical mail. Preserve existing jobs on a no-op edit.
-			if (!changed && data.enabled)
-				await tx`UPDATE conversation_classifications SET revision=${updated.revision},token=gen_random_uuid(),lease_until=NULL WHERE classifier_id=${classifierId}`;
+			// Unchanged settings retain both the evaluation version and queued tokens.
 			return { ...updated, ...tag, run: null };
 		});
 	}

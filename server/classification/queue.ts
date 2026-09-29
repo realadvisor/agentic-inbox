@@ -1,3 +1,4 @@
+import { reuseResult } from "./result-cache";
 import {
 	requestFits,
 	providerError,
@@ -114,7 +115,7 @@ export async function askJev(
 }
 
 export async function finishRuns(db: Database) {
-	await db`UPDATE classifier_runs r SET status='completed' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM classifier_run_items i WHERE i.run_id=r.id AND i.status='pending')`;
+	await db`UPDATE classifier_runs r SET status='completed' WHERE status='running' AND prepared AND NOT EXISTS(SELECT 1 FROM classifier_run_items i WHERE i.run_id=r.id AND i.status='pending')`;
 }
 
 export type DeliveryResult = { ack: true } | { retry: number };
@@ -129,13 +130,27 @@ export async function processJob(
 ): Promise<DeliveryResult> {
 	const claims = await claimJobs(db, token);
 	const contexts = new Map<number, CaptureJob>();
+	const runIds = [
+		...new Set(
+			claims.flatMap((c) => ("run_id" in c && c.run_id ? [c.run_id] : [])),
+		),
+	];
+	const runs = runIds.length
+		? await db`SELECT id,created_at FROM classifier_runs WHERE id IN ${db(runIds)}`
+		: [];
 	const evaluatedAt = new Date();
 	const states = new Map<string, ReturnType<typeof conversationState>>();
 	const loadState = (job: Job) => {
 		const id = `${job.mailbox_id}/${job.thread_id}/${job.generation}`;
 		let state = states.get(id);
 		if (!state) {
-			state = conversationState(db, job.mailbox_id, job.thread_id, evaluatedAt);
+			const run = runs.find((r) => r.id === job.run_id);
+			state = conversationState(
+				db,
+				job.mailbox_id,
+				job.thread_id,
+				run?.created_at ?? evaluatedAt,
+			);
 			states.set(id, state);
 		}
 		return state;
@@ -189,7 +204,7 @@ async function claimJobs(db: Database, token: string) {
 		// Use the same lock order as configuration writers. Commit every ready
 		// sibling's lease together so competing deliveries cannot split a batch.
 		const classifiers =
-			await tx`SELECT c.* FROM classifiers c JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR UPDATE OF c`;
+			await tx`SELECT c.*,classifier_config_key(c.id,${anchor.mailbox_id}) AS config_key FROM classifiers c JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR UPDATE OF c`;
 		const [conversation] =
 			await tx`SELECT generation FROM conversations WHERE mailbox_id=${anchor.mailbox_id} AND thread_id=${anchor.thread_id} FOR UPDATE`;
 		const jobs = await tx<
@@ -210,6 +225,7 @@ async function claimJobs(db: Database, token: string) {
 				attempts: job.attempts + 1,
 				lease_id: crypto.randomUUID(),
 				question: classifier.question,
+				config_key: classifier.config_key as string,
 				decision_rules: classifier.decision_rules as Partial<DecisionRules>,
 				tag_id: classifier.tag_id,
 				include_reviewed_examples: classifier.include_reviewed_examples,
@@ -257,6 +273,7 @@ async function processSingleJob(
 		error: null,
 	};
 	let failure: JevError | undefined;
+	let reused = false;
 	try {
 		const [eligibility] =
 			await db`SELECT (classifier_thread_active(${j.mailbox_id},${j.thread_id}) OR (${j.priority === 2} AND EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')))) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
@@ -278,16 +295,31 @@ async function processSingleJob(
 				legacy: j.include_reviewed_examples,
 			});
 
-			const answer = await askJev(
-				key,
-				j.question,
-				state,
-				request,
-				[],
-				typedQuestion,
-				j.tag_id,
-				j.decision_rules,
-			);
+			const compute = () =>
+				askJev(
+					key,
+					j.question,
+					state,
+					request,
+					[],
+					typedQuestion,
+					j.tag_id,
+					j.decision_rules,
+				);
+			const cached = j.run_id
+				? await reuseResult(
+						db,
+						{
+							format: 1,
+							request: jevRequest(state, { match: typedQuestion }),
+							option: j.tag_id,
+							decision_rules: j.decision_rules,
+						},
+						compute,
+					)
+				: { value: await compute(), reused: false };
+			reused = cached.reused;
+			const answer = cached.value;
 			result = {
 				...answer,
 				status: answer.answer === null ? "review" : "complete",
@@ -323,13 +355,20 @@ async function processSingleJob(
 				await tx`UPDATE classifier_provider_run_items SET disposition='discarded' WHERE lease_id=${j.lease_id}`;
 				return;
 			}
+			const [configuration] =
+				await tx`SELECT classifier_config_key(${j.classifier_id},${j.mailbox_id}) AS key,tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id}) AS manual`;
+			if (!configuration.manual && configuration.key !== j.config_key)
+				throw new JevError("configuration_changed", true);
 			if (failure?.retryable) {
-				const delay = Math.max(
-					failure.delay,
-					Math.min(3600, 30 * 2 ** Math.min(j.attempts - 1, 7)) +
-						Math.floor(Math.random() * 15),
-				);
-				await tx`UPDATE conversation_classifications SET lease_until=NULL,available_at=now()+${delay}*interval '1 second',error=${failure.code},updated_at=now() WHERE token=${j.token}`;
+				const delay =
+					failure.code === "identical_input_pending"
+						? 5
+						: Math.max(
+								failure.delay,
+								Math.min(3600, 30 * 2 ** Math.min(j.attempts - 1, 7)) +
+									Math.floor(Math.random() * 15),
+							);
+				await tx`UPDATE conversation_classifications SET attempts=greatest(0,attempts-${failure.code === "identical_input_pending" ? 1 : 0}),lease_until=NULL,available_at=now()+${delay}*interval '1 second',error=${failure.code},updated_at=now() WHERE token=${j.token}`;
 				if (failure.code === "provider_http_429")
 					await tx`UPDATE classifier_provider_state SET cooldown_until=greatest(cooldown_until,now()+${delay}*interval '1 second') WHERE singleton`;
 				await tx`UPDATE classifier_provider_run_items SET disposition='retry',error=${failure.code} WHERE lease_id=${j.lease_id}`;
@@ -350,7 +389,7 @@ async function processSingleJob(
 				await tx`SELECT 1 WHERE tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id})`;
 			if (manual) result.status = "skipped";
 			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id} AND disposition<>'failed'`;
-			await tx`UPDATE conversation_classifications SET score=${result.score ?? null},confidence=${result.confidence ?? null},status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;
+			await tx`UPDATE conversation_classifications SET evaluation_key=${j.config_key},cache_hit=${reused},score=${result.score ?? null},confidence=${result.confidence ?? null},status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;
 			if (result.status !== "skipped")
 				await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${j.mailbox_id},${j.thread_id},${classifier.tag_id},'classifier','jev',${result.answer === true ? null : tx`now()`}) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET actor='jev',removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;
 			if (j.run_id)

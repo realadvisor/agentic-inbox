@@ -1,3 +1,4 @@
+import { BackfillProgress } from "./BackfillProgress";
 import { useState } from "react";
 import { RunDialog } from "./TagAutomation";
 import api from "~/services/api";
@@ -143,6 +144,7 @@ export default function ClassifierRuns() {
 					onChange={changeFilters}
 				/>
 			</header>
+			<BackfillProgress mailbox={mailbox} />
 			{reprocess && (
 				<RunDialog
 					classifiers={classifiers.data ?? []}
