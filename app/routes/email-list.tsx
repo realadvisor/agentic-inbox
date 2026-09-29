@@ -241,7 +241,7 @@ export default function EmailListRoute() {
 
 	const params = useMemo(
 		() => ({
-			folder: folder === "all" ? "" : folder || "",
+			folder: folder || "",
 			threaded: "true",
 			...(status !== "all" ? { status } : {}),
 			page: String(currentPage),
@@ -270,7 +270,7 @@ export default function EmailListRoute() {
 			return tagId
 				? (catalog.data?.find((tag) => tag.id === tagId)?.name ??
 						"Tagged conversations")
-				: "All conversations";
+				: "All emails";
 		const found = folders.find((f) => f.id === folder);
 		if (found) return found.name;
 		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";

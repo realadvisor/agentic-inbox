@@ -74,22 +74,22 @@ test("cross-mailbox reads, updates, threads and attachments cannot leak", async 
 	assert.equal(
 		(await request(`${prefix(b)}/emails/${row.id}`, "PUT", { read: true }))
 			.status,
-		404
+		404,
 	);
 	assert.deepEqual(
 		await (await request(`${prefix(b)}/threads/${row.thread_id}`)).json(),
-		[]
+		[],
 	);
 	assert.equal(
 		(await request(`${prefix(b)}/emails/${row.id}/attachments/${attachmentId}`))
 			.status,
-		404
+		404,
 	);
 	assert.equal(
 		await (
 			await request(`${prefix()}/emails/${row.id}/attachments/${attachmentId}`)
 		).text(),
-		"synthetic attachment"
+		"synthetic attachment",
 	);
 });
 
@@ -108,7 +108,7 @@ test("reply is simulated, persisted, and threaded; plain text is escaped", async
 			to: "reply@example.test",
 			subject: "Re: Reply test",
 			text: "<script>sample</script>",
-		}
+		},
 	);
 	assert.equal(response.status, 201);
 	const result = await response.json();
@@ -124,7 +124,7 @@ test("reply is simulated, persisted, and threaded; plain text is escaped", async
 	try {
 		assert.equal(
 			(await new InboxStore(reconnect).message(a, result.id)).subject,
-			"Re: Reply test"
+			"Re: Reply test",
 		);
 	} finally {
 		await reconnect.end();
@@ -140,7 +140,7 @@ test("draft saves update the same row and cannot overwrite an inbox message", as
 	assert.equal(
 		(await request(`${prefix()}/drafts`, "POST", { body: "Draft 2", draft_id }))
 			.status,
-		200
+		200,
 	);
 	assert.equal((await store.message(a, draft_id)).body, "Draft 2");
 	assert.equal(
@@ -150,7 +150,7 @@ test("draft saves update the same row and cannot overwrite an inbox message", as
 				draft_id,
 			})
 		).status,
-		404
+		404,
 	);
 	const parent = await store.insert(a, {
 		sender: a,
@@ -166,7 +166,7 @@ test("draft saves update the same row and cannot overwrite an inbox message", as
 				draft_id: parent.id,
 			})
 		).status,
-		404
+		404,
 	);
 });
 
@@ -181,7 +181,7 @@ test("search, paging, flags, folders and deletion use persisted Postgres data", 
 	assert.equal(
 		(await request(`${prefix()}/emails/${email.id}`, "PUT", { starred: true }))
 			.status,
-		200
+		200,
 	);
 	const found = await store.list(a, {
 		from: "needle",
@@ -201,24 +201,24 @@ test("search, paging, flags, folders and deletion use persisted Postgres data", 
 				folderId: folder.id,
 			})
 		).status,
-		204
+		204,
 	);
 	assert.equal((await store.message(a, email.id)).folder_id, folder.id);
 	assert.equal(
 		(await request(`${prefix()}/folders/${folder.id}`, "DELETE")).status,
-		409
+		409,
 	);
 	assert.equal(
 		(await request(`${prefix()}/emails/${email.id}`, "DELETE")).status,
-		204
+		204,
 	);
 	assert.equal(
 		(await request(`${prefix()}/folders/${folder.id}`, "DELETE")).status,
-		204
+		204,
 	);
 	assert.equal(
 		(await request(`${prefix()}/folders/inbox`, "DELETE")).status,
-		409
+		409,
 	);
 });
 
@@ -227,7 +227,7 @@ test("invalid requests and non-local origins fail without touching mail", async 
 	assert.equal((await request(`${prefix()}/emails?page=-1`)).status, 400);
 	assert.equal(
 		(await request(`${prefix()}/search?date_start=invalid`)).status,
-		400
+		400,
 	);
 	assert.equal(
 		(
@@ -236,7 +236,7 @@ test("invalid requests and non-local origins fail without touching mail", async 
 				text: "test",
 			})
 		).status,
-		400
+		400,
 	);
 	assert.equal((await api.request("http://evil.test/api/health")).status, 403);
 	assert.equal(
@@ -245,6 +245,47 @@ test("invalid requests and non-local origins fail without touching mail", async 
 				headers: { Origin: "https://evil.test" },
 			})
 		).status,
-		403
+		403,
+	);
+});
+
+test("All view includes received mail across folders but excludes outgoing messages", async () => {
+	const mailbox = "all-view@example.test";
+	await store.createMailbox(mailbox, "All view");
+	for (const folder of ["inbox", "archive", "trash", "spam"]) {
+		await store.insert(mailbox, {
+			sender: "sender@example.test",
+			recipient: mailbox,
+			subject: folder,
+			body: "test",
+			folder_id: folder,
+		});
+	}
+	for (const status of [
+		"sent",
+		"draft",
+		"simulated",
+		"sending",
+		"failed",
+		"unknown",
+	] as const) {
+		await store.insert(mailbox, {
+			sender: mailbox,
+			recipient: "recipient@example.test",
+			subject: status,
+			body: "test",
+			folder_id: "archive",
+			delivery_status: status,
+		});
+	}
+	const response = await request(
+		`${prefix(mailbox)}/emails?folder=all&threaded=true`,
+	);
+	assert.equal(response.status, 200);
+	const result = await response.json();
+	assert.equal(result.totalCount, 4);
+	assert.deepEqual(
+		result.emails.map((email: { subject: string }) => email.subject).sort(),
+		["archive", "inbox", "spam", "trash"],
 	);
 });
