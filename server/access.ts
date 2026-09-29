@@ -1,6 +1,27 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function accessActor(payload: JWTPayload): { subject: string; email: string } {
+	if (payload.type !== "app") {
+		throw new Error("An authenticated Access user is required");
+	}
+	const email =
+		typeof payload.email === "string" && payload.email ? payload.email : null;
+	// Service tokens have type=app + common_name (client id) and an empty sub/email.
+	const commonName =
+		typeof payload.common_name === "string" && payload.common_name
+			? payload.common_name
+			: null;
+	const identity = email ?? commonName;
+	if (!identity) {
+		throw new Error("An authenticated Access user is required");
+	}
+	const subject =
+		typeof payload.sub === "string" && payload.sub ? payload.sub : identity;
+	return { subject, email: identity };
+}
+
 export async function verifyAccess(
 	token: string,
 	issuer: string,
@@ -24,14 +45,7 @@ export async function verifyAccess(
 		issuer: normalized,
 		audience,
 		algorithms: ["RS256"],
-		requiredClaims: ["exp", "iat", "sub"],
+		requiredClaims: ["exp", "iat"],
 	});
-	if (
-		payload.type !== "app" ||
-		typeof payload.email !== "string" ||
-		!payload.email
-	) {
-		throw new Error("An authenticated Access user is required");
-	}
-	return { subject: payload.sub!, email: payload.email };
+	return accessActor(payload);
 }
