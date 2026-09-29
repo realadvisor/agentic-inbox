@@ -2,6 +2,18 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { Database } from "./db";
+import type { AccessIdentity } from "./access";
+
+export async function resolveAccessRole(
+	db: Database,
+	identity: AccessIdentity,
+	bootstrapAdmins: string[],
+	serviceClientIds: string[],
+): Promise<MemberRole | null> {
+	if (identity.kind === "service")
+		return serviceClientIds.includes(identity.email) ? "user" : null;
+	return resolveMember(db, identity.email, bootstrapAdmins);
+}
 
 export const memberEmail = z
 	.string()

@@ -29,6 +29,7 @@ test("Access verifies signatures, audience and expiration before accepting ident
 				.sign(privateKey);
 		const now = Math.floor(Date.now() / 1000);
 		const valid = await sign("inbox", now + 60);
+		assert.equal((await verifyAccess(valid, issuer, "inbox")).kind, "user");
 		assert.equal(
 			(await verifyAccess(valid, issuer, "inbox")).email,
 			"tester@example.test",
@@ -79,6 +80,7 @@ test("Access accepts service tokens via common_name when email is absent", async
 			.sign(privateKey);
 		const identity = await verifyAccess(token, issuer, "inbox");
 		assert.equal(identity.email, clientId);
+		assert.equal(identity.kind, "service");
 		assert.equal(identity.subject, clientId);
 
 		await assert.rejects(

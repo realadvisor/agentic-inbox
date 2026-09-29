@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { connect } from "../server/db";
 import { migrate } from "../server/migrate";
 import { createApi } from "../server/api";
-import { resolveMember } from "../server/members";
+import { resolveMember, resolveAccessRole } from "../server/members";
 const schema = "members_" + Date.now();
 const root = connect(),
 	db = connect(process.env.DATABASE_URL, schema);
@@ -193,4 +193,26 @@ test("disabled membership preserves existing configuration permissions", async (
 		body: JSON.stringify({ name: "Legacy permission", color: "#112233" }),
 	});
 	assert.equal(response.status, 201);
+});
+
+test("only explicitly approved verified service identities receive user access", async () => {
+	const identity = {
+		subject: "integration.access",
+		email: "integration.access",
+		kind: "service" as const,
+	};
+	assert.equal(await resolveAccessRole(db, identity, [], []), null);
+	assert.equal(
+		await resolveAccessRole(db, identity, [], [identity.email]),
+		"user",
+	);
+	assert.equal(
+		await resolveAccessRole(
+			db,
+			{ ...identity, kind: "user" },
+			[],
+			[identity.email],
+		),
+		null,
+	);
 });
