@@ -541,3 +541,9 @@ gate is deployed and enabled. Corporate-domain authentication alone must not gra
 mailbox access: an explicit database membership is also required. Until that
 rollout, adding a name in a development preview does not grant production access.
 The local preview uses a synthetic administrator and its separate database.
+
+For machine integrations, keep the inbox-specific Cloudflare service-token policy
+and explicitly list its approved client IDs in `ACCESS_SERVICE_CLIENT_IDS` before
+enabling membership. Only cryptographically verified service identities on that
+list receive User access; they cannot manage members or configuration. Service
+credentials stay separate from the human member list and are revoked in Cloudflare.

@@ -1,4 +1,4 @@
-import { resolveMember } from "./members";
+import { resolveAccessRole } from "./members";
 import { deliverWebhook, publishWebhooks } from "./webhooks/delivery";
 import {
 	cloudTaskQueues,
@@ -23,7 +23,7 @@ import { Hono, type ExecutionContext } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import postgres from "postgres";
 import { createApi } from "./api";
-import { verifyAccess } from "./access";
+import { verifyAccess, type AccessIdentity } from "./access";
 import { ingest, type InboundMessage, type ObjectStore } from "./inbound";
 import type { MailSender } from "./outbound";
 
@@ -42,6 +42,7 @@ export interface WorkerEnv extends CloudTasksEnv {
 	INBOUND_ENABLED?: string;
 	MAILBOX_ADMINS?: string;
 	ACCESS_MEMBERSHIP_ENABLED?: string;
+	ACCESS_SERVICE_CLIENT_IDS?: string;
 	MAILBOX_CREATION_ENABLED?: string;
 	EMAIL?: MailSender;
 	HYPERDRIVE: { connectionString: string };
@@ -54,7 +55,7 @@ export interface WorkerEnv extends CloudTasksEnv {
 
 const worker = new Hono<{
 	Bindings: WorkerEnv;
-	Variables: { actor: string };
+	Variables: { actor: string; accessIdentity: AccessIdentity };
 }>();
 // Machine endpoint authenticates Google OIDC independently of interactive Access.
 worker.post(taskPath, async (c) => {
@@ -142,6 +143,7 @@ worker.use("*", async (c, next) => {
 				c.env.ACCESS_AUDIENCE,
 			);
 			c.set("actor", identity.email);
+			c.set("accessIdentity", identity);
 		} catch {
 			return c.text("Invalid Access token", 401);
 		}
@@ -168,10 +170,14 @@ worker.all("/api/*", async (c) => {
 		const membershipEnabled = c.env.ACCESS_MEMBERSHIP_ENABLED === "true";
 		const actorRole =
 			membershipEnabled && c.env.MAIL_MODE === "live"
-				? await resolveMember(
+				? await resolveAccessRole(
 						db,
-						c.get("actor"),
+						c.get("accessIdentity"),
 						(c.env.MAILBOX_ADMINS ?? "")
+							.split(",")
+							.map((v) => v.trim())
+							.filter(Boolean),
+						(c.env.ACCESS_SERVICE_CLIENT_IDS ?? "")
 							.split(",")
 							.map((v) => v.trim())
 							.filter(Boolean),

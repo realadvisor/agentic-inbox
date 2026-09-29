@@ -2,7 +2,13 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-function accessActor(payload: JWTPayload): { subject: string; email: string } {
+export interface AccessIdentity {
+	subject: string;
+	email: string;
+	kind: "user" | "service";
+}
+
+function accessActor(payload: JWTPayload): AccessIdentity {
 	if (payload.type !== "app") {
 		throw new Error("An authenticated Access user is required");
 	}
@@ -19,7 +25,7 @@ function accessActor(payload: JWTPayload): { subject: string; email: string } {
 	}
 	const subject =
 		typeof payload.sub === "string" && payload.sub ? payload.sub : identity;
-	return { subject, email: identity };
+	return { subject, email: identity, kind: email ? "user" : "service" };
 }
 
 export async function verifyAccess(
