@@ -1,3 +1,4 @@
+import { creditsPaused } from "./provider-state";
 import { advanceBackfills } from "./backfills";
 import { z } from "zod";
 import type { Database } from "../db";
@@ -48,6 +49,7 @@ export interface ClassifierQueues {
  * Commit the marker only after broker acceptance. Ambiguous sends may duplicate;
  * the stable token and consumer lease make those deliveries safe. */
 export async function publishOutbox(db: Database, queues: ClassifierQueues) {
+	if (await creditsPaused(db)) return 0;
 	const advanced = await advanceBackfills(db);
 	return db.begin(async (tx) => {
 		const rows =
@@ -104,6 +106,10 @@ export async function consumeBatch(
 		!Object.values(queueNames).includes(batch.queue as typeof queueNames.live)
 	)
 		throw new Error("Unexpected classifier queue");
+	if (await creditsPaused(db)) {
+		await parkBatch(db, batch);
+		return;
+	}
 	for (const message of batch.messages) {
 		const parsed = workMessage.safeParse(message.body);
 		if (!parsed.success) {
@@ -117,7 +123,7 @@ export async function consumeBatch(
 			const exhaustedTokens = new Set<string>();
 			if (maxProcessingAttempts !== undefined) {
 				const exhausted =
-					await db`SELECT token FROM conversation_classifications WHERE token IN ${db(tokens)} AND status='pending' AND attempts>=${maxProcessingAttempts}`;
+					await db`SELECT token FROM conversation_classifications WHERE token IN ${db(tokens)} AND status='pending' AND attempts-credit_pauses>=${maxProcessingAttempts}`;
 				for (const job of exhausted) exhaustedTokens.add(job.token);
 			}
 			// Retire exhausted siblings before processJob atomically claims the

@@ -21,7 +21,13 @@ interface Backfill {
 	last_progress_at: string;
 	created_at: string;
 }
-export function BackfillProgress({ mailbox }: { mailbox?: string }) {
+export function BackfillProgress({
+	mailbox,
+	paused = false,
+}: {
+	mailbox?: string;
+	paused?: boolean;
+}) {
 	const qc = useQueryClient();
 	const runs = useQuery({
 		queryKey: ["backfills", mailbox],
@@ -86,19 +92,23 @@ export function BackfillProgress({ mailbox }: { mailbox?: string }) {
 						? 100
 						: 0;
 				const stalled =
+					!paused &&
 					active.length > 0 &&
 					active.every(
 						(r) => Date.now() - Date.parse(r.last_progress_at) > 120000,
 					);
-				const state = !prepared
-					? "Preparing selection"
-					: active.length
-						? "Running"
-						: group.some((r) => r.status === "cancelled")
-							? "Cancelled"
-							: sum("failed")
-								? "Finished with errors"
-								: "Finished";
+				const state =
+					paused && active.length
+						? "Paused"
+						: !prepared
+							? "Preparing selection"
+							: active.length
+								? "Running"
+								: group.some((r) => r.status === "cancelled")
+									? "Cancelled"
+									: sum("failed")
+										? "Finished with errors"
+										: "Finished";
 				return (
 					<div
 						key={id}
@@ -175,7 +185,7 @@ export function BackfillProgress({ mailbox }: { mailbox?: string }) {
 										</span>
 										<span>
 											{r.processed + r.skipped + r.failed} / {r.total} ·{" "}
-											{r.status}
+											{paused && r.status === "running" ? "paused" : r.status}
 										</span>
 									</li>
 								))}

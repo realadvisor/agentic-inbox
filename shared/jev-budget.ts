@@ -29,6 +29,10 @@ export function classificationError(code: string) {
 				provider_context_limit:
 					"Conversation and instructions exceed Jev’s context limit.",
 				processing_failed: "Classification could not finish. Please retry.",
+				provider_http_402:
+					"Typesafe credits exhausted. Jev processing is paused.",
+				provider_credit_paused:
+					"Jev is paused until Typesafe credits are restored.",
 			} as Record<string, string>
 		)[code] ?? code
 	);

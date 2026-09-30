@@ -1,3 +1,4 @@
+import { providerStateApi } from "./provider-state-api";
 import { backfillsApi } from "./backfills";
 import { inspectClassifications } from "./inspect";
 import { reviewInput, reviewClassification } from "./review";
@@ -104,6 +105,10 @@ export function classifierApi(
 				id.parse(c.req.param("thread")),
 			),
 		),
+	);
+	app.route(
+		"/provider-state",
+		providerStateApi(db, options.key, options.transport, options.kick),
 	);
 	app.route("/backfills", backfillsApi(db, options.kick, options.actor));
 	app.route("/", rerunApi(db, options.admin, options.kick));
