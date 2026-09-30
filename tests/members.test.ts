@@ -11,6 +11,27 @@ const admin = "owner@realadvisor.com";
 before(async () => {
 	await root.unsafe(`CREATE SCHEMA ${schema}`);
 	await migrate(db);
+	assert.deepEqual(
+		(await db`SELECT email,role FROM inbox_members ORDER BY email`).map(
+			(row) => [row.email, row.role],
+		),
+		[
+			["anastasia@realadvisor.com", "user"],
+			["guillaume@realadvisor.com", "user"],
+			["joan@realadvisor.com", "user"],
+			["jonas@realadvisor.com", "admin"],
+		],
+	);
+	await db`DELETE FROM inbox_members WHERE email='anastasia@realadvisor.com'`;
+	await migrate(db);
+	assert.equal(
+		(
+			await db`SELECT 1 FROM inbox_members WHERE email='anastasia@realadvisor.com'`
+		).length,
+		0,
+		"rollout must not restore removed members on subsequent deployments",
+	);
+	await db`TRUNCATE inbox_members, inbox_member_audit`;
 	await resolveMember(db, admin, [admin]);
 });
 after(async () => {
