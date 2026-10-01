@@ -296,9 +296,14 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}/folders/${id}`),
 
 	// Search
-	searchEmails: (mailboxId: string, params: Record<string, string>) =>
+	searchEmails: (
+		mailboxId: string,
+		params: Record<string, string>,
+		opts?: { signal?: AbortSignal },
+	) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, {
 			params,
+			signal: opts?.signal,
 		}),
 };
 

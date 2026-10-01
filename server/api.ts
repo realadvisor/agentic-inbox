@@ -48,6 +48,7 @@ const sendSchema = z
 const draftSchema = draftContentSchema.extend({
 	in_reply_to: id.optional(),
 	thread_id: id.optional(),
+	view: z.enum(["summary"]).optional(),
 	draft_id: id.optional(),
 	draft_version: draftVersionSchema.optional(),
 });

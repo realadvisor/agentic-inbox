@@ -998,6 +998,16 @@
 							"format": "uuid"
 						},
 						"description": "Order by this ordered-scale group score descending, including review results; unscored conversations last."
+					},
+					{
+						"name": "view",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["summary"]
+						},
+						"description": "Compact list rows with snippets, omitting full bodies and raw headers. Omit to retain the full response; retrieve message details for full content."
 					}
 				],
 				"responses": {
@@ -1412,6 +1422,16 @@
 							"type": "string",
 							"enum": ["open", "done"]
 						}
+					},
+					{
+						"name": "view",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": ["summary"]
+						},
+						"description": "Compact list rows with snippets, omitting full bodies and raw headers. Omit to retain the full response; retrieve message details for full content."
 					}
 				],
 				"responses": {
