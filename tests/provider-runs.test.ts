@@ -456,3 +456,55 @@ test("rotating a completed result token does not invent another attempt", async 
 		1,
 	);
 });
+
+test("mixed request and attempt pages keep older attempts and apply filters before limits", async () => {
+	const { thread } = await prepare();
+	await db`DELETE FROM classification_attempts WHERE thread_id=${thread}`;
+	const requestIds: string[] = [],
+		attemptIds: string[] = [];
+	for (const second of [6, 4, 2]) {
+		const [r] =
+			await db`INSERT INTO classifier_provider_runs(mailbox_id,thread_id,subject,started_at,status,requested_model,request_body) VALUES(${mailbox},${thread},'Page fixture','2026-10-01T00:00:00Z'::timestamptz+${second}*interval '1 second','failed','test','{}') RETURNING id`;
+		requestIds.push(r.id);
+	}
+	for (const second of [7, 5, 3, 1]) {
+		const [a] =
+			await db`INSERT INTO classification_attempts(job_token,attempt,mailbox_id,thread_id,classifier_id,classifier_name,question,subject,revision,generation,started_at,status) VALUES(${crypto.randomUUID()},1,${mailbox},${thread},${classifierIds[0]},'Fixture','Question','Page fixture',1,1,'2026-10-01T00:00:00Z'::timestamptz+${second}*interval '1 second','queued') RETURNING id`;
+		attemptIds.push(a.id);
+	}
+	async function pages(extra: Record<string, string>) {
+		const ids: string[] = [];
+		let cursor: string | null = null;
+		do {
+			const query = new URLSearchParams({
+				thread,
+				mailbox,
+				limit: "2",
+				...extra,
+			});
+			if (cursor) query.set("cursor", cursor);
+			const res = await app.request("/?" + query);
+			assert.equal(res.status, 200);
+			const page = await res.json();
+			ids.push(...page.runs.map((r: { id: string }) => r.id));
+			cursor = page.next_cursor;
+		} while (cursor);
+		return ids;
+	}
+	assert.deepEqual(await pages({}), [
+		attemptIds[0],
+		requestIds[0],
+		attemptIds[1],
+		requestIds[1],
+		attemptIds[2],
+		requestIds[2],
+		attemptIds[3],
+	]);
+	assert.deepEqual(await pages({ status: "queued" }), attemptIds);
+	assert.deepEqual(await pages({ classifier: classifierIds[0] }), attemptIds);
+	assert.deepEqual(await pages({ status: "failed" }), requestIds);
+	assert.deepEqual(
+		await pages({ from: "2026-10-01T00:00:03Z", to: "2026-10-01T00:00:06Z" }),
+		[attemptIds[1], requestIds[1], attemptIds[2]],
+	);
+});

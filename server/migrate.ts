@@ -56,7 +56,8 @@ export async function migrate(db: Database) {
 	// Concurrent index builds cannot run inside the migration transaction. A reserved
 	// connection serializes index builds until they are valid and recorded.
 	const sql = await db.reserve();
-	const [memory] = await sql`SELECT current_setting('maintenance_work_mem') AS work_mem, current_setting('max_parallel_maintenance_workers') AS workers`;
+	const [memory] =
+		await sql`SELECT current_setting('maintenance_work_mem') AS work_mem, current_setting('max_parallel_maintenance_workers') AS workers`;
 	try {
 		// Do not leave transactions waiting on a lock: concurrent index validation
 		// must be able to wait for old snapshots without a circular dependency.
@@ -65,11 +66,30 @@ export async function migrate(db: Database) {
 		) {
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
-		if (!(await sql`SELECT 1 FROM inbox_migrations WHERE version=36`).length) {
+		for (const [version, filename, indexes] of [
+			[
+				36,
+				"036_email_search.sql",
+				["emails_substring_search", "emails_mailbox_date"],
+			],
+			[
+				37,
+				"037_runs_pagination.sql",
+				[
+					"classifier_provider_runs_mailbox_page",
+					"classification_attempts_mailbox_page",
+				],
+			],
+		] as const) {
+			if (
+				(await sql`SELECT 1 FROM inbox_migrations WHERE version=${version}`)
+					.length
+			)
+				continue;
 			// Keep index construction within a small Neon compute's memory budget.
 			// PostgreSQL 18 can parallelize GIN builds; use one worker for this migration.
 			await sql`SELECT set_config('maintenance_work_mem','16MB',false), set_config('max_parallel_maintenance_workers','0',false)`;
-			for (const name of ["emails_substring_search", "emails_mailbox_date"]) {
+			for (const name of indexes) {
 				const [index] =
 					await sql`SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relname=${name}`;
 				// An interrupted concurrent build leaves an invalid index. Retry it, but
@@ -78,12 +98,12 @@ export async function migrate(db: Database) {
 					await sql`DROP INDEX CONCURRENTLY ${sql(name)}`;
 			}
 			const ddl = await readFile(
-				new URL("../migrations/036_email_search.sql", import.meta.url),
+				new URL(`../migrations/${filename}`, import.meta.url),
 				"utf8",
 			);
 			for (const statement of ddl.split("-- statement-breakpoint"))
 				await sql.unsafe(statement);
-			await sql`INSERT INTO inbox_migrations VALUES(36)`;
+			await sql`INSERT INTO inbox_migrations VALUES(${version})`;
 		}
 	} finally {
 		try {

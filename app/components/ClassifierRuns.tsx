@@ -68,10 +68,15 @@ export default function ClassifierRuns() {
 		queryKey: ["provider-runs", filterKey],
 		initialPageParam: null as string | null,
 		enabled: allowed,
-		queryFn: ({ pageParam }) => {
+		queryFn: ({ pageParam, signal }) => {
 			const query = new URLSearchParams(filterKey);
 			if (pageParam) query.set("cursor", pageParam);
-			return classifierRequest<ProviderRunPage>("/provider-runs?" + query);
+			return classifierRequest<ProviderRunPage>(
+				"/provider-runs?" + query,
+				"GET",
+				undefined,
+				signal,
+			);
 		},
 		getNextPageParam: (page) => page.next_cursor ?? undefined,
 		// Browsing older history must not refetch every loaded page on a timer.

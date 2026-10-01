@@ -245,9 +245,6 @@ export class InboxStore {
 					.db`SELECT DISTINCT ON (e.thread_id) e.id,e.mailbox_id,e.thread_id,e.date,e.subject,e.sender FROM emails e WHERE ${where} ORDER BY e.thread_id, e.date DESC, e.id`
 			: this
 					.db`SELECT e.id,e.mailbox_id,e.thread_id,e.date,e.subject,e.sender FROM emails e WHERE ${where}`;
-		const countQuery = this.db<
-			{ count: number }[]
-		>`SELECT ${threaded ? this.db`count(DISTINCT e.thread_id)` : this.db`count(*)`}::int AS count FROM emails e WHERE ${where}`;
 		const column = ["date", "subject", "sender"].includes(params.sortColumn)
 			? params.sortColumn
 			: "date";
@@ -263,17 +260,23 @@ export class InboxStore {
 						.db`e.id,e.mailbox_id,e.folder_id,e.subject,e.sender,e.recipient,e.cc,e.bcc,e.date,e.read,e.starred,e.thread_id,e.message_id,e.in_reply_to,e.email_references,e.delivery_status,e.reply_to,
  left(regexp_replace(e.body, '<[^>]*>', ' ', 'g'),180) AS snippet`
 				: this.db`e.*`;
-		const rowsQuery = this.db<MessageRow[]>`WITH page AS MATERIALIZED (
- SELECT selected.* FROM (${selection}) selected ORDER BY ${scoreOrder} ${this.db(column)} ${direction},id LIMIT ${limit} OFFSET ${(page - 1) * limit}
- ) SELECT ${projection},workflow.status AS thread_status,stats.*
- FROM page selected JOIN emails e ON e.id=selected.id AND e.mailbox_id=selected.mailbox_id
+		const records = await this.db<
+			(MessageRow & { total_count: number })[]
+		>`WITH matched AS MATERIALIZED (${selection}), page AS MATERIALIZED (
+ SELECT selected.* FROM matched selected ORDER BY ${scoreOrder} ${this.db(column)} ${direction},id LIMIT ${limit} OFFSET ${(page - 1) * limit}
+ ) SELECT ${projection},workflow.status AS thread_status,stats.*,totals.total_count
+ FROM (SELECT count(*)::int AS total_count FROM matched) totals
+ LEFT JOIN page selected ON true LEFT JOIN emails e ON e.id=selected.id AND e.mailbox_id=selected.mailbox_id
  LEFT JOIN conversations workflow ON workflow.mailbox_id=selected.mailbox_id AND workflow.thread_id=selected.thread_id
  CROSS JOIN LATERAL (
  SELECT count(*)::int AS thread_count,count(*) FILTER (WHERE NOT t.read)::int AS thread_unread_count,
  bool_or(t.folder_id='draft') AS has_draft,string_agg(DISTINCT t.sender, ', ') AS participants
  FROM emails t WHERE t.mailbox_id=selected.mailbox_id AND t.thread_id=selected.thread_id
  ) stats ORDER BY ${scoreOrder} ${this.db(`selected.${column}`)} ${direction},selected.id`;
-		const [[count], rows] = await Promise.all([countQuery, rowsQuery]);
+		const totalCount = records[0]?.total_count ?? 0;
+		const rows = records
+			.filter((row) => row.id)
+			.map(({ total_count: _total, ...row }) => row);
 		const threads = rows.map((row) => row.thread_id!);
 		const [tags, scores] = await Promise.all([
 			this.tagsForThreads(mailbox, threads),
@@ -286,7 +289,7 @@ export class InboxStore {
 				scores: scores.filter((score) => score.thread_id === row.thread_id),
 				tags: tags.filter((tag) => tag.thread_id === row.thread_id),
 			})),
-			totalCount: count.count,
+			totalCount,
 		};
 	}
 }
