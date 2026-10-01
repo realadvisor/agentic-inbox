@@ -167,16 +167,14 @@ export class InboxStore {
 			]),
 		];
 		if (tagIds.length) {
-			if (params.tag_match === "any")
-				conditions.push(
-					this
-						.db`EXISTS (SELECT 1 FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.mailbox_id=e.mailbox_id AND ct.thread_id=e.thread_id AND ct.tag_id IN ${this.db(tagIds)} AND ct.removed_at IS NULL AND t.archived_at IS NULL)`,
-				);
-			else
-				conditions.push(
-					this
-						.db`(SELECT count(DISTINCT ct.tag_id) FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.mailbox_id=e.mailbox_id AND ct.thread_id=e.thread_id AND ct.tag_id IN ${this.db(tagIds)} AND ct.removed_at IS NULL AND t.archived_at IS NULL)=${tagIds.length}`,
-				);
+			// Find matching conversations once using the mailbox/tag index, rather
+			// than counting tags again for every email in the mailbox.
+			conditions.push(this.db`e.thread_id IN (
+ SELECT ct.thread_id FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id
+ WHERE ct.mailbox_id=${mailbox} AND ct.tag_id IN ${this.db(tagIds)}
+ AND ct.removed_at IS NULL AND t.archived_at IS NULL
+ ${tagIds.length > 1 && params.tag_match !== "any" ? this.db`GROUP BY ct.thread_id HAVING count(DISTINCT ct.tag_id)=${tagIds.length}` : this.db``}
+ )`);
 		}
 
 		if (params.needs_review === "true") {
