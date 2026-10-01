@@ -56,6 +56,7 @@ export async function migrate(db: Database) {
 	// Concurrent index builds cannot run inside the migration transaction. A reserved
 	// connection serializes index builds until they are valid and recorded.
 	const sql = await db.reserve();
+	const [memory] = await sql`SELECT current_setting('maintenance_work_mem') AS work_mem, current_setting('max_parallel_maintenance_workers') AS workers`;
 	try {
 		// Do not leave transactions waiting on a lock: concurrent index validation
 		// must be able to wait for old snapshots without a circular dependency.
@@ -65,6 +66,9 @@ export async function migrate(db: Database) {
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 		if (!(await sql`SELECT 1 FROM inbox_migrations WHERE version=36`).length) {
+			// Keep index construction within a small Neon compute's memory budget.
+			// PostgreSQL 18 can parallelize GIN builds; use one worker for this migration.
+			await sql`SELECT set_config('maintenance_work_mem','16MB',false), set_config('max_parallel_maintenance_workers','0',false)`;
 			for (const name of ["emails_substring_search", "emails_mailbox_date"]) {
 				const [index] =
 					await sql`SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relname=${name}`;
@@ -84,6 +88,7 @@ export async function migrate(db: Database) {
 	} finally {
 		try {
 			await sql`SELECT pg_advisory_unlock(7342236)`;
+			await sql`SELECT set_config('maintenance_work_mem',${memory.work_mem},false), set_config('max_parallel_maintenance_workers',${memory.workers},false)`;
 		} finally {
 			sql.release();
 		}
