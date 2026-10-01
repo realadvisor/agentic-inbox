@@ -50,13 +50,26 @@ export interface ClassifierQueues {
  * the stable token and consumer lease make those deliveries safe. */
 export async function publishOutbox(db: Database, queues: ClassifierQueues) {
 	if (await creditsPaused(db)) return 0;
+	// Publish and commit new-mail work before touching bulk preparation or delivery.
+	const live = await publishPriority(db, queues, true, 100);
+	if (live === 100) return live;
 	const advanced = await advanceBackfills(db);
+	const bulk = await publishPriority(db, queues, false, 100 - live);
+	return advanced ? Math.max(100, live + bulk) : live + bulk;
+}
+
+async function publishPriority(
+	db: Database,
+	queues: ClassifierQueues,
+	live: boolean,
+	limit: number,
+) {
 	return db.begin(async (tx) => {
 		const rows =
 			await tx`SELECT o.job_token,j.priority,j.mailbox_id,j.thread_id,j.generation,greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay
    FROM classifier_outbox o JOIN conversation_classifications j ON j.token=o.job_token JOIN classifiers c ON c.id=j.classifier_id
-   WHERE (o.published_at IS NULL OR o.published_at<now()-interval '25 hours') AND j.status='pending' AND (c.enabled OR j.priority=2) AND c.revision=j.revision
-   ORDER BY j.priority,o.created_at,o.job_token LIMIT 100 FOR UPDATE OF o SKIP LOCKED`;
+   WHERE (o.published_at IS NULL OR o.published_at<now()-interval '25 hours') AND j.status='pending' AND (c.enabled OR j.priority=2) AND c.revision=j.revision AND ${live ? tx`j.priority=0` : tx`j.priority<>0`}
+   ORDER BY j.priority,o.created_at,o.job_token LIMIT ${limit} FOR UPDATE OF o SKIP LOCKED`;
 		for (const priority of [0, 1]) {
 			const groups = new Map<
 				string,
@@ -89,7 +102,7 @@ export async function publishOutbox(db: Database, queues: ClassifierQueues) {
 		}
 		if (rows.length)
 			await tx`UPDATE classifier_outbox SET published_at=now() WHERE job_token IN ${tx(rows.map((r) => r.job_token))}`;
-		return advanced ? Math.max(100, rows.length) : rows.length;
+		return rows.length;
 	});
 }
 
