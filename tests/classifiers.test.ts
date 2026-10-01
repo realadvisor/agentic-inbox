@@ -1537,3 +1537,80 @@ test("Cloud Tasks retries preserve waiting jobs and record exhausted processing 
 	assert.equal(acks, 2);
 	assert.equal(requests, 1);
 });
+
+test("new mail is committed before a failing backfill delivery", async () => {
+	await reset();
+	const bulkThread = await message();
+	await db`UPDATE conversation_classifications SET priority=1 WHERE thread_id=${bulkThread}`;
+	const liveThread = await message();
+	const liveToken = (await job(liveThread)).token;
+	const bulkToken = (await job(bulkThread)).token;
+	const sent: string[] = [];
+	await assert.rejects(
+		publishOutbox(db, {
+			live: {
+				sendBatch: async () => {
+					sent.push("live");
+				},
+			},
+			backfill: {
+				sendBatch: async () => {
+					sent.push("bulk");
+					assert.ok(
+						(
+							await db`SELECT published_at FROM classifier_outbox WHERE job_token=${liveToken}`
+						)[0].published_at,
+					);
+					throw new Error("backfill unavailable");
+				},
+			},
+		}),
+		/backfill unavailable/,
+	);
+	assert.deepEqual(sent, ["live", "bulk"]);
+	assert.equal(
+		(
+			await db`SELECT published_at FROM classifier_outbox WHERE job_token=${bulkToken}`
+		)[0].published_at,
+		null,
+	);
+	let resentLive = false;
+	await publishOutbox(db, {
+		live: {
+			sendBatch: async () => {
+				resentLive = true;
+			},
+		},
+		backfill: { sendBatch: async () => {} },
+	});
+	assert.equal(resentLive, false);
+});
+
+test("inbound dispatch happens before preparing a historical run", async () => {
+	await reset();
+	await message();
+	const [run] =
+		await db`INSERT INTO classifier_runs(classifier_id,revision,actor,prepared,request) SELECT id,revision,'test',false,'{}'::jsonb FROM classifiers WHERE id=${classifierId} RETURNING id`;
+	let delivered = false;
+	await assert.rejects(
+		publishOutbox(db, {
+			live: {
+				sendBatch: async () => {
+					assert.equal(
+						(
+							await db`SELECT prepared FROM classifier_runs WHERE id=${run.id}`
+						)[0].prepared,
+						false,
+					);
+					delivered = true;
+				},
+			},
+			backfill: {
+				sendBatch: async () => {
+					throw Error("unexpected backfill delivery");
+				},
+			},
+		}),
+	); // Deliberately invalid backfill configuration cannot prevent live delivery.
+	assert.equal(delivered, true);
+});
