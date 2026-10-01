@@ -289,3 +289,62 @@ test("All view includes received mail across folders but excludes outgoing messa
 		["archive", "inbox", "spam", "trash"],
 	);
 });
+
+test("compact lists preserve paging and thread metadata while details retain full bodies", async () => {
+	const mailbox = "compact@example.test";
+	await store.createMailbox(mailbox, "Compact");
+	const first = await store.insert(mailbox, {
+		sender: "one@example.test",
+		recipient: mailbox,
+		subject: "Compact needle",
+		body: "<p>literal 100% _value_ \\ text</p>" + "x".repeat(10000),
+		date: new Date("2026-01-01"),
+	});
+	assert.ok(first);
+	await store.insert(mailbox, {
+		sender: "two@example.test",
+		recipient: mailbox,
+		subject: "Compact needle",
+		body: "<p>latest</p>",
+		thread_id: first.thread_id!,
+		date: new Date("2026-01-02"),
+		read: true,
+	});
+	await store.insert(mailbox, {
+		sender: "three@example.test",
+		recipient: mailbox,
+		subject: "Other",
+		body: "other",
+		date: new Date("2026-01-03"),
+	});
+	const params = { folder: "inbox", threaded: "true", limit: "1", page: "2" };
+	const full = await store.list(mailbox, params);
+	const response = await request(
+		`${prefix(mailbox)}/emails?${new URLSearchParams({ ...params, view: "summary" })}`,
+	);
+	assert.equal(response.status, 200);
+	const compact = await response.json();
+	assert.equal(compact.totalCount, 2);
+	assert.equal(compact.emails[0].id, full.emails[0].id);
+	assert.equal(compact.emails[0].snippet, full.emails[0].snippet);
+	assert.equal(compact.emails[0].thread_count, 2);
+	assert.equal(compact.emails[0].thread_unread_count, 1);
+	assert.equal(
+		compact.emails[0].participants,
+		"one@example.test, two@example.test",
+	);
+	assert.equal("body" in compact.emails[0], false);
+	assert.equal((await store.message(mailbox, first.id)).body, first.body);
+	for (const query of ["100%", "_value_", "\\", "LITERAL"]) {
+		const result = await store.list(mailbox, { query, view: "summary" });
+		assert.equal(result.totalCount, 1);
+		assert.equal(result.emails[0].id, first.id);
+	}
+	const empty = await store.list(mailbox, {
+		...params,
+		page: "3",
+		view: "summary",
+	});
+	assert.equal(empty.totalCount, 2);
+	assert.equal(empty.emails.length, 0);
+});

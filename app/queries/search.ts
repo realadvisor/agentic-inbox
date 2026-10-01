@@ -19,17 +19,18 @@ interface SearchResponse {
 export function useSearchEmails(
 	mailboxId: string | undefined,
 	query: string,
-	page: number
+	page: number,
 ) {
 	return useQuery<{ results: Email[]; totalCount: number }>({
 		queryKey:
 			mailboxId && query
 				? queryKeys.search.results(mailboxId, query, page)
 				: ["search", "_disabled"],
-		queryFn: async () => {
+		queryFn: async ({ signal }) => {
 			const parsed = parseSearchQuery(query);
 			const params: Record<string, string> = {
 				page: String(page),
+				view: "summary",
 				limit: String(SEARCH_PAGE_SIZE),
 			};
 			if (parsed.query) params.query = parsed.query;
@@ -44,9 +45,8 @@ export function useSearchEmails(
 				params.is_starred = String(parsed.is_starred);
 			if (parsed.has_attachment) params.has_attachment = "true";
 
-			const data = (await api.searchEmails(mailboxId!, params)) as
-				| SearchResponse
-				| Email[];
+			const data = (await api.searchEmails(mailboxId!, params, { signal })) as
+				SearchResponse | Email[];
 			if (data && typeof data === "object" && "emails" in data) {
 				return {
 					results: (data as SearchResponse).emails ?? [],

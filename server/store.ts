@@ -42,7 +42,7 @@ export function serialize(row: MessageRow) {
 	return {
 		...row,
 		date: row.date.toISOString(),
-		snippet: row.body?.replace(/<[^>]*>/g, " ").slice(0, 180),
+		snippet: row.snippet ?? row.body?.replace(/<[^>]*>/g, " ").slice(0, 180),
 	};
 }
 
@@ -242,11 +242,12 @@ export class InboxStore {
 		const threaded = params.threaded === "true";
 		const selection = threaded
 			? this
-					.db`SELECT DISTINCT ON (e.thread_id) e.* FROM emails e WHERE ${where} ORDER BY e.thread_id, e.date DESC, e.id`
-			: this.db`SELECT e.* FROM emails e WHERE ${where}`;
-		const [count] = await this.db<
+					.db`SELECT DISTINCT ON (e.thread_id) e.id,e.mailbox_id,e.thread_id,e.date,e.subject,e.sender FROM emails e WHERE ${where} ORDER BY e.thread_id, e.date DESC, e.id`
+			: this
+					.db`SELECT e.id,e.mailbox_id,e.thread_id,e.date,e.subject,e.sender FROM emails e WHERE ${where}`;
+		const countQuery = this.db<
 			{ count: number }[]
-		>`SELECT count(*)::int AS count FROM (${selection}) selected`;
+		>`SELECT ${threaded ? this.db`count(DISTINCT e.thread_id)` : this.db`count(*)`}::int AS count FROM emails e WHERE ${where}`;
 		const column = ["date", "subject", "sender"].includes(params.sortColumn)
 			? params.sortColumn
 			: "date";
@@ -256,23 +257,29 @@ export class InboxStore {
 			? this
 					.db`(SELECT max(j.score) FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id JOIN tag_groups g ON g.id=t.group_id JOIN conversations v ON v.mailbox_id=j.mailbox_id AND v.thread_id=j.thread_id WHERE j.mailbox_id=selected.mailbox_id AND j.thread_id=selected.thread_id AND g.id=${params.score_group} AND g.selection='score' AND t.archived_at IS NULL AND j.revision=c.revision AND j.generation=v.generation AND j.status IN ('complete','review') AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id)) DESC NULLS LAST,`
 			: this.db``;
-		const rows = await this.db<MessageRow[]>`SELECT selected.*,
- (SELECT status FROM conversations workflow WHERE workflow.mailbox_id = selected.mailbox_id AND workflow.thread_id = selected.thread_id) AS thread_status,
-			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS thread_count,
-			(SELECT count(*)::int FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND NOT t.read) AS thread_unread_count,
-			EXISTS (SELECT 1 FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id AND t.folder_id = 'draft') AS has_draft,
-			(SELECT string_agg(DISTINCT t.sender, ', ') FROM emails t WHERE t.mailbox_id = selected.mailbox_id AND t.thread_id = selected.thread_id) AS participants
-			FROM (${selection}) selected ORDER BY ${scoreOrder} ${this.db(
-				column,
-			)} ${direction}, id LIMIT ${limit} OFFSET ${(page - 1) * limit}`;
-		const tags = await this.tagsForThreads(
-			mailbox,
-			rows.map((row) => row.thread_id!),
-		);
-		const scores = await this.scoresForThreads(
-			mailbox,
-			rows.map((row) => row.thread_id!),
-		);
+		const projection =
+			params.view === "summary"
+				? this
+						.db`e.id,e.mailbox_id,e.folder_id,e.subject,e.sender,e.recipient,e.cc,e.bcc,e.date,e.read,e.starred,e.thread_id,e.message_id,e.in_reply_to,e.email_references,e.delivery_status,e.reply_to,
+ left(regexp_replace(e.body, '<[^>]*>', ' ', 'g'),180) AS snippet`
+				: this.db`e.*`;
+		const rowsQuery = this.db<MessageRow[]>`WITH page AS MATERIALIZED (
+ SELECT selected.* FROM (${selection}) selected ORDER BY ${scoreOrder} ${this.db(column)} ${direction},id LIMIT ${limit} OFFSET ${(page - 1) * limit}
+ ) SELECT ${projection},workflow.status AS thread_status,stats.*
+ FROM page selected JOIN emails e ON e.id=selected.id AND e.mailbox_id=selected.mailbox_id
+ LEFT JOIN conversations workflow ON workflow.mailbox_id=selected.mailbox_id AND workflow.thread_id=selected.thread_id
+ CROSS JOIN LATERAL (
+ SELECT count(*)::int AS thread_count,count(*) FILTER (WHERE NOT t.read)::int AS thread_unread_count,
+ bool_or(t.folder_id='draft') AS has_draft,string_agg(DISTINCT t.sender, ', ') AS participants
+ FROM emails t WHERE t.mailbox_id=selected.mailbox_id AND t.thread_id=selected.thread_id
+ ) stats ORDER BY ${scoreOrder} ${this.db(`selected.${column}`)} ${direction},selected.id`;
+		const [[count], rows] = await Promise.all([countQuery, rowsQuery]);
+		const threads = rows.map((row) => row.thread_id!);
+		const [tags, scores] = await Promise.all([
+			this.tagsForThreads(mailbox, threads),
+			this.scoresForThreads(mailbox, threads),
+		]);
+
 		return {
 			emails: rows.map((row) => ({
 				...serialize(row),

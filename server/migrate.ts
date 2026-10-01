@@ -53,4 +53,39 @@ export async function migrate(db: Database) {
 			}
 		});
 	}
+	// Concurrent index builds cannot run inside the migration transaction. A reserved
+	// connection serializes index builds until they are valid and recorded.
+	const sql = await db.reserve();
+	try {
+		// Do not leave transactions waiting on a lock: concurrent index validation
+		// must be able to wait for old snapshots without a circular dependency.
+		while (
+			!(await sql`SELECT pg_try_advisory_lock(7342236) AS acquired`)[0].acquired
+		) {
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
+		if (!(await sql`SELECT 1 FROM inbox_migrations WHERE version=36`).length) {
+			for (const name of ["emails_substring_search", "emails_mailbox_date"]) {
+				const [index] =
+					await sql`SELECT i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relname=${name}`;
+				// An interrupted concurrent build leaves an invalid index. Retry it, but
+				// retain completed indexes if a later statement failed.
+				if (index && !index.indisvalid)
+					await sql`DROP INDEX CONCURRENTLY ${sql(name)}`;
+			}
+			const ddl = await readFile(
+				new URL("../migrations/036_email_search.sql", import.meta.url),
+				"utf8",
+			);
+			for (const statement of ddl.split("-- statement-breakpoint"))
+				await sql.unsafe(statement);
+			await sql`INSERT INTO inbox_migrations VALUES(36)`;
+		}
+	} finally {
+		try {
+			await sql`SELECT pg_advisory_unlock(7342236)`;
+		} finally {
+			sql.release();
+		}
+	}
 }

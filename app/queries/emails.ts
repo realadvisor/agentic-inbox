@@ -22,15 +22,20 @@ export function useEmails(
 	params: Record<string, string>,
 	options?: { enabled?: boolean; refetchInterval?: number },
 ) {
-	const queryParams = params.folder ? { ...params, threaded: "true" } : params;
+	const queryParams = {
+		...params,
+		view: "summary",
+		...(params.folder ? { threaded: "true" } : {}),
+	};
 
 	return useQuery<EmailListResponse>({
 		queryKey: mailboxId
 			? queryKeys.emails.list(mailboxId, queryParams)
 			: ["emails", "_disabled"],
-		queryFn: async () => {
-			const data = (await api.listEmails(mailboxId!, queryParams)) as
-				EmailListResponse | Email[];
+		queryFn: async ({ signal }) => {
+			const data = (await api.listEmails(mailboxId!, queryParams, {
+				signal,
+			})) as EmailListResponse | Email[];
 			if (data && typeof data === "object" && "emails" in data) {
 				return {
 					emails: (data as EmailListResponse).emails ?? [],
