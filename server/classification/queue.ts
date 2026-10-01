@@ -1,3 +1,9 @@
+import {
+	creditGuard,
+	creditsPaused,
+	JevCreditPaused,
+	parkTokens,
+} from "./provider-state";
 import { reuseResult } from "./result-cache";
 import {
 	requestFits,
@@ -72,7 +78,9 @@ export async function askJev(
 			body: JSON.stringify(prepared),
 			signal: AbortSignal.timeout(20_000),
 		});
-	} catch {
+	} catch (error) {
+		if (error instanceof JevCreditPaused)
+			throw new JevError("provider_credit_paused", true);
 		throw new JevError("provider_unavailable", true);
 	}
 	if (!response.ok) {
@@ -128,6 +136,10 @@ export async function processJob(
 	token: string,
 	request: typeof fetch = fetch,
 ): Promise<DeliveryResult> {
+	if (await creditsPaused(db)) {
+		await parkTokens(db, [token]);
+		return { ack: true };
+	}
 	const claims = await claimJobs(db, token);
 	const contexts = new Map<number, CaptureJob>();
 	const runIds = [
@@ -159,20 +171,22 @@ export async function processJob(
 		request,
 		claims.length,
 		(url, init, indexes, questionKeys) =>
-			captureProviderRequest(
-				db,
-				request,
-				url,
-				init,
-				indexes.map((index) => {
-					const job = contexts.get(index);
-					if (!job) throw new Error("Missing classifier log context");
-					return {
-						...job,
-						question_key: questionKeys?.[indexes.indexOf(index)],
-					};
-				}),
-			),
+			creditGuard(db, (url, init) =>
+				captureProviderRequest(
+					db,
+					request,
+					url,
+					init ?? {},
+					indexes.map((index) => {
+						const job = contexts.get(index);
+						if (!job) throw new Error("Missing classifier log context");
+						return {
+							...job,
+							question_key: questionKeys?.[indexes.indexOf(index)],
+						};
+					}),
+				),
+			)(url, init),
 	);
 	const results = await Promise.allSettled(
 		claims.map((claimed, index) =>
@@ -353,6 +367,15 @@ async function processSingleJob(
 				conversation?.generation !== j.generation
 			) {
 				await tx`UPDATE classifier_provider_run_items SET disposition='discarded' WHERE lease_id=${j.lease_id}`;
+				return;
+			}
+			if (
+				failure &&
+				["provider_http_402", "provider_credit_paused"].includes(failure.code)
+			) {
+				await tx`UPDATE conversation_classifications SET credit_pauses=credit_pauses+1,lease_until=NULL,lease_id=NULL,error=${failure.code},available_at=now(),updated_at=now() WHERE token=${j.token}`;
+				await tx`UPDATE classifier_outbox SET published_at=NULL WHERE job_token=${j.token}`;
+				await tx`UPDATE classifier_provider_run_items SET disposition='retry',error=${failure.code} WHERE lease_id=${j.lease_id}`;
 				return;
 			}
 			const [configuration] =

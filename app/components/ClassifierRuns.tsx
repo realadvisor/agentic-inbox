@@ -1,3 +1,4 @@
+import { JevCreditPause, useJevProviderState } from "./JevCreditPause";
 import { BackfillProgress } from "./BackfillProgress";
 import { useState } from "react";
 import { RunDialog } from "./TagAutomation";
@@ -36,6 +37,7 @@ export default function ClassifierRuns() {
 	const allowed = !!(
 		mode.data?.canManageClassifiers && mode.data?.classifiersEnabled
 	);
+	const provider = useJevProviderState(allowed);
 	const mailboxes = useMailboxes();
 	const classifiers = useQuery({
 		queryKey: ["classifiers"],
@@ -144,7 +146,8 @@ export default function ClassifierRuns() {
 					onChange={changeFilters}
 				/>
 			</header>
-			<BackfillProgress mailbox={mailbox} />
+			<JevCreditPause state={provider.data} />
+			<BackfillProgress mailbox={mailbox} paused={provider.data?.paused} />
 			{reprocess && (
 				<RunDialog
 					classifiers={classifiers.data ?? []}

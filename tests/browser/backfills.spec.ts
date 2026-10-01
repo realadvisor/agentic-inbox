@@ -1,3 +1,4 @@
+import { creditGuard } from "../../server/classification/provider-state";
 import { test, expect } from "@playwright/test";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -12,6 +13,8 @@ const schema =
 const admin = connect(),
 	db = connect(process.env.DATABASE_URL, schema);
 const mailbox = "backfill-browser@example.test";
+let probeCalls = 0,
+	probeFunded = false;
 let server: ReturnType<typeof serve>, origin: string;
 test.beforeAll(async () => {
 	await admin`CREATE SCHEMA ${admin(schema)}`;
@@ -44,6 +47,13 @@ test.beforeAll(async () => {
 	app = createApi(db, {
 		readAttachment: async () => null,
 		classifiersEnabled: true,
+		jevKey: "test",
+		jevTransport: async () => {
+			probeCalls++;
+			return probeFunded
+				? Response.json({ answers: { match: { type: "noul", noul: 0.99 } } })
+				: Response.json({}, { status: 402 });
+		},
 		origin,
 	});
 	app.get("*", serveStatic({ root: "./build/client" }));
@@ -107,4 +117,48 @@ test("start a historical backfill and see durable, grouped progress after reload
 		fullPage: true,
 	});
 	expect(errors).toEqual([]);
+});
+
+test("credit pause banner survives reload and resume checks billing before clearing it", async ({
+	page,
+}) => {
+	const [{ id }] =
+		await db`SELECT id FROM classifiers WHERE question='Does the conversation need a reply?'`;
+	const started = await fetch(`${origin}/api/v1/classification/backfills`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json", Origin: origin },
+		body: JSON.stringify({
+			classifier_ids: [id],
+			mailbox_ids: [mailbox],
+			selection: "all",
+		}),
+	});
+	expect(started.status).toBe(202);
+	await advanceBackfills(db);
+	await creditGuard(db, async () => Response.json({}, { status: 402 }))(
+		"https://example.test",
+	);
+	await page.goto(`${origin}/mailbox/${mailbox}/settings?tab=runs`);
+	await page.getByRole("button", { name: "Runs", exact: true }).click();
+	const banner = page.getByRole("status", { name: "Jev processing paused" });
+	await expect(banner).toBeVisible();
+	await expect(
+		page
+			.getByRole("region", { name: "Reprocessing progress", exact: true })
+			.getByText("Paused", { exact: true }),
+	).toBeVisible();
+	await page.screenshot({ path: ".local/credit-pause-ui.png", fullPage: true });
+	await banner.getByRole("button", { name: "Resume processing" }).click();
+	await expect(
+		banner.getByText("Typesafe still reports insufficient credits.", {
+			exact: false,
+		}),
+	).toBeVisible();
+	expect(probeCalls).toBe(1);
+	await page.reload();
+	await expect(banner).toBeVisible();
+	probeFunded = true;
+	await banner.getByRole("button", { name: "Resume processing" }).click();
+	await expect(banner).toHaveCount(0);
+	expect(probeCalls).toBe(2);
 });

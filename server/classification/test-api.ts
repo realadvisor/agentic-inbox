@@ -1,3 +1,4 @@
+import { creditGuard } from "./provider-state";
 import { decisionRulesSchema } from "../../shared/decision-rules";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -104,7 +105,7 @@ export function classifierTestApi(
 				const payload = JSON.parse(String(init.body));
 				indexes.forEach((i) => requests.set(i, payload));
 				return data.execute
-					? transport(url, init)
+					? creditGuard(db, transport)(url, init)
 					: Response.json({ answers: {} });
 			},
 		);

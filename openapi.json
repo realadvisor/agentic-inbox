@@ -6403,6 +6403,54 @@
 					}
 				}
 			}
+		},
+		"/api/v1/classification/provider-state": {
+			"get": {
+				"tags": ["Classification"],
+				"summary": "Read the shared Jev credit pause",
+				"operationId": "getJevProviderState",
+				"responses": {
+					"200": {
+						"description": "Current Jev credit pause state. A failed probe returns paused=true.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/JevProviderState"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/classification/provider-state/resume": {
+			"post": {
+				"tags": ["Classification"],
+				"summary": "Check Typesafe credits and resume Jev",
+				"description": "Administrator only. Sends one synthetic Jev request while work remains paused. A valid successful response resumes the queue. Concurrent requests are fenced by a 60-second lease; a later HTTP 402 keeps the queue paused. An already active provider is a no-op.",
+				"operationId": "resumeJevProvider",
+				"responses": {
+					"200": {
+						"description": "Current Jev credit pause state. A failed probe returns paused=true.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/JevProviderState"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"409": {
+						"description": "Another administrator is already checking credits"
+					},
+					"503": {
+						"description": "Jev API key is not configured"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -7422,6 +7470,27 @@
 					},
 					"request": {
 						"$ref": "#/components/schemas/BackfillInput"
+					}
+				}
+			},
+			"JevProviderState": {
+				"type": "object",
+				"required": ["paused", "paused_at", "checking", "resume_error"],
+				"properties": {
+					"paused": {
+						"type": "boolean"
+					},
+					"paused_at": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true
+					},
+					"checking": {
+						"type": "boolean"
+					},
+					"resume_error": {
+						"type": "string",
+						"nullable": true
 					}
 				}
 			}

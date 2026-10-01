@@ -25,6 +25,24 @@ Generation returns an editable suggestion without saving or sending an email.
 Existing text, including edits made during generation, is retained until the user
 chooses Use suggestion. Draft saving and sending remain manual.
 
+## Typesafe credit pauses
+
+A Typesafe HTTP 402 pauses Jev across all mailboxes, live classification,
+historical runs and interactive classifier tests. Pending work stays saved;
+parked deliveries do not consume processing retries. The dispatcher stops
+publishing classification work until an administrator resumes it.
+
+Settings → Runs shows **Paused — Typesafe credits exhausted**. After adding
+credits, **Resume processing** sends one small synthetic Jev request. Only a
+valid successful response clears the pause; payment errors, network failures
+and invalid responses leave it paused. Concurrent clicks share a probe lease;
+an interrupted check can be retried after 60 seconds. Requests already in
+flight may finish. A later payment error takes precedence over a successful
+probe. Rate limits and transient server errors retain automatic backoff.
+
+Migration 035 adds the shared pause state and excluded credit-attempt counter.
+The migration does not pause work or retry past terminal failures automatically.
+
 ## Recipient suggestions
 
 To, Cc and Bcc search a mailbox-scoped contact index after two characters.
