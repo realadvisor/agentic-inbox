@@ -52,6 +52,7 @@ export async function classifierRequest<T>(
 	path: string,
 	method = "GET",
 	body?: unknown,
+	signal?: AbortSignal,
 ): Promise<T> {
 	config ??= api.getConfig().catch((error) => {
 		config = undefined;
@@ -62,6 +63,7 @@ export async function classifierRequest<T>(
 		(mode.classifierPreview ? "/api/preview" : "/api/v1/classification") + path,
 		{
 			method,
+			signal,
 			headers: { "Content-Type": "application/json" },
 			body: body === undefined ? undefined : JSON.stringify(body),
 		},
