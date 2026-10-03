@@ -37,7 +37,7 @@ export async function authenticateApiKey(
 	// Never cache authentication: revocation and expiry take effect on the next request.
 	const [key] = await db<
 		ApiKey[]
-	>`UPDATE inbox_api_keys SET last_used_at=now(),request_count=request_count+1 WHERE token_hash=${hash} AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) RETURNING id,mailbox_ids,permissions`;
+	>`UPDATE inbox_api_keys SET last_used_at=now(),request_count=request_count+1 WHERE token_hash=${hash} AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) RETURNING id,to_json(mailbox_ids) AS mailbox_ids,to_json(permissions) AS permissions`;
 	if (!key)
 		throw new HTTPException(401, { message: "Invalid or expired API key" });
 	return key;
@@ -177,7 +177,7 @@ export function apiKeysApi(
 	});
 	app.get("/", async (c) =>
 		c.json(
-			await db`SELECT id,name,prefix,mailbox_ids,permissions,created_by,created_at,expires_at,last_used_at,request_count,revoked_at FROM inbox_api_keys ORDER BY created_at DESC`,
+			await db`SELECT id,name,prefix,to_json(mailbox_ids) AS mailbox_ids,to_json(permissions) AS permissions,created_by,created_at,expires_at,last_used_at,request_count,revoked_at FROM inbox_api_keys ORDER BY created_at DESC`,
 		),
 	);
 	app.post("/", async (c) => {
@@ -192,7 +192,7 @@ export function apiKeysApi(
 			"inbox_" +
 			Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
 		const [key] =
-			await db`INSERT INTO inbox_api_keys(name,token_hash,prefix,mailbox_ids,permissions,created_by,expires_at) VALUES(${data.name},${await hashApiKey(token)},${token.slice(0, 14)},${data.mailbox_ids},${data.permissions},${options.actor},${data.expires_at ?? null}) RETURNING id`;
+			await db`INSERT INTO inbox_api_keys(name,token_hash,prefix,mailbox_ids,permissions,created_by,expires_at) VALUES(${data.name},${await hashApiKey(token)},${token.slice(0, 14)},ARRAY(SELECT jsonb_array_elements_text(${db.json(data.mailbox_ids)}::jsonb)),ARRAY(SELECT jsonb_array_elements_text(${db.json(data.permissions)}::jsonb)),${options.actor},${data.expires_at ?? null}) RETURNING id`;
 		return c.json({ id: key.id, key: token }, 201);
 	});
 	app.delete("/:id", async (c) => {

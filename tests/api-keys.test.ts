@@ -838,3 +838,46 @@ test("classification read review and rerun work with key identity and scope", as
 		403,
 	);
 });
+
+test("key creation and authentication work with Worker fetch_types disabled", async () => {
+	const { default: postgres } = await import("postgres");
+	const workerDb = postgres(process.env.DATABASE_URL!, {
+		fetch_types: false,
+		connection: { search_path: schema },
+	});
+	try {
+		const app = createApi(workerDb, {
+			mode: "live",
+			membershipEnabled: true,
+			actorRole: "admin",
+			actor: "owner@realadvisor.com",
+			readAttachment: async () => null,
+		});
+		const created = await app.request("http://127.0.0.1:4311/api/v1/api-keys", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name: "Worker key",
+				mailbox_ids: [mailbox],
+				permissions: ["mail:read", "drafts:manage"],
+			}),
+		});
+		assert.equal(created.status, 201, await created.clone().text());
+		const key = await created.json();
+		const list = await (
+			await app.request("http://127.0.0.1:4311/api/v1/api-keys")
+		).json();
+		const item = list.find((k: { id: string }) => k.id === key.id);
+		assert.deepEqual(item.mailbox_ids, [mailbox]);
+		assert.deepEqual(item.permissions, ["mail:read", "drafts:manage"]);
+		const config = await app.request("http://127.0.0.1:4311/api/v1/config", {
+			headers: { Authorization: `Bearer ${key.key}` },
+		});
+		assert.equal(config.status, 200);
+		const principal = await config.json();
+		assert.deepEqual(principal.mailbox_ids, [mailbox]);
+		assert.deepEqual(principal.permissions, ["mail:read", "drafts:manage"]);
+	} finally {
+		await workerDb.end();
+	}
+});
