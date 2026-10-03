@@ -1,6 +1,7 @@
 import { Button, Checkbox, Input, Loader } from "@cloudflare/kumo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { KeyIcon, PlusIcon, CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import { useMailboxes } from "~/queries/mailboxes";
 
 type Key = {
@@ -51,7 +52,9 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 		[boxes, setBoxes] = useState<string[]>([mailboxId]),
 		[scopes, setScopes] = useState<string[]>(["mail:read"]),
 		[expiry, setExpiry] = useState(""),
-		[secret, setSecret] = useState("");
+		[secret, setSecret] = useState(""),
+		[copied, setCopied] = useState(false),
+		[copyError, setCopyError] = useState("");
 	const change = useMutation({
 		mutationFn: ({
 			path,
@@ -71,21 +74,36 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 		},
 	});
 	return (
-		<section className="space-y-4">
-			<div className="flex items-start justify-between gap-3">
-				<div>
-					<h2 className="font-semibold">API keys</h2>
-					<p className="text-sm text-kumo-subtle">
-						Connect an agent or n8n to your inbox.
-					</p>
+		<section
+			className="overflow-hidden rounded-xl border border-kumo-line bg-kumo-base"
+			aria-labelledby="api-keys-heading"
+		>
+			<div className="flex flex-wrap items-center justify-between gap-3 p-5">
+				<div className="flex items-center gap-3">
+					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+						<KeyIcon size={21} />
+					</div>
+					<div>
+						<h2 id="api-keys-heading" className="text-sm font-semibold">
+							API keys
+						</h2>
+						<p className="mt-0.5 text-xs text-kumo-subtle">
+							Connect your agents and automations to the inbox.
+						</p>
+					</div>
 				</div>
 				<Button
+					variant="primary"
+					size="sm"
+					icon={<PlusIcon size={14} />}
+					disabled={adding || !!secret}
 					onClick={() => {
 						setName("");
 						setBoxes([mailboxId]);
 						setScopes(["mail:read"]);
 						setExpiry("");
-						setSecret("");
+						setCopied(false);
+						setCopyError("");
 						setAdding(true);
 						change.reset();
 					}}
@@ -94,28 +112,52 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 				</Button>
 			</div>
 			{(list.error || change.error) && (
-				<p role="alert" className="text-sm text-kumo-danger">
+				<p role="alert" className="px-5 py-3 text-sm text-kumo-danger">
 					{(list.error || change.error)?.message}
 				</p>
 			)}
 			{secret && (
-				<div className="rounded-lg border border-kumo-line p-4 space-y-3">
-					<p className="text-sm font-medium">
-						Copy your key now. It won’t be shown again.
-					</p>
-					<code className="block break-all text-xs select-all">{secret}</code>
-					<p className="text-xs text-kumo-subtle">
-						Use it as a Bearer token in the Authorization header. No Cloudflare
-						service token is needed once API key access is enabled.
-					</p>
-					<div className="flex gap-2">
+				<div className="space-y-3 border-t border-kumo-line bg-kumo-tint/40 p-5">
+					<div>
+						<h3 className="text-sm font-medium">Your key is ready</h3>
+						<p className="mt-1 text-xs text-kumo-subtle">
+							Copy it now and store it somewhere safe. You won’t be able to see
+							it again.
+						</p>
+					</div>
+					<div className="flex items-center gap-3 rounded-lg border border-kumo-line bg-kumo-base p-3">
+						<code className="min-w-0 flex-1 break-all text-xs select-all">
+							{secret}
+						</code>
 						<Button
 							size="sm"
-							onClick={() => navigator.clipboard.writeText(secret)}
+							variant="secondary"
+							icon={copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+							onClick={async () => {
+								try {
+									await navigator.clipboard.writeText(secret);
+									setCopied(true);
+									setCopyError("");
+								} catch {
+									setCopyError(
+										"Could not copy. Select the key above and copy it manually.",
+									);
+								}
+							}}
 						>
-							Copy key
+							{copied ? "Copied" : "Copy key"}
 						</Button>
-						<Button size="sm" variant="ghost" onClick={() => setSecret("")}>
+					</div>
+					{copyError && (
+						<p role="alert" className="text-xs text-kumo-danger">
+							{copyError}
+						</p>
+					)}
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<p className="text-xs text-kumo-subtle">
+							Use as a Bearer token in the Authorization header.
+						</p>
+						<Button size="sm" variant="secondary" onClick={() => setSecret("")}>
 							Done
 						</Button>
 					</div>
@@ -123,7 +165,7 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 			)}
 			{adding && (
 				<form
-					className="rounded-lg border border-kumo-line bg-kumo-base p-4 space-y-4"
+					className="border-t border-kumo-line bg-kumo-tint/30 p-5 space-y-5"
 					onSubmit={async (e) => {
 						e.preventDefault();
 						await change
@@ -142,67 +184,90 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 							.catch(() => {});
 					}}
 				>
-					<Input
-						label="Key name"
-						placeholder="n8n Privacy"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						required
-						maxLength={80}
-					/>
-					<fieldset className="space-y-2">
+					<h3 className="text-sm font-semibold">Create an API key</h3>
+					<div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
+						<Input
+							autoFocus
+							label="Name"
+							placeholder="n8n Privacy"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							required
+							maxLength={80}
+						/>
+						<Input
+							label="Expiry (optional)"
+							type="date"
+							value={expiry}
+							onChange={(e) => setExpiry(e.target.value)}
+						/>
+					</div>
+					<fieldset className="min-w-0">
 						<legend className="text-sm font-medium mb-2">
 							Allowed mailboxes
 						</legend>
-						{mailboxes.isLoading ? (
-							<Loader />
-						) : mailboxes.error ? (
-							<p role="alert">Could not load mailboxes.</p>
-						) : (
-							mailboxes.data?.map((box) => (
-								<Checkbox
-									key={box.id}
-									label={box.id}
-									checked={boxes.includes(box.id)}
-									onCheckedChange={(value) =>
-										setBoxes((prev) =>
-											value
-												? [...prev, box.id]
-												: prev.filter((id) => id !== box.id),
-										)
-									}
-								/>
-							))
-						)}
+						<div className="max-h-40 overflow-y-auto rounded-lg border border-kumo-line bg-kumo-base p-3 space-y-3">
+							{mailboxes.isLoading ? (
+								<Loader />
+							) : mailboxes.error ? (
+								<p role="alert">Could not load mailboxes.</p>
+							) : (
+								mailboxes.data?.map((box) => (
+									<Checkbox
+										key={box.id}
+										label={box.id}
+										checked={boxes.includes(box.id)}
+										onCheckedChange={(value) =>
+											setBoxes((prev) =>
+												value
+													? [...prev, box.id]
+													: prev.filter((id) => id !== box.id),
+											)
+										}
+									/>
+								))
+							)}
+						</div>
 					</fieldset>
-					<fieldset className="space-y-3 border-t border-kumo-line pt-3">
-						<legend className="text-sm font-medium">Permissions</legend>
-						{permissions.map((scope) => (
-							<div key={scope.id}>
-								<Checkbox
-									label={scope.name}
-									checked={scopes.includes(scope.id)}
-									onCheckedChange={(value) =>
-										setScopes((prev) =>
-											value
-												? [...prev, scope.id]
-												: prev.filter((id) => id !== scope.id),
-										)
-									}
-								/>
-								<p className="text-xs text-kumo-subtle ml-6 mt-1">
-									{scope.description}
-								</p>
-							</div>
-						))}
+					<fieldset>
+						<legend className="mb-2 text-sm font-medium">Permissions</legend>
+						<div className="grid gap-2 sm:grid-cols-2">
+							{permissions.map((scope) => (
+								<div
+									key={scope.id}
+									className="rounded-lg border border-kumo-line bg-kumo-base p-3"
+								>
+									<Checkbox
+										label={scope.name}
+										checked={scopes.includes(scope.id)}
+										onCheckedChange={(value) =>
+											setScopes((prev) =>
+												value
+													? [...prev, scope.id]
+													: prev.filter((id) => id !== scope.id),
+											)
+										}
+									/>
+									<p className="text-xs text-kumo-subtle ml-6 mt-1">
+										{scope.description}
+									</p>
+								</div>
+							))}
+						</div>
 					</fieldset>
-					<Input
-						label="Expires on (optional)"
-						type="date"
-						value={expiry}
-						onChange={(e) => setExpiry(e.target.value)}
-					/>
-					<div className="flex gap-2">
+
+					<div className="flex justify-end gap-2 border-t border-kumo-line pt-4">
+						<Button
+							type="button"
+							variant="ghost"
+							disabled={change.isPending}
+							onClick={() => {
+								setAdding(false);
+								change.reset();
+							}}
+						>
+							Cancel
+						</Button>
 						<Button
 							type="submit"
 							variant="primary"
@@ -215,86 +280,137 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 								mailboxes.isLoading
 							}
 						>
-							Generate key
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							onClick={() => setAdding(false)}
-						>
-							Cancel
+							{change.isPending ? "Creating…" : "Create key"}
 						</Button>
 					</div>
 				</form>
 			)}
 			{list.isLoading ? (
-				<Loader />
+				<div className="flex justify-center border-t border-kumo-line p-10">
+					<Loader />
+				</div>
 			) : list.data?.length === 0 ? (
-				<p className="text-sm text-kumo-subtle">No API keys yet.</p>
+				<div className="border-t border-kumo-line px-5 py-12 text-center">
+					<KeyIcon size={28} className="mx-auto mb-3 text-kumo-subtle" />
+					<p className="text-sm font-medium">No API keys yet</p>
+					<p className="mt-1 text-xs text-kumo-subtle">
+						Create a key to connect n8n or your AI agent.
+					</p>
+				</div>
 			) : (
-				<div className="divide-y divide-kumo-line rounded-lg border border-kumo-line">
-					{list.data?.map((key) => {
-						const inactive =
-							!!key.revoked_at ||
-							(!!key.expires_at && Date.parse(key.expires_at) <= Date.now());
-						return (
-							<div key={key.id} className="p-4 space-y-2">
-								<div className="flex items-center justify-between gap-3">
-									<div>
-										<span className="text-sm font-medium">{key.name}</span>
-										<span className="ml-2 text-xs text-kumo-subtle">
-											{key.revoked_at
-												? "Revoked"
-												: inactive
-													? "Expired"
-													: "Active"}
-										</span>
+				<div className="border-t border-kumo-line">
+					<div className="hidden grid-cols-[minmax(0,1fr)_150px_76px] gap-5 border-b border-kumo-line bg-kumo-tint/40 px-5 py-2.5 text-xs font-medium text-kumo-subtle lg:grid">
+						<span>Key & access</span>
+						<span>Usage</span>
+						<span className="sr-only">Actions</span>
+					</div>
+					<ul className="divide-y divide-kumo-line">
+						{list.data?.map((key) => {
+							const inactive =
+								!!key.revoked_at ||
+								(!!key.expires_at && Date.parse(key.expires_at) <= Date.now());
+							return (
+								<li
+									key={key.id}
+									className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-5 gap-y-3 p-5 lg:grid-cols-[minmax(0,1fr)_150px_76px]"
+								>
+									<div className="min-w-0 space-y-2">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="break-words text-sm font-medium">
+												{key.name}
+											</span>
+											<span className="inline-flex items-center gap-1.5 rounded-md bg-kumo-tint px-1.5 py-0.5 text-[11px] text-kumo-subtle">
+												<span
+													className={`h-1.5 w-1.5 rounded-full ${inactive ? "bg-kumo-subtle" : "bg-emerald-500"}`}
+												/>
+												{key.revoked_at
+													? "Revoked"
+													: inactive
+														? "Expired"
+														: "Active"}
+											</span>
+										</div>
+										<code className="block text-xs text-kumo-subtle">
+											{key.prefix}••••••••
+										</code>
+										<p className="break-all text-xs text-kumo-subtle">
+											{key.mailbox_ids.join(", ")}
+										</p>
+										<div className="flex flex-wrap gap-1.5">
+											{permissions
+												.filter((p) => key.permissions.includes(p.id))
+												.map((p) => (
+													<span
+														key={p.id}
+														className="rounded-md border border-kumo-line px-2 py-0.5 text-xs text-kumo-subtle"
+													>
+														{p.name}
+													</span>
+												))}
+										</div>
 									</div>
-									{!key.revoked_at && (
-										<Button
-											size="sm"
-											variant="ghost"
-											disabled={change.isPending}
-											onClick={() => {
-												if (
-													window.confirm(
-														`Revoke ${key.name}? Requests using this key will stop working. Existing webhooks remain active.`,
-													)
-												)
-													change.mutate({
-														path: `/${key.id}`,
-														method: "DELETE",
-													});
-											}}
+									<div className="col-span-2 row-start-2 space-y-1 text-xs text-kumo-subtle lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:pt-0.5">
+										<p className="text-kumo-default tabular-nums">
+											{Number(key.request_count).toLocaleString()} requests
+										</p>
+										<p
+											title={
+												key.last_used_at
+													? new Date(key.last_used_at).toLocaleString()
+													: undefined
+											}
 										>
-											Revoke
-										</Button>
-									)}
-								</div>
-								<code className="text-xs text-kumo-subtle">{key.prefix}…</code>
-								<p className="text-xs break-words">
-									{key.mailbox_ids.join(", ")}
-								</p>
-								<p className="text-xs text-kumo-subtle">
-									{permissions
-										.filter((p) => key.permissions.includes(p.id))
-										.map((p) => p.name)
-										.join(" · ")}
-								</p>
-								<p className="text-xs text-kumo-subtle">
-									{key.last_used_at
-										? `Last used ${new Date(key.last_used_at).toLocaleString()}`
-										: "Never used"}{" "}
-									· {key.request_count} requests
-									{key.expires_at
-										? ` · Expires ${new Date(key.expires_at).toLocaleDateString()}`
-										: ""}
-								</p>
-							</div>
-						);
-					})}
+											{key.last_used_at
+												? `Last used ${new Date(key.last_used_at).toLocaleDateString()}`
+												: "Not used yet"}
+										</p>
+										<p>
+											{key.expires_at
+												? `Expires ${new Date(key.expires_at).toLocaleDateString()}`
+												: "No expiry"}
+										</p>
+									</div>
+									<div className="col-start-2 row-start-1 justify-self-end lg:col-start-3">
+										{!key.revoked_at && (
+											<Button
+												size="sm"
+												variant="ghost"
+												disabled={change.isPending}
+												onClick={() => {
+													if (
+														window.confirm(
+															`Revoke ${key.name}? Requests using this key will stop working. Existing webhooks remain active.`,
+														)
+													)
+														change.mutate({
+															path: `/${key.id}`,
+															method: "DELETE",
+														});
+												}}
+											>
+												Revoke
+											</Button>
+										)}
+									</div>
+								</li>
+							);
+						})}
+					</ul>
 				</div>
 			)}
+			<div className="flex flex-wrap items-center justify-between gap-2 border-t border-kumo-line bg-kumo-tint/40 px-5 py-3 text-xs text-kumo-subtle">
+				<span>
+					Each key only has access to its selected mailboxes and permissions.
+				</span>
+				<a
+					href="/api/docs"
+					target="_blank"
+					rel="noreferrer"
+					className="font-medium text-kumo-default hover:underline"
+				>
+					API documentation ↗
+				</a>
+			</div>
 		</section>
 	);
 }
