@@ -18,37 +18,68 @@
 	],
 	"tags": [
 		{
-			"name": "System"
+			"name": "System",
+			"description": "Health and application configuration."
 		},
 		{
-			"name": "Mailboxes"
+			"name": "Mailboxes",
+			"description": "Mailbox settings and recipient suggestions."
 		},
 		{
-			"name": "Messages"
+			"name": "Messages",
+			"description": "Read, search, move and delete emails."
 		},
 		{
-			"name": "Threads"
+			"name": "Threads",
+			"description": "Conversation content, read state and workflow status."
 		},
 		{
-			"name": "Folders"
+			"name": "Folders",
+			"description": "Organize mailboxes with custom folders."
 		},
 		{
-			"name": "Drafts"
+			"name": "Drafts",
+			"description": "Save and update email drafts."
 		},
 		{
-			"name": "Sending"
+			"name": "Sending",
+			"description": "Send new emails, replies and forwards."
 		},
 		{
-			"name": "Attachments"
+			"name": "Attachments",
+			"description": "Download email attachments."
 		},
 		{
-			"name": "Tags"
+			"name": "Tags",
+			"description": "Shared tags, tag groups and conversation assignments."
 		},
 		{
-			"name": "Classifiers"
+			"name": "Classification",
+			"description": "Inspect, review and rerun conversation classifications."
 		},
 		{
-			"name": "Agent"
+			"name": "Classifiers",
+			"description": "Configure classifiers, inspect provider runs and reprocess historical mail."
+		},
+		{
+			"name": "Teaching examples",
+			"description": "Manage human-confirmed classification examples. Administrator access required."
+		},
+		{
+			"name": "Agent",
+			"description": "Chat, writing assistance, model selection and conversation history."
+		},
+		{
+			"name": "Webhooks",
+			"description": "Event subscriptions and delivery monitoring."
+		},
+		{
+			"name": "API keys",
+			"description": "Create, inspect and revoke scoped credentials. Administrator access required."
+		},
+		{
+			"name": "Access",
+			"description": "Manage inbox members and roles. Administrator access required."
 		}
 	],
 	"paths": {
@@ -90,6 +121,9 @@
 								}
 							}
 						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					},
 					"403": {
 						"description": "Operation denied",
@@ -150,9 +184,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				}
 			}
@@ -221,6 +252,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -280,9 +314,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -326,6 +357,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -385,9 +419,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -426,6 +457,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -485,9 +519,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -547,6 +578,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -606,9 +640,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -651,6 +682,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -710,9 +744,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -763,6 +794,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -822,9 +856,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				}
 			}
@@ -1055,6 +1086,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1114,9 +1148,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -1169,6 +1200,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1228,9 +1262,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					},
 					"502": {
 						"description": "Delivery not confirmed; do not blindly resend",
@@ -1495,6 +1526,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1554,9 +1588,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -1604,6 +1635,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1663,9 +1697,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -1711,6 +1742,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1770,9 +1804,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -1831,6 +1862,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1890,9 +1924,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -1933,6 +1964,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -1992,9 +2026,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -2063,6 +2094,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2122,9 +2156,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -2165,6 +2196,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2224,9 +2258,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -2291,6 +2322,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2350,9 +2384,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -2395,6 +2426,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2454,9 +2488,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -2528,6 +2559,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2587,9 +2621,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"requestBody": {
@@ -2652,6 +2683,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2711,9 +2745,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -2738,6 +2769,16 @@
 					}
 				],
 				"responses": {
+					"200": {
+						"description": "Existing draft updated",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DraftResult"
+								}
+							}
+						}
+					},
 					"201": {
 						"description": "Success",
 						"content": {
@@ -2757,6 +2798,9 @@
 								}
 							}
 						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					},
 					"403": {
 						"description": "Operation denied",
@@ -2814,19 +2858,6 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
-					},
-					"200": {
-						"description": "Existing draft updated",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/DraftResult"
 								}
 							}
 						}
@@ -2897,6 +2928,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -2956,9 +2990,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					},
 					"502": {
 						"description": "Delivery not confirmed; do not blindly resend",
@@ -3051,6 +3082,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -3110,9 +3144,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					},
 					"502": {
 						"description": "Delivery not confirmed; do not blindly resend",
@@ -3199,6 +3230,9 @@
 							}
 						}
 					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
 					"403": {
 						"description": "Operation denied",
 						"content": {
@@ -3258,9 +3292,6 @@
 								}
 							}
 						}
-					},
-					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
 				},
 				"security": [
@@ -3437,9 +3468,9 @@
 		"/api/v1/tags/{tagId}": {
 			"put": {
 				"operationId": "updateTag",
-				"summary": "Edit tag name and color",
+				"summary": "Update tag",
 				"tags": ["Tags"],
-				"description": "Stable UUID references preserve every assignment across renames.",
+				"description": "Edit tag name and color.\n\nStable UUID references preserve every assignment across renames.",
 				"parameters": [
 					{
 						"name": "tagId",
@@ -3526,9 +3557,9 @@
 			},
 			"delete": {
 				"operationId": "deleteTag",
-				"summary": "Delete shared tag and all assignments",
+				"summary": "Delete tag",
 				"tags": ["Tags"],
-				"description": "Confirm with the user first. Permanently deletes the tag and all assignments, including removal records, across every mailbox.",
+				"description": "Delete shared tag and all assignments.\n\nConfirm with the user first. Permanently deletes the tag and all assignments, including removal records, across every mailbox.",
 				"parameters": [
 					{
 						"name": "tagId",
@@ -3795,9 +3826,9 @@
 		"/api/v1/mailboxes/{mailboxId}/tags/bulk": {
 			"post": {
 				"operationId": "bulkConversationTags",
-				"summary": "Add or remove tag on selected conversations",
+				"summary": "Update conversation tags",
 				"tags": ["Tags"],
-				"description": "Atomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers. API keys require conversations:manage and access to this mailbox.",
+				"description": "Add or remove tag on selected conversations.\n\nAtomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3902,9 +3933,9 @@
 		"/api/v1/classification/classifiers": {
 			"get": {
 				"operationId": "listClassifiers",
-				"summary": "List classifiers and latest run progress",
+				"summary": "List classifiers",
 				"tags": ["Classifiers"],
-				"description": "",
+				"description": "List classifiers and latest run progress.",
 				"parameters": [],
 				"responses": {
 					"200": {
@@ -4174,9 +4205,9 @@
 		"/api/v1/classification/results/{mailbox}": {
 			"get": {
 				"operationId": "listClassificationReviews",
-				"summary": "List uncertain and failed classifications",
-				"tags": ["Classifiers"],
-				"description": "Latest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned. API keys require classifications:read and access to this mailbox.",
+				"summary": "List classification reviews",
+				"tags": ["Classification"],
+				"description": "List uncertain and failed classifications.\n\nLatest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned. API keys require classifications:read and access to this mailbox.",
 				"parameters": [
 					{
 						"in": "path",
@@ -4236,9 +4267,9 @@
 		"/api/v1/classification/results/{mailbox}/{thread}/{classifier}": {
 			"put": {
 				"operationId": "correctClassification",
-				"summary": "Record a human yes/no correction",
-				"tags": ["Classifiers"],
-				"description": "Any authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative. API keys require classifications:review and access to this mailbox.",
+				"summary": "Correct classification",
+				"tags": ["Classification"],
+				"description": "Record a human yes/no correction.\n\nAny authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative. API keys require classifications:review and access to this mailbox.",
 				"parameters": [
 					{
 						"in": "path",
@@ -4322,8 +4353,8 @@
 		"/api/v1/classification/provider-runs": {
 			"get": {
 				"tags": ["Classifiers"],
-				"summary": "List classification attempts and Jev request logs",
-				"description": "Newest first: Jev requests plus classification attempts without request logs. kind distinguishes request from attempt; historical marks recovered current states. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
+				"summary": "List classification attempts",
+				"description": "List classification attempts and Jev request logs.\n\nNewest first: Jev requests plus classification attempts without request logs. kind distinguishes request from attempt; historical marks recovered current states. Cursor pagination preserves timestamp precision. Summaries exclude request and response bodies. from is inclusive; to is exclusive.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -4441,8 +4472,8 @@
 		"/api/v1/classification/provider-runs/{id}": {
 			"get": {
 				"tags": ["Classifiers"],
-				"summary": "Inspect a provider request and response (inbox administrators only)",
-				"description": "Includes exact request/response bodies as text, per-question classifier snapshots and application outcomes. No authorization headers are stored. Bodies may include private email content.",
+				"summary": "Get provider request",
+				"description": "Inspect a provider request and response (inbox administrators only).\n\nIncludes exact request/response bodies as text, per-question classifier snapshots and application outcomes. No authorization headers are stored. Bodies may include private email content.",
 				"parameters": [
 					{
 						"name": "id",
@@ -4484,7 +4515,7 @@
 			"get": {
 				"operationId": "getAgentState",
 				"tags": ["Agent"],
-				"summary": "Read agent settings and a page of one conversation",
+				"summary": "Get agent conversation",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4573,14 +4604,14 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require agent:use and mail:read and access to this mailbox."
+				"description": "Read agent settings and a page of one conversation.\n\nAPI keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/settings": {
 			"put": {
 				"operationId": "putAgentSettings",
 				"tags": ["Agent"],
-				"summary": "Choose the default model, writing instructions, and automatic drafting for this mailbox",
+				"summary": "Update agent settings",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4650,15 +4681,16 @@
 					"503": {
 						"description": "Selected provider is not configured, or automatic drafting queue is unavailable"
 					}
-				}
+				},
+				"description": "Choose the default model, writing instructions, and automatic drafting for this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/chat": {
 			"post": {
 				"operationId": "postAgentChat",
 				"tags": ["Agent"],
-				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
-				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying. API keys require agent:use and mail:read and access to this mailbox.",
+				"summary": "Chat with agent",
+				"description": "Stream an email agent turn; draft and organization tools can modify this mailbox.\n\nNever sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying. API keys require agent:use and mail:read and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4730,14 +4762,14 @@
 							}
 						}
 					},
+					"400": {
+						"description": "Unknown, retired or invalid model, or invalid request"
+					},
 					"409": {
 						"description": "Mailbox is busy or request ID was already used"
 					},
 					"503": {
 						"description": "Selected AI provider is not configured"
-					},
-					"400": {
-						"description": "Unknown, retired or invalid model, or invalid request"
 					}
 				},
 				"security": [
@@ -4754,7 +4786,7 @@
 			"get": {
 				"operationId": "getAgentModels",
 				"tags": ["Agent"],
-				"summary": "Read the persisted tool-capable model catalog",
+				"summary": "List agent models",
 				"responses": {
 					"200": {
 						"description": "Model catalog and provider availability",
@@ -4766,14 +4798,15 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "Read the persisted tool-capable model catalog."
 			}
 		},
 		"/api/v1/agent/models/refresh": {
 			"post": {
 				"operationId": "refreshAgentModels",
 				"tags": ["Agent"],
-				"summary": "Refresh gateway models without changing mailbox defaults",
+				"summary": "Refresh agent models",
 				"responses": {
 					"200": {
 						"description": "Model catalog and provider availability",
@@ -4791,15 +4824,16 @@
 					"502": {
 						"description": "Upstream catalog unavailable or invalid; existing snapshot is unchanged"
 					}
-				}
+				},
+				"description": "Refresh gateway models without changing mailbox defaults."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/stop": {
 			"post": {
 				"operationId": "stopAgentRun",
 				"tags": ["Agent"],
-				"summary": "Stop a specific mailbox agent run",
-				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run. API keys require agent:use and mail:read and access to this mailbox.",
+				"summary": "Stop agent run",
+				"description": "Stop a specific mailbox agent run.\n\nRevokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run. API keys require agent:use and mail:read and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4892,7 +4926,7 @@
 			},
 			"post": {
 				"tags": ["Tags"],
-				"summary": "Create a tag group and managed Jev classifiers (administrator only)",
+				"summary": "Create tag group",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -4914,13 +4948,14 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "Create a tag group and managed Jev classifiers (administrator only)."
 			}
 		},
 		"/api/v1/tag-groups/{id}": {
 			"put": {
 				"tags": ["Tags"],
-				"summary": "Update a group, tags and its shared Jev instructions (administrator only)",
+				"summary": "Update tag group",
 				"parameters": [
 					{
 						"name": "id",
@@ -4953,16 +4988,17 @@
 							}
 						}
 					},
-					"409": {
-						"description": "Revision conflict or multiple existing selections"
-					},
 					"403": {
 						"description": "Administrator access required"
+					},
+					"409": {
+						"description": "Revision conflict or multiple existing selections"
 					}
-				}
+				},
+				"description": "Update a group, tags and its shared Jev instructions (administrator only)."
 			},
 			"delete": {
-				"summary": "Delete a tag group and retire its tags and classifiers, preserving historical runs",
+				"summary": "Delete tag group",
 				"operationId": "deleteTagGroup",
 				"tags": ["Tags"],
 				"parameters": [
@@ -5010,12 +5046,13 @@
 					"409": {
 						"description": "Group revision changed"
 					}
-				}
+				},
+				"description": "Delete a tag group and retire its tags and classifiers, preserving historical runs."
 			}
 		},
 		"/api/v1/classification/test": {
 			"post": {
-				"summary": "Preview or test unsaved Jev questions on one conversation without changing tags",
+				"summary": "Test classification",
 				"operationId": "testClassifier",
 				"tags": ["Classification"],
 				"requestBody": {
@@ -5106,14 +5143,15 @@
 					"503": {
 						"description": "Classifiers disabled or Jev key unavailable"
 					}
-				}
+				},
+				"description": "Preview or test unsaved Jev questions on one conversation without changing tags."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/conversations": {
 			"get": {
 				"operationId": "listAgentConversations",
 				"tags": ["Agent"],
-				"summary": "Browse saved assistant conversations, newest first",
+				"summary": "List agent conversations",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -5153,12 +5191,12 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require agent:use and mail:read and access to this mailbox."
+				"description": "Browse saved assistant conversations, newest first.\n\nAPI keys require agent:use and mail:read and access to this mailbox."
 			},
 			"post": {
 				"operationId": "createAgentConversation",
 				"tags": ["Agent"],
-				"summary": "Start a separate assistant conversation",
+				"summary": "Create agent conversation",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -5182,12 +5220,12 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require agent:use and mail:read and access to this mailbox."
+				"description": "Start a separate assistant conversation.\n\nAPI keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/status": {
 			"get": {
-				"summary": "Read conversation status and recent activity",
+				"summary": "Get conversation status",
 				"responses": {
 					"200": {
 						"description": "Status, revision, and latest 50 transitions"
@@ -5222,10 +5260,12 @@
 					{
 						"InboxApiKey": []
 					}
-				]
+				],
+				"description": "Read conversation status and recent activity.",
+				"tags": ["Threads"]
 			},
 			"put": {
-				"summary": "Change conversation status using the current revision",
+				"summary": "Update conversation status",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -5297,13 +5337,14 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require conversations:manage and access to this mailbox."
+				"description": "Change conversation status using the current revision.\n\nAPI keys require conversations:manage and access to this mailbox.",
+				"tags": ["Threads"]
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}/rerun": {
 			"post": {
-				"summary": "Queue all configured classifiers in mailbox scope for this conversation, including automatic-assignment-disabled classifiers, preserving manual choices and human corrections",
-				"description": "Includes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples. API keys require classifications:run and access to this mailbox.",
+				"summary": "Rerun conversation classifiers",
+				"description": "Queue all configured classifiers in mailbox scope for this conversation, including automatic-assignment-disabled classifiers, preserving manual choices and human corrections.\n\nIncludes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples. API keys require classifications:run and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5345,12 +5386,13 @@
 					{
 						"InboxApiKey": []
 					}
-				]
+				],
+				"tags": ["Classification"]
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}": {
 			"get": {
-				"summary": "Read explicit conversation reclassification status (administrators only)",
+				"summary": "Get reclassification status",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5384,12 +5426,13 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require classifications:read and access to this mailbox."
+				"description": "Read explicit conversation reclassification status. Available to inbox administrators and API keys with classifications:read for this mailbox.\n\nAPI keys require classifications:read and access to this mailbox.",
+				"tags": ["Classification"]
 			}
 		},
 		"/api/v1/classification/examples/{id}": {
 			"put": {
-				"summary": "Edit and reconfirm labels without replacing the conversation snapshot",
+				"summary": "Update teaching example",
 				"parameters": [
 					{
 						"name": "id",
@@ -5467,10 +5510,12 @@
 					"200": {
 						"description": "Updated example"
 					}
-				}
+				},
+				"description": "Edit and reconfirm labels without replacing the conversation snapshot.",
+				"tags": ["Teaching examples"]
 			},
 			"delete": {
-				"summary": "Remove a curated example",
+				"summary": "Delete teaching example",
 				"parameters": [
 					{
 						"name": "id",
@@ -5513,12 +5558,14 @@
 					"204": {
 						"description": "Removed"
 					}
-				}
+				},
+				"description": "Remove a curated example.",
+				"tags": ["Teaching examples"]
 			}
 		},
 		"/api/v1/classification/examples": {
 			"get": {
-				"summary": "List curated examples and current configuration fingerprint (administrators only)",
+				"summary": "List teaching examples",
 				"parameters": [
 					{
 						"name": "group_id",
@@ -5552,13 +5599,15 @@
 					"200": {
 						"description": "Frozen examples for this mailbox and group/classifier"
 					}
-				}
+				},
+				"description": "List curated examples and current configuration fingerprint (administrators only).",
+				"tags": ["Teaching examples"]
 			}
 		},
 		"/api/v1/classification/examples/from-tags": {
 			"post": {
-				"summary": "Save current conversation tags as human-confirmed example labels",
-				"description": "Atomically saves assigned groups and configured standalone tags. Unassigned groups/tags are skipped; multiple-group labels imply other options are negative. Updates existing snapshots, preserves test-only roles, and defaults new examples to teaching. Does not modify inbox tags. Administrators only.",
+				"summary": "Save example from tags",
+				"description": "Save current conversation tags as human-confirmed example labels.\n\nAtomically saves assigned groups and configured standalone tags. Unassigned groups/tags are skipped; multiple-group labels imply other options are negative. Updates existing snapshots, preserves test-only roles, and defaults new examples to teaching. Does not modify inbox tags. Administrators only.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -5599,12 +5648,13 @@
 					"409": {
 						"description": "Tags changed since displayed"
 					}
-				}
+				},
+				"tags": ["Teaching examples"]
 			}
 		},
 		"/api/v1/classification/examples/threads/{mailbox}/{thread}": {
 			"get": {
-				"summary": "Check whether a conversation has saved examples (admin only)",
+				"summary": "Get conversation examples",
 				"responses": {
 					"200": {
 						"description": "Saved status",
@@ -5645,10 +5695,12 @@
 							"format": "uuid"
 						}
 					}
-				]
+				],
+				"description": "Check whether a conversation has saved examples (admin only).",
+				"tags": ["Teaching examples"]
 			},
 			"delete": {
-				"summary": "Remove all examples for this conversation without changing its tags (admin only)",
+				"summary": "Delete conversation examples",
 				"responses": {
 					"204": {
 						"description": "Examples removed"
@@ -5676,13 +5728,15 @@
 							"format": "uuid"
 						}
 					}
-				]
+				],
+				"description": "Remove all examples for this conversation without changing its tags (admin only).",
+				"tags": ["Teaching examples"]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/compose": {
 			"post": {
 				"tags": ["Agent"],
-				"summary": "Generate an email body suggestion without saving or sending",
+				"summary": "Generate email suggestion",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -5780,11 +5834,11 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require agent:use and mail:read and access to this mailbox."
+				"description": "Generate an email body suggestion without saving or sending.\n\nAPI keys require agent:use and mail:read and access to this mailbox."
 			},
 			"get": {
 				"tags": ["Agent"],
-				"summary": "Get mailbox writing settings and the shared agent model catalog",
+				"summary": "Get writing settings",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -5811,28 +5865,16 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require agent:use and mail:read and access to this mailbox."
+				"description": "Get mailbox writing settings and the shared agent model catalog.\n\nAPI keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/runs/preview": {
 			"post": {
 				"operationId": "previewClassifierRun",
-				"summary": "Count conversations for a historical classifier run",
+				"summary": "Preview classifier run",
 				"tags": ["Classifiers"],
-				"description": "Administrator only. Read-only selection preview using the same dates, limits and eligibility as execution. Counts each conversation once across classifiers; counts also provides per-classifier totals. No jobs are enqueued. Live data may change before execution.",
+				"description": "Count conversations for a historical classifier run.\n\nAdministrator only. Read-only selection preview using the same dates, limits and eligibility as execution. Counts each conversation once across classifiers; counts also provides per-classifier totals. No jobs are enqueued. Live data may change before execution.",
 				"responses": {
-					"400": {
-						"description": "Invalid request"
-					},
-					"403": {
-						"description": "Administrator required"
-					},
-					"409": {
-						"description": "Conflicting configuration or stale correction"
-					},
-					"503": {
-						"description": "Classifiers disabled or provider key missing"
-					},
 					"200": {
 						"description": "Selection count",
 						"content": {
@@ -5854,6 +5896,18 @@
 								}
 							}
 						}
+					},
+					"400": {
+						"description": "Invalid request"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"409": {
+						"description": "Conflicting configuration or stale correction"
+					},
+					"503": {
+						"description": "Classifiers disabled or provider key missing"
 					}
 				},
 				"requestBody": {
@@ -5923,7 +5977,7 @@
 		"/api/v1/mailboxes/{mailboxId}/recipients": {
 			"get": {
 				"tags": ["Mailboxes"],
-				"summary": "Suggest recipients from mailbox and All contact history",
+				"summary": "Suggest recipients",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -5988,12 +6042,12 @@
 						"InboxApiKey": []
 					}
 				],
-				"description": " API keys require mail:read and access to this mailbox."
+				"description": "Suggest recipients from mailbox and All contact history.\n\nAPI keys require mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}/classifications": {
 			"get": {
-				"summary": "Inspect current conversation classifications",
+				"summary": "Get conversation classifications",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6096,7 +6150,7 @@
 					}
 				},
 				"operationId": "inspectThreadClassifications",
-				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled. API keys require classifications:read and access to this mailbox.",
+				"description": "Inspect current conversation classifications.\n\nReturns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled. API keys require classifications:read and access to this mailbox.",
 				"security": [
 					{
 						"AccessSession": []
@@ -6104,7 +6158,8 @@
 					{
 						"InboxApiKey": []
 					}
-				]
+				],
+				"tags": ["Classification"]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}": {
@@ -6144,8 +6199,8 @@
 			},
 			"post": {
 				"tags": ["Webhooks"],
-				"summary": "Create a webhook endpoint; returns signing secret once",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
+				"summary": "Create webhook endpoint",
+				"description": "Create a webhook endpoint; returns signing secret once.\n\nAdministrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6240,8 +6295,8 @@
 		"/api/v1/webhooks/{mailbox}/{id}": {
 			"put": {
 				"tags": ["Webhooks"],
-				"summary": "Update endpoint",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
+				"summary": "Update webhook endpoint",
+				"description": "Update endpoint.\n\nAdministrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6342,8 +6397,8 @@
 			},
 			"delete": {
 				"tags": ["Webhooks"],
-				"summary": "Delete endpoint and its deliveries",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
+				"summary": "Delete webhook endpoint",
+				"description": "Delete endpoint and its deliveries.\n\nAdministrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6386,8 +6441,8 @@
 		"/api/v1/webhooks/{mailbox}/{id}/deliveries": {
 			"get": {
 				"tags": ["Webhooks"],
-				"summary": "List latest 50 deliveries with payload and attempts",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
+				"summary": "List webhook deliveries",
+				"description": "List latest 50 deliveries with payload and attempts.\n\nAdministrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6528,7 +6583,7 @@
 				"operationId": "getInboxMembers",
 				"summary": "List inbox members",
 				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
-				"tags": ["System"],
+				"tags": ["Access"],
 				"parameters": [],
 				"responses": {
 					"200": {
@@ -6549,7 +6604,7 @@
 				"operationId": "postInboxMembers",
 				"summary": "Add an inbox member",
 				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
-				"tags": ["System"],
+				"tags": ["Access"],
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -6594,7 +6649,7 @@
 				"operationId": "putInboxMembers",
 				"summary": "Change member role",
 				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
-				"tags": ["System"],
+				"tags": ["Access"],
 				"parameters": [
 					{
 						"name": "email",
@@ -6643,7 +6698,7 @@
 				"operationId": "deleteInboxMembers",
 				"summary": "Remove inbox access",
 				"description": "Access applies to all mailboxes. Only exact @realadvisor.com emails are accepted. Mutations require an administrator and at least one administrator must remain. Available when membership management is enabled.",
-				"tags": ["System"],
+				"tags": ["Access"],
 				"parameters": [
 					{
 						"name": "email",
@@ -6675,8 +6730,8 @@
 			"post": {
 				"operationId": "startClassifierBackfill",
 				"tags": ["Classifiers"],
-				"summary": "Start a resumable classifier backfill",
-				"description": "Administrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run’s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
+				"summary": "Start classifier backfill",
+				"description": "Start a resumable classifier backfill.\n\nAdministrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run’s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -6734,8 +6789,8 @@
 			"get": {
 				"operationId": "listClassifierBackfills",
 				"tags": ["Classifiers"],
-				"summary": "Read durable reprocessing progress",
-				"description": "Returns every active run plus all tag runs from the ten most recent batches. Counts are per conversation/tag evaluation; reused is a subset of processed and unchanged a subset of skipped. Preparing runs have prepared=false and no final total yet.",
+				"summary": "Get backfill progress",
+				"description": "Read durable reprocessing progress.\n\nReturns every active run plus all tag runs from the ten most recent batches. Counts are per conversation/tag evaluation; reused is a subset of processed and unchanged a subset of skipped. Preparing runs have prepared=false and no final total yet.",
 				"parameters": [
 					{
 						"in": "query",
@@ -6767,8 +6822,8 @@
 			"post": {
 				"operationId": "previewClassifierBackfill",
 				"tags": ["Classifiers"],
-				"summary": "Count the historical conversation selection",
-				"description": "Read-only. Counts matching conversations once, including current and protected results; the worker reports actual skipped/reused counts after starting. Mail may change between preview and snapshot.",
+				"summary": "Preview classifier backfill",
+				"description": "Count the historical conversation selection.\n\nRead-only. Counts matching conversations once, including current and protected results; the worker reports actual skipped/reused counts after starting. Mail may change between preview and snapshot.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -6811,7 +6866,7 @@
 		"/api/v1/classification/provider-state": {
 			"get": {
 				"tags": ["Classification"],
-				"summary": "Read the shared Jev credit pause",
+				"summary": "Get provider credit status",
 				"operationId": "getJevProviderState",
 				"responses": {
 					"200": {
@@ -6824,14 +6879,15 @@
 							}
 						}
 					}
-				}
+				},
+				"description": "Read the shared Jev credit pause."
 			}
 		},
 		"/api/v1/classification/provider-state/resume": {
 			"post": {
 				"tags": ["Classification"],
-				"summary": "Check Typesafe credits and resume Jev",
-				"description": "Administrator only. Sends one synthetic Jev request while work remains paused. A valid successful response resumes the queue. Concurrent requests are fenced by a 60-second lease; a later HTTP 402 keeps the queue paused. An already active provider is a no-op.",
+				"summary": "Resume classification",
+				"description": "Check Typesafe credits and resume Jev.\n\nAdministrator only. Sends one synthetic Jev request while work remains paused. A valid successful response resumes the queue. Concurrent requests are fenced by a 60-second lease; a later HTTP 402 keeps the queue paused. An already active provider is a no-op.",
 				"operationId": "resumeJevProvider",
 				"responses": {
 					"200": {
@@ -6858,10 +6914,10 @@
 		},
 		"/api/v1/classification/reapply-rules": {
 			"post": {
-				"summary": "Preview or apply saved decision rules to pending reviews without calling Jev",
+				"summary": "Reapply classification rules",
 				"operationId": "reapplyDecisionRules",
 				"tags": ["Classification"],
-				"description": "Administrator only. Save configuration first. Iterate bounded pages using the returned cursor, fingerprint and before timestamp. Apply requires the preview fingerprint. Counts represent classifier/group decisions. Human decisions, stale results, technical failures and unavailable answers are preserved. Each page commits atomically; previous pages remain applied if a later page fails.",
+				"description": "Preview or apply saved decision rules to pending reviews without calling Jev.\n\nAdministrator only. Save configuration first. Iterate bounded pages using the returned cursor, fingerprint and before timestamp. Apply requires the preview fingerprint. Counts represent classifier/group decisions. Human decisions, stale results, technical failures and unavailable answers are preserved. Each page commits atomically; previous pages remain applied if a later page fails.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -6927,8 +6983,8 @@
 		},
 		"/api/v1/api-keys": {
 			"get": {
-				"tags": ["Access"],
-				"summary": "List API keys (administrator only)",
+				"tags": ["API keys"],
+				"summary": "List API keys",
 				"security": [
 					{
 						"AccessSession": []
@@ -7017,11 +7073,12 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"description": "List API keys (administrator only)."
 			},
 			"post": {
-				"tags": ["Access"],
-				"summary": "Create an API key (administrator only)",
+				"tags": ["API keys"],
+				"summary": "Create API key",
 				"security": [
 					{
 						"AccessSession": []
@@ -7105,14 +7162,15 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"description": "Create an API key (administrator only)."
 			}
 		},
 		"/api/v1/api-keys/{id}": {
 			"delete": {
-				"tags": ["Access"],
-				"summary": "Revoke an API key (administrator only)",
-				"description": "New requests using the key are denied immediately. Already accepted requests may finish. Existing webhook subscriptions remain active and administrators retain control.",
+				"tags": ["API keys"],
+				"summary": "Revoke API key",
+				"description": "Revoke an API key (administrator only).\n\nNew requests using the key are denied immediately. Already accepted requests may finish. Existing webhook subscriptions remain active and administrators retain control.",
 				"security": [
 					{
 						"AccessSession": []
