@@ -1,3 +1,4 @@
+import { ReclassifyConversation } from "./ReclassifyConversation";
 import { classificationError } from "../../shared/jev-budget";
 import { decisionRules } from "../../shared/decision-rules";
 import { useState } from "react";
@@ -62,7 +63,19 @@ export function ClassifierReview({
 			);
 		},
 	});
-	const pending = results.filter((r) => r.answer === null);
+	const stale = [
+		...new Map(
+			results
+				.filter((r) => r.needs_reevaluation)
+				.map((r) => [
+					`${r.mailbox_id}/${r.thread_id}/${r.group_id ?? r.classifier_id}`,
+					r,
+				]),
+		).values(),
+	];
+	const pending = results.filter(
+		(r) => r.answer === null && !r.needs_reevaluation,
+	);
 	const choices = new Map<string, Classification[]>();
 	const binary = pending.filter((row) => {
 		if (
@@ -75,8 +88,8 @@ export function ClassifierReview({
 		}
 		return true;
 	});
-	const count = choices.size + binary.length;
-	if (!pending.length) return null;
+	const count = choices.size + binary.length + stale.length;
+	if (!pending.length && !stale.length) return null;
 	return (
 		<span
 			className="inline-flex items-center align-middle"
@@ -109,6 +122,24 @@ export function ClassifierReview({
 					<p className="text-xs text-kumo-subtle mt-2 mb-4">
 						Choose an answer for each question below. Nothing is selected yet.
 					</p>
+					{stale.map((row) => (
+						<div
+							key={`${row.mailbox_id}/${row.thread_id}/${row.group_id ?? row.classifier_id}`}
+							className="py-4 border-t border-kumo-line"
+						>
+							<p className="font-medium text-sm">
+								{row.group_name ?? row.name} · Needs reevaluation
+							</p>
+							<p className="text-xs text-kumo-subtle mt-2">
+								The configuration or conversation changed. The previous result
+								is unresolved and cannot be used as a current answer.
+							</p>
+							<ReclassifyConversation
+								mailboxId={row.mailbox_id}
+								threadId={row.thread_id}
+							/>
+						</div>
+					))}
 					{[...choices].map(([key, rows]) => (
 						<div key={key} className="py-4 border-t border-kumo-line">
 							<p className="font-medium text-sm">{rows[0].group_name}</p>

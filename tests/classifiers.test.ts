@@ -1238,26 +1238,50 @@ test("needs-review filter counts and paginates unresolved conversations across f
 	const second = await (
 		await app.request(`http://127.0.0.1:4311${path}&page=2`)
 	).json();
-	assert.equal(first.totalCount, 2);
+	assert.equal(first.totalCount, 3);
 	assert.equal(first.emails.length, 1);
-	assert.equal(second.totalCount, 2);
+	assert.equal(second.totalCount, 3);
 	assert.deepEqual(
-		new Set([first.emails[0].thread_id, second.emails[0].thread_id]),
-		new Set([reviewThread, errorThread]),
+		new Set([
+			first.emails[0].thread_id,
+			second.emails[0].thread_id,
+			(await (await app.request(`http://127.0.0.1:4311${path}&page=3`)).json())
+				.emails[0].thread_id,
+		]),
+		new Set([reviewThread, errorThread, staleThread]),
 	);
 	const inbox = await store.list(mailbox, {
 		needs_review: "true",
 		threaded: "true",
 		folder: "inbox",
 	});
-	assert.equal(inbox.totalCount, 1);
-	assert.equal(inbox.emails[0].thread_id, reviewThread);
+	assert.equal(inbox.totalCount, 2);
+	assert.deepEqual(
+		new Set(inbox.emails.map((e) => e.thread_id)),
+		new Set([reviewThread, staleThread]),
+	);
+	const staleRows = await (
+		await call(`/results/${mailbox}?thread=${staleThread}`)
+	).json();
+	assert.ok(
+		staleRows.length > 0 && staleRows.every((r: any) => r.needs_reevaluation),
+	);
+	assert.equal(
+		(
+			await call(`/results/${mailbox}/${staleThread}/${classifierId}`, "PUT", {
+				answer: true,
+				revision: 0,
+				token: staleRows[0].token,
+			})
+		).status,
+		409,
+	);
 	assert.equal((await job(pendingThread)).status, "pending");
 	await db`UPDATE conversation_classifications SET status='complete',answer=false WHERE thread_id=${reviewThread}`;
 	assert.equal(
 		(await store.list(mailbox, { needs_review: "true", threaded: "true" }))
 			.totalCount,
-		1,
+		2,
 	);
 	await db`UPDATE classifiers SET enabled=false WHERE id=${classifierId}`;
 	assert.equal(
