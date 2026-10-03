@@ -6471,6 +6471,75 @@
 					}
 				}
 			}
+		},
+		"/api/v1/classification/reapply-rules": {
+			"post": {
+				"summary": "Preview or apply saved decision rules to pending reviews without calling Jev",
+				"operationId": "reapplyDecisionRules",
+				"tags": ["Classification"],
+				"description": "Administrator only. Save configuration first. Iterate bounded pages using the returned cursor, fingerprint and before timestamp. Apply requires the preview fingerprint. Counts represent classifier/group decisions. Human decisions, stale results, technical failures and unavailable answers are preserved. Each page commits atomically; previous pages remain applied if a later page fails.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["classifier_ids"],
+								"properties": {
+									"classifier_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 100,
+										"items": {
+											"type": "string",
+											"format": "uuid"
+										}
+									},
+									"apply": {
+										"type": "boolean",
+										"default": false
+									},
+									"fingerprint": {
+										"type": "string"
+									},
+									"before": {
+										"type": "string",
+										"format": "date-time"
+									},
+									"cursor": {
+										"type": "object",
+										"required": ["mailbox", "thread"],
+										"properties": {
+											"mailbox": {
+												"type": "string"
+											},
+											"thread": {
+												"type": "string",
+												"format": "uuid"
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Page counts and continuation cursor, fingerprint and snapshot timestamp"
+					},
+					"400": {
+						"description": "Invalid selection or partial choice group"
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"409": {
+						"description": "Configuration changed; preview again"
+					}
+				}
+			}
 		}
 	},
 	"components": {

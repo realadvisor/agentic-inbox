@@ -248,4 +248,150 @@ test("standalone rules save, survive omitted updates and control draft tests", a
 	});
 	assert.equal(response.status, 200);
 	assert.equal((await response.json()).results[0].result.answer, true);
+	const [job] =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${email!.thread_id!} AND classifier_id=${created.id}`;
+	await processJob(db, "fake", job.token, transport);
+	const raised = await call(
+		"/classification/classifiers/" + created.id,
+		"PUT",
+		{
+			...body,
+			revision: updated.revision,
+			decision_rules: { ...defaultDecisionRules, yes: 0.95 },
+		},
+	);
+	assert.equal(raised.status, 200);
+	const [preserved] =
+		await db`SELECT status,token FROM conversation_classifications WHERE thread_id=${email!.thread_id!} AND classifier_id=${created.id}`;
+	assert.equal(preserved.status, "complete");
+	assert.equal(preserved.token, job.token);
+});
+
+test("saved rules resolve pending group reviews without Jev and preserve protected decisions", async () => {
+	const draft = {
+		name: "Reapply group",
+		selection: "single",
+		instructions: "Choose a category.",
+		enabled: true,
+		decision_rules: { ...defaultDecisionRules, probability: 0.99 },
+		tags: ["Reapply A", "Reapply B"].map((name) => ({
+			id: crypto.randomUUID(),
+			name,
+			color: "#64748b",
+			description: "Category",
+		})),
+	};
+	const group = await (await call("/tag-groups", "POST", draft)).json();
+	const definitions =
+		await db`SELECT c.* FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.group_id=${group.id}`;
+	const ids = definitions.map((d) => d.id);
+	const threads: string[] = [];
+	for (let i = 0; i < 6; i++) {
+		const email = await new InboxStore(db).insert(mailbox, {
+			sender: "example@example.test",
+			recipient: mailbox,
+			subject: "Rules sample " + i,
+			body: "Category A",
+		});
+		threads.push(email!.thread_id!);
+		const [j] =
+			await db`SELECT token FROM conversation_classifications WHERE thread_id=${email!.thread_id!} AND classifier_id IN ${db(ids)} LIMIT 1`;
+		await processJob(db, "fake", j.token, transport);
+	}
+	await db`UPDATE conversation_classifications SET source='human' WHERE thread_id=${threads[1]} AND classifier_id IN ${db(ids)}`;
+	await db`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor) VALUES(${mailbox},${threads[2]},${draft.tags[0].id},'manual','tester') ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET source='manual'`;
+	await db`UPDATE conversations SET generation=generation+1 WHERE mailbox_id=${mailbox} AND thread_id=${threads[3]}`;
+	await db`UPDATE conversation_classifications SET error='provider_context_limit' WHERE thread_id=${threads[4]} AND classifier_id IN ${db(ids)}`;
+	const abstained =
+		await db`SELECT r.id,r.response_body,i.question_key FROM classifier_provider_runs r JOIN classifier_provider_run_items i ON i.run_id=r.id WHERE r.thread_id=${threads[5]} AND i.classifier_id=${ids[0]} LIMIT 1`;
+	const raw = JSON.parse(abstained[0].response_body);
+	const answer = raw.answers[abstained[0].question_key];
+	answer.choice = "insufficient_evidence";
+	answer.confidence = 0.99;
+	answer.probabilities = Object.fromEntries(
+		Object.keys(answer.probabilities).map((key) => [
+			key,
+			key === "insufficient_evidence" ? 1 : 0,
+		]),
+	);
+	await db`UPDATE classifier_provider_runs SET response_body=${JSON.stringify(raw)} WHERE id=${abstained[0].id}`;
+	const response = await call("/tag-groups/" + group.id, "PUT", {
+		...draft,
+		revision: group.revision,
+		decision_rules: {
+			...defaultDecisionRules,
+			probability: 0.6,
+			confidence: 0.6,
+			margin: 0.1,
+		},
+	});
+	assert.equal(response.status, 200);
+	const preserved =
+		await db`SELECT revision,status FROM conversation_classifications WHERE thread_id=${threads[0]} AND classifier_id IN ${db(ids)}`;
+	assert.equal(preserved.length, 2);
+	assert.ok(
+		preserved.every(
+			(j) => j.status === "review" && j.revision === definitions[0].revision,
+		),
+	);
+	const request = { classifier_ids: ids };
+	const previewResponse = await call(
+		"/classification/reapply-rules",
+		"POST",
+		request,
+	);
+	assert.equal(previewResponse.status, 200);
+	const preview = await previewResponse.json();
+	assert.equal(preview.resolved, 1);
+	assert.equal(preview.remaining, 5);
+	assert.equal(
+		(
+			await db`SELECT status FROM conversation_classifications WHERE thread_id=${threads[0]} AND classifier_id IN ${db(ids)}`
+		)[0].status,
+		"review",
+	);
+	const [count] =
+		await db`SELECT count(*)::int AS n FROM classifier_provider_runs`;
+	const applied = await call("/classification/reapply-rules", "POST", {
+		...request,
+		apply: true,
+		fingerprint: preview.fingerprint,
+		before: preview.before,
+	});
+	assert.equal(applied.status, 200);
+	assert.equal((await applied.json()).resolved, 1);
+	assert.equal(
+		(await db`SELECT count(*)::int AS n FROM classifier_provider_runs`)[0].n,
+		count.n,
+	);
+	const jobs =
+		await db`SELECT status,answer,source FROM conversation_classifications WHERE thread_id=${threads[0]} AND classifier_id IN ${db(ids)}`;
+	assert.ok(jobs.every((j) => j.status === "complete" && j.source === "jev"));
+	assert.equal(jobs.filter((j) => j.answer).length, 1);
+	assert.equal(
+		(
+			await db`SELECT count(*)::int AS n FROM conversation_tags WHERE thread_id=${threads[0]} AND tag_id IN ${db(draft.tags.map((t) => t.id))} AND removed_at IS NULL`
+		)[0].n,
+		1,
+	);
+	assert.equal(
+		(
+			await call("/classification/reapply-rules", "POST", {
+				classifier_ids: [ids[0]],
+			})
+		).status,
+		400,
+	);
+	await db`UPDATE classifiers SET decision_rules='{}' WHERE id IN ${db(ids)}`;
+	assert.equal(
+		(
+			await call("/classification/reapply-rules", "POST", {
+				...request,
+				apply: true,
+				fingerprint: preview.fingerprint,
+				before: preview.before,
+			})
+		).status,
+		409,
+	);
 });

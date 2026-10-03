@@ -25,6 +25,10 @@ Generation returns an editable suggestion without saving or sending an email.
 Existing text, including edits made during generation, is retained until the user
 chooses Use suggestion. Draft saving and sending remain manual.
 
+## Re-evaluate saved classification answers
+
+Changing decision thresholds preserves existing classifications; prompt, option and other semantic changes still invalidate them. After saving rules, reopen the tag/group editor and use **Preview saved rules**, then **Apply to pending reviews**. This evaluates saved provider answers across all mailboxes in bounded pages, without new Jev calls. Counts represent classifier/group decisions rather than tag rows. Human decisions, manual overrides, accepted results, changed conversations, technical failures, missing answers and insufficient-evidence choices stay unchanged. Each page is atomic; stopping or closing the editor leaves completed pages applied. The API is `POST /api/v1/classification/reapply-rules`, restricted to admins and documented in OpenAPI.
+
 ## Typesafe credit pauses
 
 A Typesafe HTTP 402 pauses Jev across all mailboxes, live classification,

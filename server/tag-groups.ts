@@ -1,5 +1,5 @@
 import { exampleConfig } from "../shared/jev-examples";
-import { decisionRules } from "../shared/decision-rules";
+
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -53,9 +53,7 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 						color: t.color,
 						description: t.description,
 					})),
-				}) !== exampleConfig(input) ||
-				JSON.stringify(decisionRules(old.decision_rules)) !==
-					JSON.stringify(decisionRules(rules));
+				}) !== exampleConfig(input);
 			const invalidate = semanticChanged || old?.enabled !== input.enabled;
 			tagGroupInput.parse({ ...input, decision_rules: rules });
 			const tagIds = input.tags.map((tag) => tag.id);
