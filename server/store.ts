@@ -179,13 +179,20 @@ export class InboxStore {
 
 		if (params.needs_review === "true") {
 			const preview = this.options.classifierPreview;
-			conditions.push(this.db`EXISTS (
-				SELECT 1 FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
+			// Build the review set once rather than rechecking every email.
+			conditions.push(this.db`e.thread_id IN (
+				SELECT DISTINCT r.thread_id FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
 				JOIN ${this.db(preview ? "preview_classifiers" : "classifiers")} c ON c.id=r.classifier_id
-				WHERE r.mailbox_id=e.mailbox_id AND r.thread_id=e.thread_id
+				WHERE r.mailbox_id=${mailbox}
 				AND ${preview ? this.db`c.enabled` : this.db`(c.enabled OR r.priority=2)`} ${preview ? this.db`AND r.answer IS NULL` : this.db`AND (r.answer IS NULL OR r.error='group_conflict')`}
 				${preview ? this.db`` : this.db`AND r.revision=c.revision AND r.status IN ('review','error')`}
-				AND NOT tag_manually_overridden(r.mailbox_id,r.thread_id,c.tag_id)
+				AND NOT EXISTS (
+                    SELECT 1 FROM conversation_tags ct
+                    JOIN tags selected ON selected.id=ct.tag_id
+                    JOIN tags target ON target.id=c.tag_id
+                    WHERE ct.mailbox_id=r.mailbox_id AND ct.thread_id=r.thread_id AND ct.source='manual'
+                    AND (ct.tag_id=c.tag_id OR (target.group_id IS NOT NULL AND selected.group_id=target.group_id))
+                )
 			)`);
 		}
 		if (params.status)
