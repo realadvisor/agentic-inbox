@@ -170,17 +170,6 @@ export default function EmailListRoute() {
 		folder: string;
 	}>();
 	const mode = useMailMode();
-	const previewResults = useQuery({
-		queryKey: ["classification-results", mailboxId],
-		queryFn: () =>
-			classifierRequest<Classification[]>(
-				"/results/" + encodeURIComponent(mailboxId!),
-			),
-		enabled:
-			!!(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
-			!!mailboxId,
-		refetchInterval: 5000,
-	});
 
 	const {
 		selectedEmailId,
@@ -260,6 +249,31 @@ export default function EmailListRoute() {
 	);
 
 	const emails = emailData?.emails ?? [];
+	const reviewThreads = [
+		...new Set(emails.map((email) => email.thread_id).filter(Boolean)),
+	]
+		.sort()
+		.join(",");
+	const previewResults = useQuery({
+		queryKey: ["classification-results", mailboxId, reviewThreads],
+		queryFn: ({ signal }) =>
+			classifierRequest<Classification[]>(
+				"/results/" +
+					encodeURIComponent(mailboxId!) +
+					(mode.data?.classifierPreview
+						? ""
+						: "?threads=" + encodeURIComponent(reviewThreads)),
+				"GET",
+				undefined,
+				signal,
+			),
+		enabled:
+			!!(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
+			!!mailboxId &&
+			!!reviewThreads,
+		refetchInterval: 30_000,
+	});
+
 	const totalCount = emailData?.totalCount ?? 0;
 
 	const { data: folders = [] } = useFolders(mailboxId);

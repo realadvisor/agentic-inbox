@@ -181,17 +181,20 @@ export class InboxStore {
 			const preview = this.options.classifierPreview;
 			// Build the review set once rather than rechecking every email.
 			conditions.push(this.db`e.thread_id IN (
-				SELECT DISTINCT r.thread_id FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
+				WITH manual_overrides AS MATERIALIZED (
+ SELECT DISTINCT ct.thread_id,target.id AS tag_id FROM conversation_tags ct
+ JOIN tags selected ON selected.id=ct.tag_id
+ JOIN tags target ON target.id=ct.tag_id OR (target.group_id IS NOT NULL AND selected.group_id=target.group_id)
+ WHERE ct.mailbox_id=${mailbox} AND ct.source='manual'
+ )
+ SELECT DISTINCT r.thread_id FROM ${this.db(preview ? "preview_classifications" : "conversation_classifications")} r
 				JOIN ${this.db(preview ? "preview_classifiers" : "classifiers")} c ON c.id=r.classifier_id
 				WHERE r.mailbox_id=${mailbox}
 				AND ${preview ? this.db`c.enabled` : this.db`(c.enabled OR r.priority=2)`} ${preview ? this.db`AND r.answer IS NULL` : this.db`AND (r.answer IS NULL OR r.error='group_conflict')`}
 				${preview ? this.db`` : this.db`AND r.revision=c.revision AND r.status IN ('review','error')`}
 				AND NOT EXISTS (
-                    SELECT 1 FROM conversation_tags ct
-                    JOIN tags selected ON selected.id=ct.tag_id
-                    JOIN tags target ON target.id=c.tag_id
-                    WHERE ct.mailbox_id=r.mailbox_id AND ct.thread_id=r.thread_id AND ct.source='manual'
-                    AND (ct.tag_id=c.tag_id OR (target.group_id IS NOT NULL AND selected.group_id=target.group_id))
+                    SELECT 1 FROM manual_overrides m
+                    WHERE m.thread_id=r.thread_id AND m.tag_id=c.tag_id
                 )
 			)`);
 		}
