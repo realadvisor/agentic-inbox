@@ -18,6 +18,7 @@ const events = [
 	"conversation.tags_changed",
 	"conversation.classified",
 	"conversation.status_changed",
+	"conversation.matched",
 ];
 type Endpoint = {
 	id: string;
@@ -206,8 +207,9 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						)}
 						{selected.includes("conversation.matched") && (
 							<p className="text-xs text-kumo-subtle">
-								This endpoint also has an API-configured conversation-matching
-								subscription. Saving preserves that subscription.
+								Send when a conversation starts matching these tags, including
+								tags added by Jev. Existing matches are skipped. Sends again
+								only after it stops matching and matches again.
 							</p>
 						)}
 					</fieldset>
