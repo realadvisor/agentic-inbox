@@ -191,7 +191,7 @@ export class InboxStore {
 				JOIN ${this.db(preview ? "preview_classifiers" : "classifiers")} c ON c.id=r.classifier_id
 				WHERE r.mailbox_id=${mailbox}
 				AND ${preview ? this.db`c.enabled` : this.db`(c.enabled OR r.priority=2)`} ${preview ? this.db`AND r.answer IS NULL` : this.db`AND (r.answer IS NULL OR r.error='group_conflict')`}
-				${preview ? this.db`` : this.db`AND r.revision=c.revision AND r.status IN ('review','error')`}
+				${preview ? this.db`` : this.db`AND r.status IN ('review','error')`}
 				AND NOT EXISTS (
                     SELECT 1 FROM manual_overrides m
                     WHERE m.thread_id=r.thread_id AND m.tag_id=c.tag_id

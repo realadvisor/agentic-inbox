@@ -26,6 +26,7 @@ export interface Classifier {
 	errors?: number;
 }
 export interface Classification {
+	needs_reevaluation?: boolean;
 	decision_rules?: Partial<Rules>;
 	confidence?: number | null;
 	score?: number | null;
