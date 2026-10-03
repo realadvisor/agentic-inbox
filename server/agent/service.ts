@@ -93,6 +93,7 @@ export async function saveSettings(
 	return settings;
 }
 export interface Run {
+	permissions?: string[];
 	id: string;
 	mailbox: string;
 	prompt: string;
@@ -456,7 +457,7 @@ export function createTools(
 			get_thread: reads.get_thread,
 			...reply,
 		};
-	return {
+	const tools = {
 		...reads,
 		...reply,
 		...createActionTools(db, run.mailbox, run.actor, mutate, consumeText),
@@ -529,6 +530,36 @@ export function createTools(
 				}),
 		}),
 	};
+	if (run.permissions) {
+		const required: Record<string, string> = {
+			list_emails: "mail:read",
+			get_email: "mail:read",
+			get_thread: "mail:read",
+			search_emails: "mail:read",
+			list_tag_groups: "mail:read",
+			search_recipients: "mail:read",
+			get_draft: "mail:read",
+			get_thread_status: "mail:read",
+			draft_reply: "drafts:manage",
+			draft_email: "drafts:manage",
+			update_draft: "drafts:manage",
+			discard_draft: "drafts:manage",
+			set_thread_tag: "conversations:manage",
+			set_thread_status: "conversations:manage",
+			set_email_starred: "conversations:manage",
+			set_thread_read: "conversations:manage",
+			mark_email_read: "conversations:manage",
+			move_email: "conversations:manage",
+			inspect_classifications: "classifications:read",
+			review_classification: "classifications:review",
+			rerun_classification: "classifications:run",
+		};
+		for (const name of Object.keys(tools)) {
+			if (!required[name] || !run.permissions.includes(required[name]))
+				delete (tools as Record<string, unknown>)[name];
+		}
+	}
+	return tools;
 }
 
 export async function startRun(

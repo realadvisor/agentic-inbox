@@ -42,6 +42,32 @@ const permissions = [
 		name: "Manage webhooks",
 		description: "Create and manage webhooks owned by this key.",
 	},
+	{
+		id: "classifications:read",
+		name: "Read classifications",
+		description: "Read Jev results, scores and provenance.",
+	},
+	{
+		id: "classifications:review",
+		name: "Review classifications",
+		description: "Correct supported classification results.",
+	},
+	{
+		id: "classifications:run",
+		name: "Run classifications",
+		description: "Queue Jev again for a conversation.",
+	},
+	{
+		id: "folders:manage",
+		name: "Manage folders",
+		description: "Create, rename and delete custom folders.",
+	},
+	{
+		id: "agent:use",
+		name: "Use inbox agent",
+		description:
+			"Chat and compose. Requires Read mail; tool permissions apply.",
+	},
 ];
 async function request(path = "", method = "GET", body?: unknown) {
 	const response = await fetch(`/api/v1/api-keys${path}`, {
@@ -246,6 +272,27 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 					</fieldset>
 					<fieldset>
 						<legend className="mb-2 text-sm font-medium">Permissions</legend>
+						<div className="mb-2 flex items-center justify-between text-xs text-kumo-subtle">
+							<span>
+								{scopes.length} of {permissions.length} selected
+							</span>
+							<Button
+								type="button"
+								size="sm"
+								variant="ghost"
+								onClick={() =>
+									setScopes(
+										scopes.length === permissions.length
+											? []
+											: permissions.map((p) => p.id),
+									)
+								}
+							>
+								{scopes.length === permissions.length
+									? "Clear all"
+									: "Select all"}
+							</Button>
+						</div>
 						<div className="divide-y divide-kumo-line overflow-hidden rounded-lg border border-kumo-line bg-kumo-base">
 							{permissions.map((scope) => (
 								<div
@@ -258,8 +305,22 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 										onCheckedChange={(value) =>
 											setScopes((prev) =>
 												value
-													? [...prev, scope.id]
-													: prev.filter((id) => id !== scope.id),
+													? [
+															...new Set([
+																...prev,
+																scope.id,
+																...(scope.id === "agent:use"
+																	? ["mail:read"]
+																	: []),
+															]),
+														]
+													: prev.filter(
+															(id) =>
+																id !== scope.id &&
+																!(
+																	scope.id === "mail:read" && id === "agent:use"
+																),
+														),
 											)
 										}
 									/>

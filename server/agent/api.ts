@@ -1,3 +1,4 @@
+import type { KeyVariables } from "../api-keys";
 import { composeWithAi } from "./composer";
 import { agentErrorMessage } from "./errors";
 import {
@@ -36,7 +37,7 @@ export interface AgentOptions {
 	waitUntil?: (task: Promise<unknown>) => void;
 }
 export function agentApi(db: Database, options: AgentOptions) {
-	const app = new Hono();
+	const app = new Hono<{ Variables: KeyVariables }>();
 	app.get("/api/v1/mailboxes/:mailboxId/agent/compose", async (c) => {
 		const mailbox = c.req.param("mailboxId");
 		await new InboxStore(db).mailbox(mailbox);
@@ -165,8 +166,16 @@ export function agentApi(db: Database, options: AgentOptions) {
 		const run = {
 			...input,
 			mailbox: c.req.param("mailboxId"),
-			actor: options.actor ?? "local-synthetic-user",
-			classification: options.classification,
+			actor: c.get("apiKey")
+				? `api-key:${c.get("apiKey")!.id}`
+				: (options.actor ?? "local-synthetic-user"),
+			permissions: c.get("apiKey")?.permissions,
+			classification: options.classification && {
+				...options.classification,
+				admin: c.get("apiKey")
+					? c.get("apiKey")!.permissions.includes("classifications:run")
+					: options.classification.admin,
+			},
 		};
 		await requireModel(
 			db,

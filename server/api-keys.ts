@@ -3,6 +3,19 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { Database } from "./db";
 
+export const apiKeyPermissions = [
+	"mail:read",
+	"drafts:manage",
+	"mail:send",
+	"conversations:manage",
+	"webhooks:manage",
+	"classifications:read",
+	"classifications:review",
+	"classifications:run",
+	"folders:manage",
+	"agent:use",
+] as const;
+
 export type ApiKey = {
 	id: string;
 	mailbox_ids: string[];
@@ -53,6 +66,31 @@ export function keyCanRequest(key: ApiKey, method: string, path: string) {
 		["/api/v1/tags", "/api/v1/tag-groups", "/api/v1/mailboxes"].includes(path)
 	)
 		return true;
+	if (resource === "classification") {
+		const [, , , , kind, box, thread, action] = segments;
+		if (!key.mailbox_ids.includes(box)) return false;
+		if (kind === "results")
+			return (
+				(read &&
+					segments.length === 6 &&
+					key.permissions.includes("classifications:read")) ||
+				(method === "PUT" &&
+					segments.length === 8 &&
+					key.permissions.includes("classifications:review"))
+			);
+		if (kind === "threads" && thread)
+			return (
+				(read &&
+					(segments.length === 7 ||
+						(segments.length === 8 && action === "classifications")) &&
+					key.permissions.includes("classifications:read")) ||
+				(method === "POST" &&
+					segments.length === 8 &&
+					action === "rerun" &&
+					key.permissions.includes("classifications:run"))
+			);
+		return false;
+	}
 	if (!key.mailbox_ids.includes(mailbox)) return false;
 	if (resource === "webhooks")
 		return (
@@ -61,6 +99,21 @@ export function keyCanRequest(key: ApiKey, method: string, path: string) {
 		);
 	if (resource !== "mailboxes") return false;
 	const route = rest.join("/");
+	if (
+		key.permissions.includes("agent:use") &&
+		key.permissions.includes("mail:read") &&
+		((read && /^(agent|agent\/(compose|conversations))$/.test(route)) ||
+			(method === "POST" &&
+				/^agent\/(compose|conversations|chat|stop)$/.test(route)))
+	)
+		return true;
+	if (
+		key.permissions.includes("folders:manage") &&
+		((read && route === "folders") ||
+			(method === "POST" && route === "folders") ||
+			(["PUT", "DELETE"].includes(method) && /^folders\/[^/]+$/.test(route)))
+	)
+		return true;
 	if (read && key.permissions.includes("mail:read"))
 		return (
 			rest.length === 0 ||
@@ -102,17 +155,9 @@ const input = z
 			.max(100)
 			.transform((v) => [...new Set(v)]),
 		permissions: z
-			.array(
-				z.enum([
-					"mail:read",
-					"drafts:manage",
-					"mail:send",
-					"conversations:manage",
-					"webhooks:manage",
-				]),
-			)
+			.array(z.enum(apiKeyPermissions))
 			.min(1)
-			.max(5)
+			.max(apiKeyPermissions.length)
 			.transform((v) => [...new Set(v)]),
 		expires_at: z.string().datetime().nullable().optional(),
 	})

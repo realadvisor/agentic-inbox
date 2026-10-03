@@ -1,3 +1,4 @@
+import type { KeyVariables } from "../api-keys";
 import { rerunThread } from "./rerun";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -8,9 +9,18 @@ export function rerunApi(
 	admin: boolean,
 	kick?: (tokens?: string[]) => void,
 ) {
-	const app = new Hono();
+	const app = new Hono<{ Variables: KeyVariables }>();
 	app.use("/threads/*", async (c, next) => {
-		if (!admin)
+		if (
+			!admin &&
+			!c
+				.get("apiKey")
+				?.permissions.includes(
+					c.req.method === "GET"
+						? "classifications:read"
+						: "classifications:run",
+				)
+		)
 			throw new HTTPException(403, {
 				message: "Only inbox administrators can run classifiers",
 			});

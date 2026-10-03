@@ -631,3 +631,210 @@ test("conversation permission changes flags, folders, tags and status without ad
 	] as const)
 		assert.equal((await call(path, method, body, k.key)).status, 403);
 });
+
+test("all automation scopes remain mailbox scoped and cannot reach administration", async () => {
+	const { apiKeyPermissions } = await import("../server/api-keys");
+	const k = await issue([...apiKeyPermissions]);
+	const principal = {
+		id: k.id,
+		mailbox_ids: [mailbox],
+		permissions: [...apiKeyPermissions],
+	};
+	for (const [method, path] of [
+		["GET", `classification/results/${mailbox}`],
+		["GET", `classification/threads/${mailbox}/thread/classifications`],
+		["GET", `classification/threads/${mailbox}/thread`],
+		["PUT", `classification/results/${mailbox}/thread/classifier`],
+		["POST", `classification/threads/${mailbox}/thread/rerun`],
+		["GET", `mailboxes/${mailbox}/agent`],
+		["POST", `mailboxes/${mailbox}/agent/chat`],
+		["POST", `mailboxes/${mailbox}/agent/compose`],
+		["POST", `mailboxes/${mailbox}/folders`],
+		["DELETE", `mailboxes/${mailbox}/folders/folder`],
+	]) {
+		assert.equal(
+			keyCanRequest(principal, method, `/api/v1/${path}`),
+			true,
+			path,
+		);
+		assert.equal(
+			keyCanRequest(
+				principal,
+				method,
+				`/api/v1/${path.replace(mailbox, other)}`,
+			),
+			false,
+			path,
+		);
+		assert.equal(
+			keyCanRequest(
+				{ ...principal, permissions: [] },
+				method,
+				`/api/v1/${path}`,
+			),
+			false,
+			path,
+		);
+	}
+	for (const path of [
+		"api-keys",
+		"access/members",
+		"classification/classifiers",
+		"classification/backfills",
+		`mailboxes/${mailbox}/agent/settings`,
+	])
+		assert.equal(keyCanRequest(principal, "PUT", `/api/v1/${path}`), false);
+	const folders = await call(
+		`mailboxes/${mailbox}/folders`,
+		"POST",
+		{ name: "Automation" },
+		k.key,
+	);
+	assert.equal(folders.status, 201);
+	const f = await folders.json();
+	assert.equal(
+		(
+			await call(
+				`mailboxes/${mailbox}/folders/${f.id}`,
+				"PUT",
+				{ name: "Renamed" },
+				k.key,
+			)
+		).status,
+		200,
+	);
+	assert.equal(
+		(
+			await call(
+				`mailboxes/${mailbox}/folders/${f.id}`,
+				"DELETE",
+				undefined,
+				k.key,
+			)
+		).status,
+		204,
+	);
+	assert.equal(
+		(await call(`mailboxes/${mailbox}/agent/conversations`, "POST", {}, k.key))
+			.status,
+		201,
+	);
+	const agentOnly = await issue(["agent:use"]);
+	assert.equal(
+		(await call(`mailboxes/${mailbox}/agent`, "GET", undefined, agentOnly.key))
+			.status,
+		403,
+	);
+});
+
+test("agent tool inventory honors each key permission and fails closed", async () => {
+	const { createTools } = await import("../server/agent/service");
+	const run = {
+		id: crypto.randomUUID(),
+		mailbox,
+		actor: "api-key:test",
+		prompt: "Test",
+		classification: { enabled: true, admin: true },
+	};
+	const read = createTools(
+		db,
+		{ ...run, permissions: ["mail:read", "agent:use"] },
+		() => {},
+	);
+	assert.ok(read.get_email);
+	for (const name of [
+		"draft_email",
+		"draft_reply",
+		"update_draft",
+		"discard_draft",
+		"set_thread_tag",
+		"move_email",
+		"review_classification",
+		"inspect_classifications",
+		"rerun_classification",
+	])
+		assert.equal(name in read, false, name);
+	const { apiKeyPermissions } = await import("../server/api-keys");
+	const all = createTools(
+		db,
+		{ ...run, permissions: [...apiKeyPermissions] },
+		() => {},
+	);
+	for (const name of [
+		"draft_email",
+		"update_draft",
+		"set_thread_tag",
+		"inspect_classifications",
+		"review_classification",
+		"rerun_classification",
+	])
+		assert.ok(name in all, name);
+	assert.deepEqual(
+		Object.keys(createTools(db, { ...run, permissions: [] }, () => {})),
+		[],
+	);
+});
+
+test("classification read review and rerun work with key identity and scope", async () => {
+	const { apiKeyPermissions } = await import("../server/api-keys");
+	const k = await issue([...apiKeyPermissions]);
+	const app = createApi(db, {
+		mode: "live",
+		membershipEnabled: true,
+		classifiersEnabled: true,
+		readAttachment: async () => null,
+	});
+	const invoke = (path: string, method = "GET", body?: unknown, key = k.key) =>
+		app.request(`http://127.0.0.1:4311/api/v1/classification/${path}`, {
+			method,
+			headers: {
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+			},
+			body: body === undefined ? undefined : JSON.stringify(body),
+		});
+	const email = await store.insert(mailbox, {
+		sender: "sender@example.test",
+		recipient: mailbox,
+		subject: "Review",
+		body: "Test",
+		delivery_status: "received",
+	});
+	const thread = email!.thread_id!;
+	const [tag] =
+		await db`INSERT INTO tags(name,color) VALUES('API review','#3366ff') RETURNING id`;
+	const [classifier] =
+		await db`INSERT INTO classifiers(tag_id,question,enabled) VALUES(${tag.id},'Needs attention?',true) RETURNING id,revision`;
+	const [job] =
+		await db`INSERT INTO conversation_classifications(mailbox_id,thread_id,classifier_id,revision,generation,status) SELECT ${mailbox},${thread},${classifier.id},${classifier.revision},generation,'review' FROM conversations WHERE mailbox_id=${mailbox} AND thread_id=${thread} RETURNING token`;
+	assert.equal(
+		(await invoke(`threads/${mailbox}/${thread}/classifications`)).status,
+		200,
+	);
+	assert.equal((await invoke(`results/${mailbox}`)).status, 200);
+	assert.equal((await invoke(`threads/${mailbox}/${thread}`)).status, 200);
+	const reader = await issue(["classifications:read"]);
+	assert.equal(
+		(await invoke(`threads/${mailbox}/${thread}/rerun`, "POST", {}, reader.key))
+			.status,
+		403,
+	);
+	const reviewed = await invoke(
+		`results/${mailbox}/${thread}/${classifier.id}`,
+		"PUT",
+		{ answer: true, revision: classifier.revision, token: job.token },
+	);
+	assert.equal(reviewed.status, 204, await reviewed.clone().text());
+	const [result] =
+		await db`SELECT actor,source FROM conversation_classifications WHERE classifier_id=${classifier.id} AND thread_id=${thread}`;
+	assert.equal(result.actor, `api-key:${k.id}`);
+	assert.equal(result.source, "agent");
+	assert.equal(
+		(await invoke(`threads/${mailbox}/${thread}/rerun`, "POST", {})).status,
+		202,
+	);
+	assert.equal(
+		(await invoke(`threads/${other}/${thread}/classifications`)).status,
+		403,
+	);
+});

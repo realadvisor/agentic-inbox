@@ -3,7 +3,7 @@
 	"info": {
 		"title": "RealAdvisor Inbox API",
 		"version": "1.0.0",
-		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read, drafts:manage, mail:send, conversations:manage and webhooks:manage permissions. Send email is opt-in. Keys cannot manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read, drafts:manage, mail:send, conversations:manage webhooks:manage, classifications:read, classifications:review, classifications:run, folders:manage and agent:use permissions. Agent access also requires mail:read and each tool respects the granted scopes. Send email is opt-in. Keys cannot manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
 	},
 	"servers": [
 		{
@@ -2368,7 +2368,7 @@
 				"operationId": "postCreateFolder",
 				"summary": "Create folder",
 				"tags": ["Folders"],
-				"description": "",
+				"description": " API keys require folders:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2476,7 +2476,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/folders/{id}": {
@@ -2484,7 +2492,7 @@
 				"operationId": "putRenameFolder",
 				"summary": "Rename folder",
 				"tags": ["Folders"],
-				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409).",
+				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409). API keys require folders:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2601,13 +2609,21 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"operationId": "deleteDeleteFolder",
 				"summary": "Delete folder",
 				"tags": ["Folders"],
-				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409).",
+				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409). API keys require folders:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2699,7 +2715,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/drafts": {
@@ -4152,7 +4176,7 @@
 				"operationId": "listClassificationReviews",
 				"summary": "List uncertain and failed classifications",
 				"tags": ["Classifiers"],
-				"description": "Latest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned.",
+				"description": "Latest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned. API keys require classifications:read and access to this mailbox.",
 				"parameters": [
 					{
 						"in": "path",
@@ -4198,7 +4222,15 @@
 					"503": {
 						"description": "Classifiers disabled or provider key missing"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/results/{mailbox}/{thread}/{classifier}": {
@@ -4206,7 +4238,7 @@
 				"operationId": "correctClassification",
 				"summary": "Record a human yes/no correction",
 				"tags": ["Classifiers"],
-				"description": "Any authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative.",
+				"description": "Any authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative. API keys require classifications:review and access to this mailbox.",
 				"parameters": [
 					{
 						"in": "path",
@@ -4276,7 +4308,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/provider-runs": {
@@ -4524,7 +4564,16 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/settings": {
@@ -4609,7 +4658,7 @@
 				"operationId": "postAgentChat",
 				"tags": ["Agent"],
 				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
-				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying.",
+				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying. API keys require agent:use and mail:read and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4690,7 +4739,15 @@
 					"400": {
 						"description": "Unknown, retired or invalid model, or invalid request"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/agent/models": {
@@ -4742,7 +4799,7 @@
 				"operationId": "stopAgentRun",
 				"tags": ["Agent"],
 				"summary": "Stop a specific mailbox agent run",
-				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run.",
+				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run. API keys require agent:use and mail:read and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4794,7 +4851,15 @@
 					"404": {
 						"description": "Run not found in this mailbox"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/tag-groups": {
@@ -5079,7 +5144,16 @@
 					"200": {
 						"description": "Up to 50 conversations and hasMore"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			},
 			"post": {
 				"operationId": "createAgentConversation",
@@ -5099,7 +5173,16 @@
 					"201": {
 						"description": "New conversation with id, title, and timestamps"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/status": {
@@ -5220,7 +5303,7 @@
 		"/api/v1/classification/threads/{mailbox}/{thread}/rerun": {
 			"post": {
 				"summary": "Queue all configured classifiers in mailbox scope for this conversation, including automatic-assignment-disabled classifiers, preserving manual choices and human corrections",
-				"description": "Includes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples.",
+				"description": "Includes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples. API keys require classifications:run and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5254,7 +5337,15 @@
 					"404": {
 						"description": "Conversation not found"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}": {
@@ -5284,7 +5375,16 @@
 					"200": {
 						"description": "Counts of pending, complete, review, failed and skipped jobs"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require classifications:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/examples/{id}": {
@@ -5671,7 +5771,16 @@
 					"504": {
 						"description": "Generation cancelled or timed out"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			},
 			"get": {
 				"tags": ["Agent"],
@@ -5693,7 +5802,16 @@
 					"404": {
 						"description": "Mailbox not found"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/runs/preview": {
@@ -5978,7 +6096,15 @@
 					}
 				},
 				"operationId": "inspectThreadClassifications",
-				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled."
+				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled. API keys require classifications:read and access to this mailbox.",
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}": {
@@ -6839,7 +6965,7 @@
 											"permissions": {
 												"type": "array",
 												"minItems": 1,
-												"maxItems": 5,
+												"maxItems": 10,
 												"items": {
 													"type": "string",
 													"enum": [
@@ -6847,7 +6973,12 @@
 														"drafts:manage",
 														"mail:send",
 														"conversations:manage",
-														"webhooks:manage"
+														"webhooks:manage",
+														"classifications:read",
+														"classifications:review",
+														"classifications:run",
+														"folders:manage",
+														"agent:use"
 													]
 												}
 											},
@@ -6921,7 +7052,7 @@
 									"permissions": {
 										"type": "array",
 										"minItems": 1,
-										"maxItems": 5,
+										"maxItems": 10,
 										"items": {
 											"type": "string",
 											"enum": [
@@ -6929,7 +7060,12 @@
 												"drafts:manage",
 												"mail:send",
 												"conversations:manage",
-												"webhooks:manage"
+												"webhooks:manage",
+												"classifications:read",
+												"classifications:review",
+												"classifications:run",
+												"folders:manage",
+												"agent:use"
 											]
 										}
 									},

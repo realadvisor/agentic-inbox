@@ -39,6 +39,7 @@ export async function migrate(db: Database) {
 		[35, "035_jev_credit_pause.sql"],
 		[39, "039_api_keys.sql"],
 		[40, "040_api_key_permissions.sql"],
+		[41, "041_api_key_automation_permissions.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),

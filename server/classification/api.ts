@@ -1,3 +1,4 @@
+import type { KeyVariables } from "../api-keys";
 import { reapplyApi } from "./reapply";
 import { providerStateApi } from "./provider-state-api";
 import { backfillsApi } from "./backfills";
@@ -80,14 +81,15 @@ export function classifierApi(
 		transport?: typeof fetch;
 	},
 ) {
-	const app = new Hono();
+	const app = new Hono<{ Variables: KeyVariables }>();
 	app.use("*", async (c, next) => {
 		if (!options.enabled)
 			return c.json({ error: "Classifiers are not enabled" }, 503);
 		if (
 			c.req.method !== "GET" &&
 			!c.req.path.includes("/results/") &&
-			!options.admin
+			!options.admin &&
+			!c.get("apiKey")?.permissions.includes("classifications:run")
 		)
 			return c.json(
 				{ error: "Only inbox administrators can configure or run classifiers" },
@@ -343,7 +345,8 @@ export function classifierApi(
 				thread,
 				classifierId,
 				data,
-				options.actor,
+				c.get("apiKey") ? `api-key:${c.get("apiKey")!.id}` : options.actor,
+				c.get("apiKey") ? "agent" : "human",
 			);
 		});
 		return c.body(null, 204);
