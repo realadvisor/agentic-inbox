@@ -2,7 +2,7 @@ import type { KeyVariables } from "../api-keys";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Database } from "../db";
-import { encryptSecret, validateUrl } from "./security";
+import { decryptSecret, encryptSecret, validateUrl } from "./security";
 export const events = [
 	"email.received",
 	"email.sent",
@@ -44,6 +44,40 @@ export function webhookApi(
 		c.header("Cache-Control", "no-store");
 		await next();
 	});
+	for (const rotate of [false, true]) {
+		app.post(
+			rotate ? "/:mailbox/:id/secret/rotate" : "/:mailbox/:id/secret",
+			async (c) => {
+				if (!/^[a-f0-9]{64}$/i.test(options.secretKey ?? ""))
+					return c.json(
+						{
+							error:
+								"Configure WEBHOOK_SECRET_KEY before managing signing secrets",
+						},
+						503,
+					);
+				const id = uuid.parse(c.req.param("id"));
+				const [endpoint] =
+					await db`SELECT secret FROM webhook_endpoints WHERE id=${id} AND mailbox_id=${c.req.param("mailbox")}`;
+				if (!endpoint) return c.json({ error: "Endpoint not found" }, 404);
+				const secret = rotate
+					? "whsec_" +
+						Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+							"hex",
+						)
+					: await decryptSecret(endpoint.secret, options.secretKey!);
+				if (rotate) {
+					const encrypted = await encryptSecret(secret, options.secretKey!);
+					const updated =
+						await db`UPDATE webhook_endpoints SET secret=${encrypted} WHERE id=${id} AND mailbox_id=${c.req.param("mailbox")} RETURNING id`;
+					if (!updated.length)
+						return c.json({ error: "Endpoint not found" }, 404);
+				}
+				return c.json({ id, secret });
+			},
+		);
+	}
+
 	app.get("/:mailbox", async (c) =>
 		c.json(
 			await db`SELECT id,url,to_json(events) AS events,enabled,to_json(include_tag_ids) AS include_tag_ids,to_json(exclude_tag_ids) AS exclude_tag_ids,tag_match,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} AND (${c.get("apiKey")?.id ?? null}::uuid IS NULL OR api_key_id=${c.get("apiKey")?.id ?? null}) ORDER BY created_at DESC`,

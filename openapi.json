@@ -7199,6 +7199,118 @@
 					}
 				}
 			}
+		},
+		"/api/v1/webhooks/{mailbox}/{id}/secret": {
+			"post": {
+				"tags": ["Webhooks"],
+				"summary": "Reveal signing secret",
+				"description": "Decrypt and return the existing endpoint signing secret. Requires an inbox administrator or the owning API key with webhooks:manage. Responses are not cached.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Signing secret",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["id", "secret"],
+									"properties": {
+										"id": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"secret": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not authorized"
+					},
+					"404": {
+						"description": "Endpoint not found"
+					},
+					"503": {
+						"description": "Webhook encryption is not configured"
+					}
+				}
+			}
+		},
+		"/api/v1/webhooks/{mailbox}/{id}/secret/rotate": {
+			"post": {
+				"tags": ["Webhooks"],
+				"summary": "Rotate signing secret",
+				"description": "Replace the endpoint signing secret. Update the receiver before resuming deliveries. New attempts use the new secret; in-flight attempts may still use the old secret. Requires an inbox administrator or the owning API key with webhooks:manage. Responses are not cached.",
+				"parameters": [
+					{
+						"name": "mailbox",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Signing secret",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["id", "secret"],
+									"properties": {
+										"id": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"secret": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not authorized"
+					},
+					"404": {
+						"description": "Endpoint not found"
+					},
+					"503": {
+						"description": "Webhook encryption is not configured"
+					}
+				}
+			}
 		}
 	},
 	"components": {

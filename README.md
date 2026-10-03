@@ -421,7 +421,7 @@ Administrators can configure **Settings → Webhooks** per mailbox: HTTPS endpoi
 event subscriptions, enable/disable, test ping, and the latest 50 deliveries with
 payloads, response excerpts, timing, and manual retry. Supported events are
 `email.received`, `email.sent`, `conversation.tags_changed`,
-`conversation.classified`, and `conversation.status_changed`. Bodies and attachments
+`conversation.classified`, `conversation.status_changed`, and `conversation.matched`. Bodies and attachments
 are excluded. `conversation.classified` contains the results when all pending
 questions for that conversation generation have settled, including review/error
 outcomes; received events precede classification. No historical events are backfilled.
@@ -453,7 +453,7 @@ Google Cloud Tasks `inbox-webhooks` (5 concurrent) carries only delivery IDs to 
 existing authenticated task handler. Run `scripts/setup-cloud-tasks.sh` before
 production rollout and set `WEBHOOK_SECRET_KEY` to a random 32-byte hex value
 using the deployment secret store. This encrypts endpoint signing secrets at rest;
-retain it across deployments. Secrets are shown once at creation. Local endpoint
+retain it across deployments. Signing secrets are returned at creation and can be revealed or rotated from Settings. Administrators and API keys with `webhooks:manage` can manage secrets only for endpoints they are authorized to manage; API keys remain restricted to their own endpoints. Reveal and rotate use non-cacheable POST responses. Rotation changes the secret used by new attempts; in-flight attempts may still use the old secret. Update the receiving integration before resuming delivery. Local endpoint
 configuration also requires this variable; the local Node server does not dispatch
 outgoing webhooks automatically, preventing copied production subscriptions from
 sending to real integrations.

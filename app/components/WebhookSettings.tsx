@@ -1,7 +1,7 @@
 import { AppSelect } from "./AppSelect";
 import { useTags } from "~/queries/tags";
 import { Button, Input, Checkbox, Loader } from "@cloudflare/kumo";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { WebhooksLogoIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 const eventLabels: Record<string, string> = {
@@ -60,7 +60,14 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 		[url, setUrl] = useState(""),
 		[selected, setSelected] = useState<string[]>(["conversation.classified"]),
 		[secret, setSecret] = useState(""),
+		[secretId, setSecretId] = useState(""),
+		[copied, setCopied] = useState(false),
+		[copyError, setCopyError] = useState(false),
 		[history, setHistory] = useState("");
+	useEffect(() => {
+		setSecret("");
+		setSecretId("");
+	}, [mailboxId]);
 	const list = useQuery({
 		queryKey: ["webhooks", base],
 		queryFn: () => request<Endpoint[]>(base),
@@ -95,9 +102,14 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 			path: string;
 			method: string;
 			body?: unknown;
-		}) => request<{ secret?: string }>(path, method, body),
+		}) => request<{ id?: string; secret?: string }>(path, method, body),
 		onSuccess: async (data) => {
-			if (data.secret) setSecret(data.secret);
+			if (data.secret) {
+				setSecret(data.secret);
+				setSecretId(data.id ?? "");
+				setCopied(false);
+				setCopyError(false);
+			}
 			await qc.invalidateQueries({ queryKey: ["webhooks"] });
 			await qc.invalidateQueries({ queryKey: ["webhook-deliveries"] });
 		},
@@ -142,14 +154,33 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 			)}
 			{secret && (
 				<div className="border-t border-kumo-line bg-kumo-tint/30 p-5 text-sm">
-					<p>Copy this signing secret now. It is shown only once.</p>
+					<p className="font-medium">Signing secret</p>
+					<p className="mt-1 break-all text-xs text-kumo-subtle">
+						{list.data?.find((e) => e.id === secretId)?.url}
+					</p>
 					<code className="block break-all text-xs my-2">{secret}</code>
 					<Button
 						size="sm"
-						onClick={() => navigator.clipboard.writeText(secret)}
+						onClick={async () => {
+							try {
+								await navigator.clipboard.writeText(secret);
+								setCopied(true);
+								setCopyError(false);
+							} catch {
+								setCopyError(true);
+							}
+						}}
 					>
-						Copy secret
+						{copied ? "Copied" : "Copy secret"}
 					</Button>
+					<Button size="sm" variant="ghost" onClick={() => setSecret("")}>
+						Hide secret
+					</Button>
+					{copyError && (
+						<p role="alert" className="mt-2 text-xs text-kumo-danger">
+							Could not copy. Select and copy the secret above.
+						</p>
+					)}
 				</div>
 			)}
 			{editing !== undefined && (
@@ -403,6 +434,43 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						</p>
 					)}
 					<div className="flex flex-wrap gap-2">
+						<Button
+							size="sm"
+							variant="ghost"
+							disabled={action.isPending}
+							onClick={() => {
+								if (secret && secretId === e.id) setSecret("");
+								else {
+									setSecret("");
+									action.mutate({
+										path: `${base}/${e.id}/secret`,
+										method: "POST",
+									});
+								}
+							}}
+						>
+							{secret && secretId === e.id ? "Hide secret" : "Reveal secret"}
+						</Button>
+						<Button
+							size="sm"
+							variant="ghost"
+							disabled={action.isPending}
+							onClick={() => {
+								if (
+									window.confirm(
+										"Rotate this webhook’s signing secret? Update your integration with the new secret before resuming delivery. New attempts use the new secret; in-flight attempts may still use the old one.",
+									)
+								) {
+									setSecret("");
+									action.mutate({
+										path: `${base}/${e.id}/secret/rotate`,
+										method: "POST",
+									});
+								}
+							}}
+						>
+							Rotate secret
+						</Button>
 						<Button size="sm" variant="ghost" onClick={() => edit(e)}>
 							Edit
 						</Button>
