@@ -131,6 +131,7 @@ export default function AccessSettings() {
 									/>
 								</div>
 								<AppSelect
+									inline
 									label="New member role"
 									value={role}
 									options={roles}
@@ -138,7 +139,7 @@ export default function AccessSettings() {
 									disabled={change.isPending}
 								/>
 								<Button
-									size="sm"
+									size="base"
 									type="submit"
 									variant="primary"
 									disabled={!valid || change.isPending}
@@ -147,7 +148,7 @@ export default function AccessSettings() {
 								</Button>
 								<Button
 									type="button"
-									size="sm"
+									size="base"
 									variant="ghost"
 									disabled={change.isPending}
 									onClick={() => {
