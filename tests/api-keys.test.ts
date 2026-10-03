@@ -881,3 +881,74 @@ test("key creation and authentication work with Worker fetch_types disabled", as
 		await workerDb.end();
 	}
 });
+
+test("webhook secrets are revealed and rotated only by admins or the owning key", async () => {
+	const owner = await issue(["webhooks:manage"]),
+		stranger = await issue(["webhooks:manage"]),
+		reader = await issue();
+	const created = await call(
+		`webhooks/${mailbox}`,
+		"POST",
+		{
+			url: "https://hooks.example.com/secrets",
+			events: ["email.received"],
+			enabled: false,
+		},
+		owner.key,
+	);
+	assert.equal(created.status, 201);
+	const endpoint = await created.json();
+	const path = `webhooks/${mailbox}/${endpoint.id}/secret`;
+	for (const suffix of ["", "/rotate"]) {
+		assert.equal(
+			(await call(path + suffix, "POST", {}, stranger.key)).status,
+			404,
+		);
+		assert.equal(
+			(await call(path + suffix, "POST", {}, reader.key)).status,
+			403,
+		);
+		assert.equal(
+			(await call(path + suffix, "POST", {}, undefined, "user")).status,
+			403,
+		);
+		assert.equal(
+			(
+				await call(
+					`webhooks/${other}/${endpoint.id}/secret` + suffix,
+					"POST",
+					{},
+					owner.key,
+				)
+			).status,
+			403,
+		);
+	}
+	const revealed = await call(path, "POST", {}, owner.key);
+	assert.equal(revealed.headers.get("cache-control"), "no-store");
+	assert.equal((await revealed.json()).secret, endpoint.secret);
+	const rotated = await call(path + "/rotate", "POST", {}, undefined, "admin");
+	assert.equal(rotated.status, 200);
+	assert.equal(rotated.headers.get("cache-control"), "no-store");
+	const fresh = await rotated.json();
+	assert.match(fresh.secret, /^whsec_[a-f0-9]{64}$/);
+	assert.notEqual(fresh.secret, endpoint.secret);
+	assert.equal(
+		(await (await call(path, "POST", {}, owner.key)).json()).secret,
+		fresh.secret,
+	);
+	const [stored] =
+		await db`SELECT secret,enabled FROM webhook_endpoints WHERE id=${endpoint.id}`;
+	assert.notEqual(stored.secret, fresh.secret);
+	assert.equal(stored.enabled, false);
+	const listed = await (
+		await call(`webhooks/${mailbox}`, "GET", undefined, owner.key)
+	).text();
+	assert.ok(!listed.includes(fresh.secret));
+	assert.ok(!listed.includes(stored.secret));
+	assert.equal(
+		(await call(`webhooks/${mailbox}/${endpoint.id}`, "DELETE", {}, owner.key))
+			.status,
+		200,
+	);
+});

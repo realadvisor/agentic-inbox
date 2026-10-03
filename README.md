@@ -421,15 +421,15 @@ Administrators can configure **Settings → Webhooks** per mailbox: HTTPS endpoi
 event subscriptions, enable/disable, test ping, and the latest 50 deliveries with
 payloads, response excerpts, timing, and manual retry. Supported events are
 `email.received`, `email.sent`, `conversation.tags_changed`,
-`conversation.classified`, and `conversation.status_changed`. Bodies and attachments
+`conversation.classified`, `conversation.status_changed`, and `conversation.matched`. Bodies and attachments
 are excluded. `conversation.classified` contains the results when all pending
 questions for that conversation generation have settled, including review/error
 outcomes; received events precede classification. No historical events are backfilled.
 
 Tag filters in Settings support **any/all included tags** and **excluded tags** (exclusions win). Filters use stable tag IDs, including ordered-scale level tags. Renaming a tag does not change the filter; archived tags are no longer considered active.
 
-- **Conversation starts matching tags** (`conversation.matched`, API-only): sends once on a nonmatching → matching transition, including classifier-applied tags. Evaluation happens after all tag changes in the transaction, so temporary level swaps or exclusions applied in the same transaction do not trigger an event. Leaving and re-entering sends a new event ID.
-- **Selected events (Settings)**: filters each selected event against its tag set when the event is recorded. An email-received event does not wait for later classification; use `conversation.classified` to check tags after Jev finishes, or the API-only starts-matching event for entry into a matching tag set.
+- **Conversation starts matching tags** (`conversation.matched`, **Tag conditions matched** in Settings): sends once on a nonmatching → matching transition, including classifier-applied tags. Evaluation happens after all tag changes in the transaction, so temporary level swaps or exclusions applied in the same transaction do not trigger an event. Leaving and re-entering sends a new event ID.
+- **Selected events (Settings)**: filters each selected event against its tag set when the event is recorded. An email-received event does not wait for later classification; use `conversation.classified` to check tags after Jev finishes, or the starts-matching event for entry into a matching tag set.
 
 Migration 030 adds filter fields and per-conversation matching state without creating tags or subscriptions. Creating/changing a filter or re-enabling an endpoint establishes a baseline: existing matches are not backfilled. Disabled subscriptions do not queue events. Historical imports update the matching baseline without sending. Queued deliveries retain their original `data.tag_ids` snapshot after tags or filters change; manual retries retain their event ID. Test pings deliberately bypass filters.
 
@@ -453,7 +453,7 @@ Google Cloud Tasks `inbox-webhooks` (5 concurrent) carries only delivery IDs to 
 existing authenticated task handler. Run `scripts/setup-cloud-tasks.sh` before
 production rollout and set `WEBHOOK_SECRET_KEY` to a random 32-byte hex value
 using the deployment secret store. This encrypts endpoint signing secrets at rest;
-retain it across deployments. Secrets are shown once at creation. Local endpoint
+retain it across deployments. Signing secrets are returned at creation and can be revealed or rotated from Settings. Administrators and API keys with `webhooks:manage` can manage secrets only for endpoints they are authorized to manage; API keys remain restricted to their own endpoints. Reveal and rotate use non-cacheable POST responses. Rotation changes the secret used by new attempts; in-flight attempts may still use the old secret. Update the receiving integration before resuming delivery. Local endpoint
 configuration also requires this variable; the local Node server does not dispatch
 outgoing webhooks automatically, preventing copied production subscriptions from
 sending to real integrations.
