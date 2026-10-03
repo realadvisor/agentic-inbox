@@ -314,11 +314,6 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 				</div>
 			) : (
 				<div className="border-t border-kumo-line">
-					<div className="hidden grid-cols-[minmax(0,1fr)_150px_76px] gap-5 border-b border-kumo-line bg-kumo-tint/40 px-5 py-2.5 text-xs font-medium text-kumo-subtle lg:grid">
-						<span>Key & access</span>
-						<span>Usage</span>
-						<span className="sr-only">Actions</span>
-					</div>
 					<ul className="divide-y divide-kumo-line">
 						{list.data?.map((key) => {
 							const inactive =
@@ -327,9 +322,9 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 							return (
 								<li
 									key={key.id}
-									className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-5 gap-y-3 p-5 lg:grid-cols-[minmax(0,1fr)_150px_76px]"
+									className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-5 py-3"
 								>
-									<div className="min-w-0 space-y-2">
+									<div className="min-w-0 space-y-1.5">
 										<div className="flex flex-wrap items-center gap-2">
 											<span className="break-words text-sm font-medium">
 												{key.name}
@@ -344,27 +339,30 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 														? "Expired"
 														: "Active"}
 											</span>
+
+											<code className="text-[11px] text-kumo-subtle">
+												{key.prefix}••••••••
+											</code>
 										</div>
-										<code className="block text-xs text-kumo-subtle">
-											{key.prefix}••••••••
-										</code>
-										<p className="break-all text-xs text-kumo-subtle">
-											{key.mailbox_ids.join(", ")}
-										</p>
-										<div className="flex flex-wrap gap-1.5">
-											{permissions
-												.filter((p) => key.permissions.includes(p.id))
-												.map((p) => (
-													<span
-														key={p.id}
-														className="rounded-md border border-kumo-line px-2 py-0.5 text-xs text-kumo-subtle"
-													>
-														{p.name}
-													</span>
-												))}
+										<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+											<p className="break-all text-xs text-kumo-subtle">
+												{key.mailbox_ids.join(", ")}
+											</p>
+											<div className="flex flex-wrap gap-1.5">
+												{permissions
+													.filter((p) => key.permissions.includes(p.id))
+													.map((p) => (
+														<span
+															key={p.id}
+															className="rounded bg-kumo-tint px-1.5 py-0.5 text-[11px] text-kumo-subtle"
+														>
+															{p.name}
+														</span>
+													))}
+											</div>
 										</div>
 									</div>
-									<div className="col-span-2 row-start-2 space-y-1 text-xs text-kumo-subtle lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:pt-0.5">
+									<div className="col-span-2 row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-kumo-subtle [&>p+p]:before:content-['·'] [&>p+p]:before:mr-2">
 										<p className="text-kumo-default tabular-nums">
 											{Number(key.request_count).toLocaleString()} requests
 										</p>
@@ -385,7 +383,7 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 												: "No expiry"}
 										</p>
 									</div>
-									<div className="col-start-2 row-start-1 justify-self-end lg:col-start-3">
+									<div className="col-start-2 row-start-1 justify-self-end">
 										{!key.revoked_at && (
 											<Button
 												size="sm"
