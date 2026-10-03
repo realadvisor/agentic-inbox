@@ -247,27 +247,67 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 						<legend className="text-sm font-medium mb-2">
 							Allowed mailboxes
 						</legend>
-						<div className="max-h-40 overflow-y-auto rounded-lg border border-kumo-line bg-kumo-base p-3 space-y-3">
-							{mailboxes.isLoading ? (
-								<Loader />
-							) : mailboxes.error ? (
-								<p role="alert">Could not load mailboxes.</p>
-							) : (
-								mailboxes.data?.map((box) => (
-									<Checkbox
-										key={box.id}
-										label={box.id}
-										checked={boxes.includes(box.id)}
-										onCheckedChange={(value) =>
-											setBoxes((prev) =>
-												value
-													? [...prev, box.id]
-													: prev.filter((id) => id !== box.id),
-											)
-										}
-									/>
-								))
-							)}
+						<div className="overflow-hidden rounded-lg border border-kumo-line bg-kumo-base">
+							<div className="flex items-center justify-between gap-3 border-b border-kumo-line px-3 py-1.5 text-xs text-kumo-subtle">
+								<span aria-live="polite">
+									{boxes.length} of {mailboxes.data?.length ?? 0} selected
+								</span>
+								<Button
+									type="button"
+									size="sm"
+									variant="ghost"
+									disabled={!mailboxes.data?.length}
+									onClick={() =>
+										setBoxes(
+											boxes.length === mailboxes.data?.length
+												? []
+												: (mailboxes.data?.map((box) => box.id) ?? []),
+										)
+									}
+								>
+									{boxes.length === mailboxes.data?.length
+										? "Clear all"
+										: "Select all"}
+								</Button>
+							</div>
+							<div className="max-h-52 overflow-y-auto overscroll-contain divide-y divide-kumo-line">
+								{mailboxes.isLoading ? (
+									<div className="p-3">
+										<Loader />
+									</div>
+								) : mailboxes.error ? (
+									<p className="p-3 text-sm" role="alert">
+										Could not load mailboxes.
+									</p>
+								) : !mailboxes.data?.length ? (
+									<p className="p-3 text-sm text-kumo-subtle">
+										No mailboxes available.
+									</p>
+								) : (
+									mailboxes.data.map((box) => (
+										<label
+											key={box.id}
+											className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-kumo-tint focus-within:bg-kumo-tint ${boxes.includes(box.id) ? "bg-kumo-tint/50" : ""}`}
+										>
+											<Checkbox
+												className="shrink-0"
+												aria-label={box.id}
+												checked={boxes.includes(box.id)}
+												onCheckedChange={(value) =>
+													setBoxes((prev) =>
+														value
+															? [...prev, box.id]
+															: prev.filter((id) => id !== box.id),
+													)
+												}
+											/>
+											<span className="min-w-0 break-all text-sm leading-5">
+												{box.id}
+											</span>
+										</label>
+									))
+								)}
+							</div>
 						</div>
 					</fieldset>
 					<fieldset>
