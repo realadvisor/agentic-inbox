@@ -248,14 +248,16 @@ export class InboxStore {
 			);
 		const where = conditions.reduce((a, b) => this.db`${a} AND ${b}`);
 		const threaded = params.threaded === "true";
-		const selection = threaded
-			? this
-					.db`SELECT DISTINCT ON (e.thread_id) e.id,e.mailbox_id,e.thread_id,e.date,e.subject,e.sender FROM emails e WHERE ${where} ORDER BY e.thread_id, e.date DESC, e.id`
-			: this
-					.db`SELECT e.id,e.mailbox_id,e.thread_id,e.date,e.subject,e.sender FROM emails e WHERE ${where}`;
 		const column = ["date", "subject", "sender"].includes(params.sortColumn)
 			? params.sortColumn
 			: "date";
+		const sortFields =
+			column === "date" ? this.db`` : this.db`,${this.db(`e.${column}`)}`;
+		const selection = threaded
+			? this
+					.db`SELECT DISTINCT ON (e.thread_id) e.id,e.mailbox_id,e.thread_id,e.date${sortFields} FROM emails e WHERE ${where} ORDER BY e.thread_id, e.date DESC, e.id`
+			: this
+					.db`SELECT e.id,e.mailbox_id,e.thread_id,e.date${sortFields} FROM emails e WHERE ${where}`;
 		const direction =
 			params.sortDirection === "ASC" ? this.db`ASC` : this.db`DESC`;
 		const scoreOrder = params.score_group
