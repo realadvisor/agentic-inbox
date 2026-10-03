@@ -1,3 +1,4 @@
+import { getCookie } from "hono/cookie";
 import { resolveAccessRole } from "./members";
 import { deliverWebhook, publishWebhooks } from "./webhooks/delivery";
 import {
@@ -132,9 +133,19 @@ worker.use("*", async (c, next) => {
 	if (new URL(c.req.url).origin !== c.env.PUBLIC_ORIGIN)
 		return c.text("Unknown origin", 403);
 	if (c.env.MAIL_MODE === "live") {
+		// API credentials are verified by createApi; never accept them on pages or task routes.
+		if (
+			c.req.path.startsWith("/api/v1/") &&
+			/^Bearer\s/i.test(c.req.header("authorization") ?? "")
+		)
+			return next();
 		if (!c.env.ACCESS_ISSUER || !c.env.ACCESS_AUDIENCE)
 			return c.text("Access is not configured", 503);
-		const token = c.req.header("cf-access-jwt-assertion");
+		const token =
+			c.req.header("cf-access-jwt-assertion") ??
+			(c.req.path.startsWith("/api/v1/")
+				? getCookie(c, "CF_Authorization")
+				: undefined);
 		if (!token) return c.text("Cloudflare Access login required", 401);
 		try {
 			const identity = await verifyAccess(
@@ -169,7 +180,9 @@ worker.all("/api/*", async (c) => {
 	try {
 		const membershipEnabled = c.env.ACCESS_MEMBERSHIP_ENABLED === "true";
 		const actorRole =
-			membershipEnabled && c.env.MAIL_MODE === "live"
+			membershipEnabled &&
+			c.env.MAIL_MODE === "live" &&
+			!/^Bearer\s/i.test(c.req.header("authorization") ?? "")
 				? await resolveAccessRole(
 						db,
 						c.get("accessIdentity"),

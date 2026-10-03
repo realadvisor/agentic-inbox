@@ -1,3 +1,4 @@
+import type { KeyVariables } from "../api-keys";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Database } from "../db";
@@ -25,16 +26,27 @@ export function webhookApi(
 	db: Database,
 	options: { canManage: boolean; secretKey?: string },
 ) {
-	const app = new Hono();
+	const app = new Hono<{ Variables: KeyVariables }>();
 	app.use("*", async (c, next) => {
-		if (!options.canManage)
+		if (
+			!options.canManage &&
+			!c.get("apiKey")?.permissions.includes("webhooks:manage")
+		)
 			return c.json({ error: "Administrator access required" }, 403);
+		const key = c.get("apiKey");
+		const path = c.req.path.split("/").map(decodeURIComponent);
+		if (key && path[5]) {
+			const id = uuid.parse(path[5]);
+			const [owned] =
+				await db`SELECT 1 FROM webhook_endpoints WHERE id=${id} AND mailbox_id=${path[4]} AND api_key_id=${key.id}`;
+			if (!owned) return c.json({ error: "Endpoint not found" }, 404);
+		}
 		c.header("Cache-Control", "no-store");
 		await next();
 	});
 	app.get("/:mailbox", async (c) =>
 		c.json(
-			await db`SELECT id,url,events,enabled,include_tag_ids,exclude_tag_ids,tag_match,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} ORDER BY created_at DESC`,
+			await db`SELECT id,url,events,enabled,include_tag_ids,exclude_tag_ids,tag_match,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} AND (${c.get("apiKey")?.id ?? null}::uuid IS NULL OR api_key_id=${c.get("apiKey")?.id ?? null}) ORDER BY created_at DESC`,
 		),
 	);
 	for (const method of ["post", "put"] as const) {
@@ -126,8 +138,8 @@ export function webhookApi(
 							await tx`SELECT id FROM mailboxes WHERE id=${mailbox}`;
 						if (!box)
 							return { error: "Mailbox not found", status: 404 as const };
-						await tx`INSERT INTO webhook_endpoints(id,mailbox_id,url,events,enabled,secret,include_tag_ids,exclude_tag_ids,tag_match)
-					 VALUES(${endpointId},${mailbox},${data.url},${data.events},${data.enabled},${encrypted!},${included},${excluded},${mode})`;
+						await tx`INSERT INTO webhook_endpoints(id,mailbox_id,url,events,enabled,secret,include_tag_ids,exclude_tag_ids,tag_match,api_key_id)
+					 VALUES(${endpointId},${mailbox},${data.url},${data.events},${data.enabled},${encrypted!},${included},${excluded},${mode},${c.get("apiKey")?.id ?? null})`;
 					} else {
 						await tx`UPDATE webhook_endpoints SET url=${data.url},events=${data.events},enabled=${data.enabled},include_tag_ids=${included},exclude_tag_ids=${excluded},tag_match=${mode} WHERE id=${endpointId}`;
 					}

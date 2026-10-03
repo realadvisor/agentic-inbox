@@ -3,7 +3,7 @@
 	"info": {
 		"title": "RealAdvisor Inbox API",
 		"version": "1.0.0",
-		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation and API require a Cloudflare Access browser login. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nService-token authentication and scoped workflow permissions are NOT implemented yet. Do not copy browser cookies into n8n. A future integration will use a dedicated Access service token and backend service-identity verification; creating a token alone will not work today.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read / webhooks:manage permissions. Keys cannot send mail or manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
 	},
 	"servers": [
 		{
@@ -284,7 +284,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes": {
@@ -381,13 +389,21 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "postCreateMailbox",
 				"summary": "Create mailbox",
 				"tags": ["Mailboxes"],
-				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1\u201364 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
+				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1–64 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -594,7 +610,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"put": {
 				"operationId": "putUpdateMailboxSettings",
@@ -1094,7 +1118,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "postSendEmail",
@@ -1518,7 +1550,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}": {
@@ -1619,7 +1659,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"put": {
 				"operationId": "putUpdateEmailFlags",
@@ -2046,7 +2094,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/read": {
@@ -2258,7 +2314,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "postCreateFolder",
@@ -3110,7 +3174,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/tags": {
@@ -3184,7 +3256,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "createTag",
@@ -4647,7 +4727,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"tags": ["Tags"],
@@ -4954,6 +5042,14 @@
 							"type": "string",
 							"format": "uuid"
 						}
+					}
+				],
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
 					}
 				]
 			},
@@ -5783,7 +5879,7 @@
 			"get": {
 				"tags": ["Webhooks"],
 				"summary": "List mailbox webhook endpoints",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5804,12 +5900,20 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Create a webhook endpoint; returns signing secret once",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5890,14 +5994,22 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}": {
 			"put": {
 				"tags": ["Webhooks"],
 				"summary": "Update endpoint",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5986,12 +6098,20 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["Webhooks"],
 				"summary": "Delete endpoint and its deliveries",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6020,14 +6140,22 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}/deliveries": {
 			"get": {
 				"tags": ["Webhooks"],
 				"summary": "List latest 50 deliveries with payload and attempts",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6056,14 +6184,22 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}/test": {
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Queue a test event",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6092,14 +6228,22 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}/deliveries/{delivery}/retry": {
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Retry a failed delivery",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6136,7 +6280,15 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/access/members": {
@@ -6292,7 +6444,7 @@
 				"operationId": "startClassifierBackfill",
 				"tags": ["Classifiers"],
 				"summary": "Start a resumable classifier backfill",
-				"description": "Administrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run\u2019s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
+				"description": "Administrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run’s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -6537,6 +6689,201 @@
 					},
 					"409": {
 						"description": "Configuration changed; preview again"
+					}
+				}
+			}
+		},
+		"/api/v1/api-keys": {
+			"get": {
+				"tags": ["Access"],
+				"summary": "List API keys (administrator only)",
+				"security": [
+					{
+						"AccessSession": []
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Metadata only; never includes secrets or hashes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "string",
+												"format": "uuid"
+											},
+											"name": {
+												"type": "string"
+											},
+											"prefix": {
+												"type": "string"
+											},
+											"mailbox_ids": {
+												"type": "array",
+												"minItems": 1,
+												"maxItems": 100,
+												"items": {
+													"type": "string"
+												}
+											},
+											"permissions": {
+												"type": "array",
+												"minItems": 1,
+												"maxItems": 2,
+												"items": {
+													"type": "string",
+													"enum": ["mail:read", "webhooks:manage"]
+												}
+											},
+											"created_by": {
+												"type": "string"
+											},
+											"created_at": {
+												"type": "string",
+												"format": "date-time"
+											},
+											"last_used_at": {
+												"type": "string",
+												"format": "date-time",
+												"nullable": true
+											},
+											"expires_at": {
+												"type": "string",
+												"format": "date-time",
+												"nullable": true
+											},
+											"revoked_at": {
+												"type": "string",
+												"format": "date-time",
+												"nullable": true
+											},
+											"request_count": {
+												"type": "string",
+												"description": "Count of authenticated requests, including permission denials."
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			},
+			"post": {
+				"tags": ["Access"],
+				"summary": "Create an API key (administrator only)",
+				"security": [
+					{
+						"AccessSession": []
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["name", "mailbox_ids", "permissions"],
+								"additionalProperties": false,
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 80
+									},
+									"mailbox_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 100,
+										"items": {
+											"type": "string"
+										}
+									},
+									"permissions": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 2,
+										"items": {
+											"type": "string",
+											"enum": ["mail:read", "webhooks:manage"]
+										}
+									},
+									"expires_at": {
+										"type": "string",
+										"format": "date-time",
+										"nullable": true
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "The key is returned once. Store it securely.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"key": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid permissions, mailboxes or expiry"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			}
+		},
+		"/api/v1/api-keys/{id}": {
+			"delete": {
+				"tags": ["Access"],
+				"summary": "Revoke an API key (administrator only)",
+				"description": "New requests using the key are denied immediately. Already accepted requests may finish. Existing webhook subscriptions remain active and administrators retain control.",
+				"security": [
+					{
+						"AccessSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Revoked"
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"404": {
+						"description": "Not found"
 					}
 				}
 			}
@@ -7628,7 +7975,13 @@
 				"type": "apiKey",
 				"in": "cookie",
 				"name": "CF_Authorization",
-				"description": "Managed by Cloudflare Access login. Sign in normally; do not paste or export session cookies. Service tokens are not yet supported by the backend."
+				"description": "Verified Cloudflare Access browser session; human membership and roles apply. Do not copy session cookies to integrations."
+			},
+			"InboxApiKey": {
+				"type": "http",
+				"scheme": "bearer",
+				"bearerFormat": "inbox_<64 hex characters>",
+				"description": "Created by an administrator in Settings → API keys. Scope and mailbox restrictions apply; revoked or expired keys return 401."
 			}
 		}
 	}

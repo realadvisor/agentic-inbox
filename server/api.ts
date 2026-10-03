@@ -1,3 +1,9 @@
+import {
+	apiKeysApi,
+	authenticateApiKey,
+	keyCanRequest,
+	type KeyVariables,
+} from "./api-keys";
 import { membersApi, type MemberRole } from "./members";
 import { webhookApi } from "./webhooks/api";
 import {
@@ -115,10 +121,25 @@ export function createApi(db: Database, options: ApiOptions) {
 	const canCreate =
 		!isLive ||
 		(options.mailboxCreationEnabled === true && !!options.actor && isAdmin);
-	const app = new Hono();
+	const app = new Hono<{ Variables: KeyVariables }>();
 	app.use("*", bodyLimit({ maxSize: 256_000 }));
 	app.use("*", async (c, next) => {
-		if (isLive && options.membershipEnabled && !options.actorRole)
+		c.header("Cache-Control", "no-store");
+		const authorization = c.req.header("authorization");
+		if (authorization && /^Bearer\s/i.test(authorization)) {
+			const key = await authenticateApiKey(db, authorization);
+			c.set("apiKey", key);
+			if (!keyCanRequest(key, c.req.method, c.req.path))
+				throw new HTTPException(403, {
+					message: "API key does not permit this operation or mailbox",
+				});
+		}
+		if (
+			isLive &&
+			options.membershipEnabled &&
+			!options.actorRole &&
+			!c.get("apiKey")
+		)
 			throw new HTTPException(403, { message: "Inbox membership required" });
 		// Local origin checks are retained; the Worker authenticates remote requests.
 		const host = c.req.header("host") ?? new URL(c.req.url).host;
@@ -160,6 +181,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		console.error("Inbox request failed:", error.message);
 		return c.json({ error: "Request failed" }, 500);
 	});
+	app.route(
+		"/api/v1/api-keys",
+		apiKeysApi(db, { admin: isAdmin, actor: options.actor ?? "local-preview" }),
+	);
 	app.route(
 		"/api/v1/webhooks",
 		webhookApi(db, {
@@ -219,22 +244,36 @@ export function createApi(db: Database, options: ApiOptions) {
 		});
 	});
 	app.get("/api/v1/config", (c) =>
-		c.json({
-			domains:
-				options.mode === "live" ? ["ingest.realadvisor.com"] : ["example.test"],
-			emailAddresses: [],
-			access: {
-				role: isAdmin ? "admin" : "user",
-				managed: options.membershipEnabled === true || !isLive,
-			},
-			canCreateMailboxes: canCreate,
-			classifierPreview: !isLive && options.classifierPreview === true,
-			classifiersEnabled: options.classifiersEnabled === true,
-			canManageWebhooks: isAdmin,
-			canManageClassifiers: options.classifiersEnabled === true && isAdmin,
-			canDeleteMailboxes: !isLive,
-			mode: options.mode ?? "synthetic",
-		}),
+		c.json(
+			c.get("apiKey")
+				? {
+						access: { role: "integration", managed: true },
+						mailbox_ids: c.get("apiKey")!.mailbox_ids,
+						permissions: c.get("apiKey")!.permissions,
+						canManageWebhooks: c
+							.get("apiKey")!
+							.permissions.includes("webhooks:manage"),
+					}
+				: {
+						domains:
+							options.mode === "live"
+								? ["ingest.realadvisor.com"]
+								: ["example.test"],
+						emailAddresses: [],
+						access: {
+							role: isAdmin ? "admin" : "user",
+							managed: options.membershipEnabled === true || !isLive,
+						},
+						canCreateMailboxes: canCreate,
+						classifierPreview: !isLive && options.classifierPreview === true,
+						classifiersEnabled: options.classifiersEnabled === true,
+						canManageWebhooks: isAdmin,
+						canManageClassifiers:
+							options.classifiersEnabled === true && isAdmin,
+						canDeleteMailboxes: !isLive,
+						mode: options.mode ?? "synthetic",
+					},
+		),
 	);
 	app.route("/api/v1/tag-groups", tagGroupsApi(db, isAdmin));
 	app.get("/api/v1/tags", async (c) =>
@@ -280,7 +319,9 @@ export function createApi(db: Database, options: ApiOptions) {
 	app.get("/api/v1/mailboxes", async (c) =>
 		c.json(
 			(await store.listMailboxes()).filter(
-				(m) => options.mode !== "live" || liveSender(m.id),
+				(m) =>
+					(!c.get("apiKey") || c.get("apiKey")!.mailbox_ids.includes(m.id)) &&
+					(options.mode !== "live" || liveSender(m.id)),
 			),
 		),
 	);
