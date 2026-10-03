@@ -46,14 +46,17 @@ export function webhookApi(
 	});
 	app.get("/:mailbox", async (c) =>
 		c.json(
-			await db`SELECT id,url,events,enabled,include_tag_ids,exclude_tag_ids,tag_match,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} AND (${c.get("apiKey")?.id ?? null}::uuid IS NULL OR api_key_id=${c.get("apiKey")?.id ?? null}) ORDER BY created_at DESC`,
+			await db`SELECT id,url,to_json(events) AS events,enabled,to_json(include_tag_ids) AS include_tag_ids,to_json(exclude_tag_ids) AS exclude_tag_ids,tag_match,created_at FROM webhook_endpoints WHERE mailbox_id=${c.req.param("mailbox")} AND (${c.get("apiKey")?.id ?? null}::uuid IS NULL OR api_key_id=${c.get("apiKey")?.id ?? null}) ORDER BY created_at DESC`,
 		),
 	);
 	for (const method of ["post", "put"] as const) {
 		app[method](
 			method === "post" ? "/:mailbox" : "/:mailbox/:id",
 			async (c) => {
-				if (method === "post" && !options.secretKey)
+				if (
+					method === "post" &&
+					!/^[a-f0-9]{64}$/i.test(options.secretKey ?? "")
+				)
 					return c.json(
 						{ error: "Configure WEBHOOK_SECRET_KEY before adding endpoints" },
 						503,
@@ -90,7 +93,7 @@ export function webhookApi(
 					: null;
 				const result = await db.begin(async (tx) => {
 					const [existing] =
-						await tx`SELECT * FROM webhook_endpoints WHERE id=${endpointId} AND mailbox_id=${mailbox} FOR UPDATE`;
+						await tx`SELECT *,to_json(events) AS events,to_json(include_tag_ids) AS include_tag_ids,to_json(exclude_tag_ids) AS exclude_tag_ids FROM webhook_endpoints WHERE id=${endpointId} AND mailbox_id=${mailbox} FOR UPDATE`;
 					if (method === "put" && !existing)
 						return { error: "Endpoint not found", status: 404 as const };
 					const included = [
@@ -139,9 +142,9 @@ export function webhookApi(
 						if (!box)
 							return { error: "Mailbox not found", status: 404 as const };
 						await tx`INSERT INTO webhook_endpoints(id,mailbox_id,url,events,enabled,secret,include_tag_ids,exclude_tag_ids,tag_match,api_key_id)
-					 VALUES(${endpointId},${mailbox},${data.url},${data.events},${data.enabled},${encrypted!},${included},${excluded},${mode},${c.get("apiKey")?.id ?? null})`;
+					 VALUES(${endpointId},${mailbox},${data.url},ARRAY(SELECT jsonb_array_elements_text(${tx.json(data.events)}::jsonb)),${data.enabled},${encrypted!},ARRAY(SELECT jsonb_array_elements_text(${tx.json(included)}::jsonb)::uuid),ARRAY(SELECT jsonb_array_elements_text(${tx.json(excluded)}::jsonb)::uuid),${mode},${c.get("apiKey")?.id ?? null})`;
 					} else {
-						await tx`UPDATE webhook_endpoints SET url=${data.url},events=${data.events},enabled=${data.enabled},include_tag_ids=${included},exclude_tag_ids=${excluded},tag_match=${mode} WHERE id=${endpointId}`;
+						await tx`UPDATE webhook_endpoints SET url=${data.url},events=ARRAY(SELECT jsonb_array_elements_text(${tx.json(data.events)}::jsonb)),enabled=${data.enabled},include_tag_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(included)}::jsonb)::uuid),exclude_tag_ids=ARRAY(SELECT jsonb_array_elements_text(${tx.json(excluded)}::jsonb)::uuid),tag_match=${mode} WHERE id=${endpointId}`;
 					}
 					// Establish a baseline without sending existing conversations. Run on filter
 					// changes/re-enable only; URL edits must not reset transition tracking.
@@ -160,7 +163,7 @@ export function webhookApi(
 						if (data.events.includes("conversation.matched"))
 							await tx`INSERT INTO webhook_matches(endpoint_id,thread_id,matched)
 						 SELECT ${endpointId},thread_id,true FROM conversations WHERE mailbox_id=${mailbox}
-						 AND webhook_tags_match(webhook_thread_tags(mailbox_id,thread_id),${included}::uuid[],${excluded}::uuid[],${mode})`;
+						 AND webhook_tags_match(webhook_thread_tags(mailbox_id,thread_id),ARRAY(SELECT jsonb_array_elements_text(${tx.json(included)}::jsonb)::uuid)::uuid[],ARRAY(SELECT jsonb_array_elements_text(${tx.json(excluded)}::jsonb)::uuid)::uuid[],${mode})`;
 					}
 					return { id: endpointId };
 				});
