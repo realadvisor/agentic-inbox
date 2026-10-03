@@ -59,18 +59,38 @@ export function keyCanRequest(key: ApiKey, method: string, path: string) {
 			key.permissions.includes("webhooks:manage") &&
 			["GET", "HEAD", "POST", "PUT", "DELETE"].includes(method)
 		);
+	if (resource !== "mailboxes") return false;
+	const route = rest.join("/");
+	if (read && key.permissions.includes("mail:read"))
+		return (
+			rest.length === 0 ||
+			/^(emails|search|folders|recipients)$/.test(route) ||
+			/^emails\/[^/]+(?:\/attachments\/[^/]+)?$/.test(route) ||
+			/^threads\/[^/]+(?:\/status)?$/.test(route)
+		);
 	if (
-		resource !== "mailboxes" ||
-		!read ||
-		!key.permissions.includes("mail:read")
+		key.permissions.includes("drafts:manage") &&
+		((method === "POST" && route === "drafts") ||
+			(method === "DELETE" && /^emails\/[^/]+$/.test(route)))
 	)
-		return false;
-	return (
-		rest.length === 0 ||
-		/^(emails|search|folders)$/.test(rest.join("/")) ||
-		/^emails\/[^/]+(?:\/attachments\/[^/]+)?$/.test(rest.join("/")) ||
-		/^threads\/[^/]+(?:\/status)?$/.test(rest.join("/"))
-	);
+		return true; // DELETE also verifies that the target is a draft in the handler.
+	if (
+		key.permissions.includes("mail:send") &&
+		method === "POST" &&
+		/^(emails|emails\/[^/]+\/(reply|forward))$/.test(route)
+	)
+		return true;
+	if (key.permissions.includes("conversations:manage"))
+		return (
+			(method === "PUT" && /^emails\/[^/]+$/.test(route)) ||
+			(method === "POST" && /^emails\/[^/]+\/move$/.test(route)) ||
+			(method === "PUT" && /^threads\/[^/]+\/status$/.test(route)) ||
+			(method === "POST" && /^threads\/[^/]+\/read$/.test(route)) ||
+			(["PUT", "DELETE"].includes(method) &&
+				/^threads\/[^/]+\/tags\/[^/]+$/.test(route)) ||
+			(method === "POST" && route === "tags/bulk")
+		);
+	return false;
 }
 
 const input = z
@@ -82,9 +102,17 @@ const input = z
 			.max(100)
 			.transform((v) => [...new Set(v)]),
 		permissions: z
-			.array(z.enum(["mail:read", "webhooks:manage"]))
+			.array(
+				z.enum([
+					"mail:read",
+					"drafts:manage",
+					"mail:send",
+					"conversations:manage",
+					"webhooks:manage",
+				]),
+			)
 			.min(1)
-			.max(2)
+			.max(5)
 			.transform((v) => [...new Set(v)]),
 		expires_at: z.string().datetime().nullable().optional(),
 	})

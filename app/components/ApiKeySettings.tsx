@@ -23,6 +23,21 @@ const permissions = [
 		description: "Read conversations, emails, attachments and tags.",
 	},
 	{
+		id: "drafts:manage",
+		name: "Manage drafts",
+		description: "Create, edit and delete drafts.",
+	},
+	{
+		id: "mail:send",
+		name: "Send email",
+		description: "Send new emails, replies and forwards.",
+	},
+	{
+		id: "conversations:manage",
+		name: "Manage conversations",
+		description: "Update tags, folders, read status and workflow status.",
+	},
+	{
 		id: "webhooks:manage",
 		name: "Manage webhooks",
 		description: "Create and manage webhooks owned by this key.",

@@ -377,3 +377,257 @@ test("Worker verifies Access cookies on bypassed API paths and enforces browser 
 		await Promise.all(pending);
 	}
 });
+
+test("draft keys can edit and delete drafts but cannot send or delete received mail", async () => {
+	const { key } = await issue(["drafts:manage"]);
+	const path = `mailboxes/${mailbox}`;
+	const created = await call(
+		`${path}/drafts`,
+		"POST",
+		{ to: "test@example.test", subject: "Draft", body: "First" },
+		key,
+	);
+	assert.equal(created.status, 201, await created.clone().text());
+	const draft = await created.json();
+	assert.equal(
+		(
+			await call(
+				`${path}/drafts`,
+				"POST",
+				{
+					draft_id: draft.draft_id,
+					draft_version: draft.draft_version,
+					body: "Updated",
+				},
+				key,
+			)
+		).status,
+		200,
+	);
+	assert.equal(
+		(
+			await call(
+				`${path}/emails`,
+				"POST",
+				{ to: "test@example.test", subject: "No", text: "No" },
+				key,
+			)
+		).status,
+		403,
+	);
+	const received = await store.insert(mailbox, {
+		sender: "sender@example.test",
+		recipient: mailbox,
+		subject: "Received",
+		body: "Body",
+		folder_id: "inbox",
+	});
+	assert.equal(
+		(await call(`${path}/emails/${received!.id}`, "DELETE", undefined, key))
+			.status,
+		404,
+	);
+	assert.equal(
+		(
+			await call(
+				`${path}/emails/${received!.id}/move`,
+				"POST",
+				{ folderId: "draft" },
+				key,
+			)
+		).status,
+		403,
+	);
+	assert.equal(
+		(await call(`mailboxes/${other}/drafts`, "POST", { body: "No" }, key))
+			.status,
+		403,
+	);
+	assert.equal(
+		(await call(`${path}/emails/${draft.draft_id}`, "DELETE", undefined, key))
+			.status,
+		204,
+	);
+});
+
+test("send scope sends and replies with key attribution and idempotency through the live handler", async () => {
+	const k = await issue(["mail:send"]);
+	let sends = 0;
+	const live = createApi(db, {
+		mode: "live",
+		membershipEnabled: true,
+		readAttachment: async () => null,
+		sender: {
+			send: async () => {
+				sends++;
+				return { messageId: `test-${sends}` };
+			},
+		},
+	});
+	const send = (
+		scope: string,
+		box: string,
+		suffix: string,
+		requestId: string,
+	) =>
+		live.request(
+			`http://127.0.0.1:4311/api/v1/mailboxes/${box}/emails${suffix}`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${scope}`,
+					"idempotency-key": requestId,
+				},
+				body: JSON.stringify({
+					to: "recipient@example.test",
+					subject: "Test",
+					text: "Body",
+				}),
+			},
+		);
+	const requestId = crypto.randomUUID();
+	const response = await send(k.key, mailbox, "", requestId);
+	assert.equal(response.status, 201, await response.clone().text());
+	const sent = await response.json();
+	assert.equal((await send(k.key, mailbox, "", requestId)).status, 201);
+	assert.equal(sends, 1);
+	for (const action of ["reply", "forward"])
+		assert.equal(
+			(await send(k.key, mailbox, `/${sent.id}/${action}`, crypto.randomUUID()))
+				.status,
+			201,
+		);
+	const [record] =
+		await db`SELECT actor FROM outbound_requests WHERE request_id=${requestId}`;
+	assert.equal(record.actor, `api-key:${k.id}`);
+	const reader = await issue();
+	assert.equal(
+		(await send(reader.key, mailbox, "", crypto.randomUUID())).status,
+		403,
+	);
+	assert.equal((await send(k.key, other, "", crypto.randomUUID())).status, 403);
+	assert.equal(
+		(await call(`mailboxes/${mailbox}/drafts`, "POST", { body: "No" }, k.key))
+			.status,
+		403,
+	);
+	const drafter = await issue(["drafts:manage", "conversations:manage"]);
+	assert.equal(
+		(
+			await call(
+				`mailboxes/${mailbox}/emails/${sent.id}/move`,
+				"POST",
+				{ folderId: "draft" },
+				drafter.key,
+			)
+		).status,
+		204,
+	);
+	assert.equal(
+		(
+			await call(
+				`mailboxes/${mailbox}/emails/${sent.id}`,
+				"DELETE",
+				undefined,
+				drafter.key,
+			)
+		).status,
+		404,
+	);
+});
+
+test("conversation permission changes flags, folders, tags and status without admin access", async () => {
+	const k = await issue(["conversations:manage"]);
+	const email = await store.insert(mailbox, {
+		sender: "sender@example.test",
+		recipient: mailbox,
+		subject: "Actions",
+		body: "Body",
+		folder_id: "inbox",
+	});
+	const [row] = await db`SELECT thread_id FROM emails WHERE id=${email!.id}`;
+	const base = `mailboxes/${mailbox}`;
+	assert.equal(
+		(
+			await call(
+				`${base}/emails/${email!.id}`,
+				"PUT",
+				{ read: true, starred: true },
+				k.key,
+			)
+		).status,
+		200,
+	);
+	assert.equal(
+		(
+			await call(
+				`${base}/emails/${email!.id}/move`,
+				"POST",
+				{ folderId: "archive" },
+				k.key,
+			)
+		).status,
+		204,
+	);
+	assert.equal(
+		(
+			await call(
+				`${base}/threads/${row.thread_id}/read`,
+				"POST",
+				{ read: false },
+				k.key,
+			)
+		).status,
+		204,
+	);
+	const [state] =
+		await db`SELECT revision FROM conversations WHERE mailbox_id=${mailbox} AND thread_id=${row.thread_id}`;
+	const changed = await call(
+		`${base}/threads/${row.thread_id}/status`,
+		"PUT",
+		{ status: "done", revision: state.revision },
+		k.key,
+	);
+	assert.equal(changed.status, 200, await changed.clone().text());
+	assert.equal((await changed.json()).updated_by, `api-key:${k.id}`);
+	const tagResponse = await call(
+		"tags",
+		"POST",
+		{ name: "Key test", color: "#3366ff" },
+		undefined,
+		"admin",
+	);
+	assert.equal(tagResponse.status, 201, await tagResponse.clone().text());
+	const tag = await tagResponse.json();
+	for (const method of ["PUT", "DELETE"])
+		assert.equal(
+			(
+				await call(
+					`${base}/threads/${row.thread_id}/tags/${tag.id}`,
+					method,
+					undefined,
+					k.key,
+				)
+			).status,
+			204,
+		);
+	assert.equal(
+		(
+			await call(
+				`${base}/tags/bulk`,
+				"POST",
+				{ thread_ids: [row.thread_id], tag_id: tag.id, action: "add" },
+				k.key,
+			)
+		).status,
+		204,
+	);
+	for (const [path, method, body] of [
+		[`${base}/emails/${email!.id}`, "DELETE", undefined],
+		[`${base}/folders`, "POST", { name: "No" }],
+		[`mailboxes/${other}/emails/${email!.id}`, "PUT", { read: true }],
+		["tags", "POST", { name: "No" }],
+	] as const)
+		assert.equal((await call(path, method, body, k.key)).status, 403);
+});

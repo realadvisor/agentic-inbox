@@ -577,12 +577,20 @@ credentials stay separate from the human member list and are revoked in Cloudfla
 ## API keys for agents and n8n
 
 Administrators create keys in **Settings → API keys**. Select explicit mailboxes
-and either **Read mail** (`mail:read`), **Manage webhooks** (`webhooks:manage`), or
-both. The secret is shown once; only its SHA-256 hash and a display prefix are
+and permissions: **Read mail** (`mail:read`), **Manage drafts** (`drafts:manage`),
+**Send email** (`mail:send`), **Manage conversations** (`conversations:manage`),
+and **Manage webhooks** (`webhooks:manage`). Only Read mail is selected by default. The secret is shown once; only its SHA-256 hash and a display prefix are
 stored. Expiry is optional. The list shows last use, authenticated request count
 (including permission denials), and revocation state. To rotate, create a new key,
-update the client, then revoke the old one. Keys cannot create other keys, send or
-modify mail, change users, run the agent, or alter classifiers/settings.
+update the client, then revoke the old one. Keys cannot create other keys, change users, run the agent, or alter classifiers/settings.
+Existing keys retain their original permissions; create a replacement to change access.
+Draft management creates/updates via POST /mailboxes/{mailboxId}/drafts and deletes
+via DELETE /mailboxes/{mailboxId}/emails/{id}, restricted to actual drafts.
+Sending permits new messages, replies and forwards; live sends require an
+Idempotency-Key UUID and record the key identity in the delivery record.
+Conversation management permits flags, moving mail (including archive/trash),
+read status, workflow status and tag assignment/removal. It does not permit
+permanent mail deletion or changing shared tag/folder definitions.
 
 ```sh
 curl --header "Authorization: Bearer $INBOX_API_KEY" \
@@ -600,7 +608,7 @@ those separately; replacing a key does not transfer webhook ownership.
 
 ### Cloudflare Access rollout
 
-Deploy migration 039 and the Worker **before** changing Access. This migration
+Deploy migrations 039–040 and the Worker **before** changing Access. This migration
 creates no keys, members, tags or mailboxes. Keep the existing human-login Access
 application protecting `inbox.realadvisor.com`, including `/api/docs` and
 `/api/openapi.json`. Add a more-specific self-hosted Access application for

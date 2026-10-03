@@ -3,7 +3,7 @@
 	"info": {
 		"title": "RealAdvisor Inbox API",
 		"version": "1.0.0",
-		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read / webhooks:manage permissions. Keys cannot send mail or manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read, drafts:manage, mail:send, conversations:manage and webhooks:manage permissions. Send email is opt-in. Keys cannot manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
 	},
 	"servers": [
 		{
@@ -1132,7 +1132,7 @@
 				"operationId": "postSendEmail",
 				"summary": "Send email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1267,7 +1267,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/search": {
@@ -1673,7 +1681,7 @@
 				"operationId": "putUpdateEmailFlags",
 				"summary": "Update email flags",
 				"tags": ["Messages"],
-				"description": "",
+				"description": " API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1786,13 +1794,21 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"operationId": "deleteDeleteEmail",
 				"summary": "Delete email",
 				"tags": ["Messages"],
-				"description": "Outbound audit records prevent permanent deletion (409); move those messages to trash. Deletion does not purge retained R2 objects.",
+				"description": "Outbound audit records prevent permanent deletion (409); move those messages to trash. Deletion does not purge retained R2 objects. API keys require drafts:manage and access to this mailbox. API keys can only delete drafts; received and sent messages return 404.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1878,7 +1894,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/move": {
@@ -1886,7 +1910,7 @@
 				"operationId": "postMoveEmail",
 				"summary": "Move email",
 				"tags": ["Messages"],
-				"description": "",
+				"description": " API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1990,7 +2014,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}": {
@@ -2110,7 +2142,7 @@
 				"operationId": "postMarkThreadRead",
 				"summary": "Set conversation read state",
 				"tags": ["Threads"],
-				"description": "Marks every message in one mailbox-scoped conversation read or unread. With no body, marks read for backwards compatibility. Unknown conversations return 404.",
+				"description": "Marks every message in one mailbox-scoped conversation read or unread. With no body, marks read for backwards compatibility. Unknown conversations return 404. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2213,7 +2245,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/folders": {
@@ -2667,7 +2707,7 @@
 				"operationId": "postSaveDraft",
 				"summary": "Save draft",
 				"tags": ["Drafts"],
-				"description": "Save a new draft or update an existing draft. Pass draft_version from the latest email detail or save response to protect concurrent edits. A stale version returns 409 without changing content. Existing clients may omit the version; agent updates always require it.",
+				"description": "Save a new draft or update an existing draft. Pass draft_version from the latest email detail or save response to protect concurrent edits. A stale version returns 409 without changing content. Existing clients may omit the version; agent updates always require it. API keys require drafts:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2777,7 +2817,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/reply": {
@@ -2785,7 +2833,7 @@
 				"operationId": "postReplyToEmail",
 				"summary": "Reply to email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2923,7 +2971,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/forward": {
@@ -2931,7 +2987,7 @@
 				"operationId": "postForwardEmail",
 				"summary": "Forward email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3069,7 +3125,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/attachments/{attachmentId}": {
@@ -3523,7 +3587,7 @@
 				"operationId": "assignConversationTag",
 				"summary": "Assign conversation tag",
 				"tags": ["Tags"],
-				"description": "Idempotent membership; records manual source, verified actor, creation and update times. The conversation must exist in this mailbox.",
+				"description": "Idempotent membership; records manual source, verified actor, creation and update times. The conversation must exist in this mailbox. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3601,13 +3665,21 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"operationId": "removeConversationTag",
 				"summary": "Remove conversation tag",
 				"tags": ["Tags"],
-				"description": "Keeps the shared tag. Persists a manual removal tombstone even if not assigned, so future classifiers can preserve human intent. Repeating an operation records the latest actor/time.",
+				"description": "Keeps the shared tag. Persists a manual removal tombstone even if not assigned, so future classifiers can preserve human intent. Repeating an operation records the latest actor/time. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3685,7 +3757,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/tags/bulk": {
@@ -3693,7 +3773,7 @@
 				"operationId": "bulkConversationTags",
 				"summary": "Add or remove tag on selected conversations",
 				"tags": ["Tags"],
-				"description": "Atomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers.",
+				"description": "Atomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3784,7 +3864,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/classifiers": {
@@ -5117,7 +5205,16 @@
 							"format": "uuid"
 						}
 					}
-				]
+				],
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require conversations:manage and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}/rerun": {
@@ -5764,7 +5861,16 @@
 					"404": {
 						"description": "Mailbox not found"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}/classifications": {
@@ -6733,10 +6839,16 @@
 											"permissions": {
 												"type": "array",
 												"minItems": 1,
-												"maxItems": 2,
+												"maxItems": 5,
 												"items": {
 													"type": "string",
-													"enum": ["mail:read", "webhooks:manage"]
+													"enum": [
+														"mail:read",
+														"drafts:manage",
+														"mail:send",
+														"conversations:manage",
+														"webhooks:manage"
+													]
 												}
 											},
 											"created_by": {
@@ -6809,10 +6921,16 @@
 									"permissions": {
 										"type": "array",
 										"minItems": 1,
-										"maxItems": 2,
+										"maxItems": 5,
 										"items": {
 											"type": "string",
-											"enum": ["mail:read", "webhooks:manage"]
+											"enum": [
+												"mail:read",
+												"drafts:manage",
+												"mail:send",
+												"conversations:manage",
+												"webhooks:manage"
+											]
 										}
 									},
 									"expires_at": {

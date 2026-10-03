@@ -376,7 +376,8 @@ export function createApi(db: Database, options: ApiOptions) {
 			},
 		}),
 	);
-	const tagActor = () => {
+	const tagActor = (key?: KeyVariables["apiKey"]) => {
+		if (key) return `api-key:${key.id}`;
 		if (isLive && !options.actor) throw new HTTPException(403);
 		return options.actor ?? "local-synthetic-user";
 	};
@@ -390,7 +391,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					[id.parse(c.req.param("threadId"))],
 					id.parse(c.req.param("tagId")),
 					method === "put" ? "add" : "remove",
-					tagActor(),
+					tagActor(c.get("apiKey")),
 				);
 				return c.body(null, 204);
 			},
@@ -411,7 +412,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			input.thread_ids,
 			input.tag_id,
 			input.action,
-			tagActor(),
+			tagActor(c.get("apiKey")),
 		);
 		return c.body(null, 204);
 	});
@@ -468,6 +469,13 @@ export function createApi(db: Database, options: ApiOptions) {
 		return c.json(await store.message(c.req.param("mailboxId"), messageId));
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
+		if (c.get("apiKey")) {
+			const rows =
+				await db`DELETE FROM emails WHERE mailbox_id=${c.req.param("mailboxId")} AND id=${id.parse(c.req.param("id"))} AND delivery_status='draft' AND NOT EXISTS (SELECT 1 FROM outbound_requests WHERE email_id=emails.id) RETURNING id`;
+			if (!rows.length)
+				throw new HTTPException(404, { message: "Draft not found" });
+			return c.body(null, 204);
+		}
 		const [outbound] =
 			await db`SELECT request_id FROM outbound_requests WHERE mailbox_id=${c.req.param("mailboxId")} AND email_id=${id.parse(c.req.param("id"))}`;
 		if (outbound)
@@ -523,7 +531,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					c.req.param("mailboxId"),
 					id.parse(c.req.param("threadId")),
 					parsed.data,
-					tagActor(),
+					tagActor(c.get("apiKey")),
 				),
 			);
 		},
@@ -621,7 +629,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		app.post(`/api/v1/mailboxes/:mailboxId/emails${action}`, async (c) => {
 			const input = sendSchema.parse(await c.req.json());
 			if (options.mode === "live") {
-				if (!options.sender || !options.actor)
+				const actor = c.get("apiKey")
+					? `api-key:${c.get("apiKey")!.id}`
+					: options.actor;
+				if (!options.sender || !actor)
 					throw new HTTPException(503, {
 						message: "Email sending is not configured",
 					});
@@ -633,7 +644,7 @@ export function createApi(db: Database, options: ApiOptions) {
 						c.req.param("mailboxId"),
 						key,
 						input,
-						options.actor,
+						actor,
 						action ? c.req.param("id") : undefined,
 						action.endsWith("reply"),
 					),
