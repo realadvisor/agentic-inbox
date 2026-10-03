@@ -159,23 +159,25 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						{list.data?.find((e) => e.id === secretId)?.url}
 					</p>
 					<code className="block break-all text-xs my-2">{secret}</code>
-					<Button
-						size="sm"
-						onClick={async () => {
-							try {
-								await navigator.clipboard.writeText(secret);
-								setCopied(true);
-								setCopyError(false);
-							} catch {
-								setCopyError(true);
-							}
-						}}
-					>
-						{copied ? "Copied" : "Copy secret"}
-					</Button>
-					<Button size="sm" variant="ghost" onClick={() => setSecret("")}>
-						Hide secret
-					</Button>
+					<div className="flex items-center gap-2">
+						<Button
+							size="sm"
+							onClick={async () => {
+								try {
+									await navigator.clipboard.writeText(secret);
+									setCopied(true);
+									setCopyError(false);
+								} catch {
+									setCopyError(true);
+								}
+							}}
+						>
+							{copied ? "Copied" : "Copy secret"}
+						</Button>
+						<Button size="sm" variant="ghost" onClick={() => setSecret("")}>
+							Hide secret
+						</Button>
+					</div>
 					{copyError && (
 						<p role="alert" className="mt-2 text-xs text-kumo-danger">
 							Could not copy. Select and copy the secret above.
