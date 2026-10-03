@@ -1,11 +1,9 @@
+import { reapplyApi } from "./reapply";
 import { providerStateApi } from "./provider-state-api";
 import { backfillsApi } from "./backfills";
 import { inspectClassifications } from "./inspect";
 import { reviewInput, reviewClassification } from "./review";
-import {
-	decisionRulesSchema,
-	decisionRules,
-} from "../../shared/decision-rules";
+import { decisionRulesSchema } from "../../shared/decision-rules";
 import { rerunApi } from "./rerun-api";
 import { examplesApi } from "./examples-api";
 import { classifierTestApi } from "./test-api";
@@ -97,6 +95,7 @@ export function classifierApi(
 			);
 		await next();
 	});
+	app.route("/reapply-rules", reapplyApi(db, options.actor));
 	app.get("/threads/:mailbox/:thread/classifications", async (c) =>
 		c.json(
 			await inspectClassifications(
@@ -175,10 +174,6 @@ export function classifierApi(
 			if (old.question !== data.question || old.tag_id !== data.tag_id)
 				await tx`DELETE FROM classifier_examples WHERE classifier_id=${classifierId}`;
 			const changed =
-				JSON.stringify(decisionRules(old.decision_rules)) !==
-					JSON.stringify(
-						decisionRules(data.decision_rules ?? old.decision_rules),
-					) ||
 				(data.include_reviewed_examples ?? old.include_reviewed_examples) !==
 					old.include_reviewed_examples ||
 				old.question !== data.question ||

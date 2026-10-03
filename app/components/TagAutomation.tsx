@@ -1,3 +1,4 @@
+import { ApplyDecisionRules } from "./ApplyDecisionRules";
 import { DateRangeField } from "./DateRangeField";
 import {
 	Checkbox as KumoCheckbox,
@@ -193,6 +194,9 @@ export function ExistingConversations({
 	const active = classifiers.some((c) => c.run?.status === "running");
 	return (
 		<div className="space-y-3 border-t border-kumo-line pt-4">
+			{!mode.data?.classifierPreview && (
+				<ApplyDecisionRules classifiers={classifiers} disabled={disabled} />
+			)}
 			{classifiers
 				.filter((c) => c.run)
 				.map((c) => (
