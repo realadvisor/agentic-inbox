@@ -8,6 +8,7 @@ export function AppSelect({
 	options,
 	onChange,
 	compact = false,
+	inline = false,
 	disabled = false,
 }: {
 	label: string;
@@ -15,6 +16,7 @@ export function AppSelect({
 	options: { value: string; label: string }[];
 	onChange: (value: string) => void;
 	compact?: boolean;
+	inline?: boolean;
 	disabled?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
@@ -22,7 +24,7 @@ export function AppSelect({
 	return (
 		<div
 			ref={setContainer}
-			className={`relative min-w-0 ${compact ? "" : "mt-1.5"} ${open ? "z-20" : ""}`}
+			className={`relative min-w-0 ${compact || inline ? "" : "mt-1.5"} ${open ? "z-20" : ""}`}
 		>
 			<Select
 				onOpenChange={setOpen}

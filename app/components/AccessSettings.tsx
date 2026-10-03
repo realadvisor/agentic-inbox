@@ -1,6 +1,7 @@
 import { Button, Input, Loader } from "@cloudflare/kumo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { UsersIcon, PlusIcon } from "@phosphor-icons/react";
 import { AppSelect } from "./AppSelect";
 import { useMailMode } from "./MailMode";
 
@@ -26,6 +27,7 @@ export default function AccessSettings() {
 	const managed = mode.data?.access?.managed;
 	const admin = mode.data?.access?.role === "admin";
 	const qc = useQueryClient();
+	const [adding, setAdding] = useState(false);
 	const [email, setEmail] = useState("");
 	const [role, setRole] = useState<Role>("user");
 	const members = useQuery<{ members: Member[] }>({
@@ -51,16 +53,32 @@ export default function AccessSettings() {
 	const valid = /^[^\s@]+@realadvisor\.com$/i.test(email.trim());
 	return (
 		<section className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-			<div className="p-5 space-y-2 border-b border-kumo-line">
-				<h2 className="font-semibold">People with access</h2>
-				<p className="text-sm text-kumo-subtle">
-					Access applies to all inbox mailboxes.
-				</p>
-				<p className="text-sm text-kumo-subtle">
-					<strong>Users</strong> read and send mail, manage conversations and
-					review classifications. <strong>Admins</strong> also manage people,
-					mailboxes and configuration.
-				</p>
+			<div className="flex flex-wrap items-center justify-between gap-3 p-5">
+				<div className="flex items-center gap-3">
+					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+						<UsersIcon size={21} />
+					</div>
+					<div>
+						<h2 className="text-sm font-semibold">People with access</h2>
+						<p className="mt-0.5 text-xs text-kumo-subtle">
+							Manage access to all inbox mailboxes.
+						</p>
+					</div>
+				</div>
+				{managed && admin && (
+					<Button
+						size="sm"
+						variant="primary"
+						icon={<PlusIcon size={14} />}
+						disabled={adding}
+						onClick={() => {
+							setAdding(true);
+							change.reset();
+						}}
+					>
+						Add person
+					</Button>
+				)}
 			</div>
 			{!managed ? (
 				<p className="p-5 text-sm text-kumo-subtle">
@@ -74,9 +92,9 @@ export default function AccessSettings() {
 							{(change.error || members.error)?.message}
 						</p>
 					)}
-					{admin && (
+					{admin && adding && (
 						<form
-							className="p-5 border-b border-kumo-line space-y-3"
+							className="p-5 border-t border-kumo-line bg-kumo-tint/30 space-y-3"
 							onSubmit={async (e) => {
 								e.preventDefault();
 								try {
@@ -87,6 +105,7 @@ export default function AccessSettings() {
 									});
 									setEmail("");
 									setRole("user");
+									setAdding(false);
 								} catch {
 									/* The mutation displays the error. */
 								}
@@ -99,8 +118,9 @@ export default function AccessSettings() {
 								Add a person
 							</label>
 							<div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-								<div className="flex-1 min-w-0">
+								<div className="flex-1 min-w-0 [&_input]:w-full [&>div]:w-full">
 									<Input
+										autoFocus
 										id="member-email"
 										type="email"
 										aria-label="Email address"
@@ -111,6 +131,7 @@ export default function AccessSettings() {
 									/>
 								</div>
 								<AppSelect
+									inline
 									label="New member role"
 									value={role}
 									options={roles}
@@ -118,11 +139,24 @@ export default function AccessSettings() {
 									disabled={change.isPending}
 								/>
 								<Button
+									size="base"
 									type="submit"
 									variant="primary"
 									disabled={!valid || change.isPending}
 								>
 									Add person
+								</Button>
+								<Button
+									type="button"
+									size="base"
+									variant="ghost"
+									disabled={change.isPending}
+									onClick={() => {
+										setAdding(false);
+										change.reset();
+									}}
+								>
+									Cancel
 								</Button>
 							</div>
 							<p className="text-xs text-kumo-subtle">
@@ -142,7 +176,7 @@ export default function AccessSettings() {
 							<Loader />
 						</div>
 					) : (
-						<ul className="divide-y divide-kumo-line">
+						<ul className="divide-y divide-kumo-line border-t border-kumo-line">
 							{members.data?.members.map((member) => (
 								<li
 									key={member.email}
@@ -202,6 +236,10 @@ export default function AccessSettings() {
 					)}
 				</>
 			)}
+			<div className="border-t border-kumo-line bg-kumo-tint/40 px-5 py-3 text-xs text-kumo-subtle">
+				Users manage mail and conversations. Admins also manage people,
+				mailboxes and settings.
+			</div>
 		</section>
 	);
 }

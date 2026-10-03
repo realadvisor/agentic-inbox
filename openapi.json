@@ -3,7 +3,7 @@
 	"info": {
 		"title": "RealAdvisor Inbox API",
 		"version": "1.0.0",
-		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation and API require a Cloudflare Access browser login. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nService-token authentication and scoped workflow permissions are NOT implemented yet. Do not copy browser cookies into n8n. A future integration will use a dedicated Access service token and backend service-identity verification; creating a token alone will not work today.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read, drafts:manage, mail:send, conversations:manage webhooks:manage, classifications:read, classifications:review, classifications:run, folders:manage and agent:use permissions. Agent access also requires mail:read and each tool respects the granted scopes. Send email is opt-in. Keys cannot manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
 	},
 	"servers": [
 		{
@@ -284,7 +284,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes": {
@@ -381,13 +389,21 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "postCreateMailbox",
 				"summary": "Create mailbox",
 				"tags": ["Mailboxes"],
-				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1\u201364 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
+				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1–64 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -594,7 +610,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"put": {
 				"operationId": "putUpdateMailboxSettings",
@@ -1094,13 +1118,21 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "postSendEmail",
 				"summary": "Send email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1235,7 +1267,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/search": {
@@ -1518,7 +1558,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}": {
@@ -1619,13 +1667,21 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"put": {
 				"operationId": "putUpdateEmailFlags",
 				"summary": "Update email flags",
 				"tags": ["Messages"],
-				"description": "",
+				"description": " API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1738,13 +1794,21 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"operationId": "deleteDeleteEmail",
 				"summary": "Delete email",
 				"tags": ["Messages"],
-				"description": "Outbound audit records prevent permanent deletion (409); move those messages to trash. Deletion does not purge retained R2 objects.",
+				"description": "Outbound audit records prevent permanent deletion (409); move those messages to trash. Deletion does not purge retained R2 objects. API keys require drafts:manage and access to this mailbox. API keys can only delete drafts; received and sent messages return 404.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1830,7 +1894,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/move": {
@@ -1838,7 +1910,7 @@
 				"operationId": "postMoveEmail",
 				"summary": "Move email",
 				"tags": ["Messages"],
-				"description": "",
+				"description": " API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -1942,7 +2014,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}": {
@@ -2046,7 +2126,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/read": {
@@ -2054,7 +2142,7 @@
 				"operationId": "postMarkThreadRead",
 				"summary": "Set conversation read state",
 				"tags": ["Threads"],
-				"description": "Marks every message in one mailbox-scoped conversation read or unread. With no body, marks read for backwards compatibility. Unknown conversations return 404.",
+				"description": "Marks every message in one mailbox-scoped conversation read or unread. With no body, marks read for backwards compatibility. Unknown conversations return 404. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2157,7 +2245,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/folders": {
@@ -2258,13 +2354,21 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "postCreateFolder",
 				"summary": "Create folder",
 				"tags": ["Folders"],
-				"description": "",
+				"description": " API keys require folders:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2372,7 +2476,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/folders/{id}": {
@@ -2380,7 +2492,7 @@
 				"operationId": "putRenameFolder",
 				"summary": "Rename folder",
 				"tags": ["Folders"],
-				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409).",
+				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409). API keys require folders:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2497,13 +2609,21 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"operationId": "deleteDeleteFolder",
 				"summary": "Delete folder",
 				"tags": ["Folders"],
-				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409).",
+				"description": "System folders cannot be changed. Nonempty folders cannot be deleted (409). API keys require folders:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2595,7 +2715,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/drafts": {
@@ -2603,7 +2731,7 @@
 				"operationId": "postSaveDraft",
 				"summary": "Save draft",
 				"tags": ["Drafts"],
-				"description": "Save a new draft or update an existing draft. Pass draft_version from the latest email detail or save response to protect concurrent edits. A stale version returns 409 without changing content. Existing clients may omit the version; agent updates always require it.",
+				"description": "Save a new draft or update an existing draft. Pass draft_version from the latest email detail or save response to protect concurrent edits. A stale version returns 409 without changing content. Existing clients may omit the version; agent updates always require it. API keys require drafts:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2713,7 +2841,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/reply": {
@@ -2721,7 +2857,7 @@
 				"operationId": "postReplyToEmail",
 				"summary": "Reply to email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2859,7 +2995,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/forward": {
@@ -2867,7 +3011,7 @@
 				"operationId": "postForwardEmail",
 				"summary": "Forward email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3005,7 +3149,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/emails/{id}/attachments/{attachmentId}": {
@@ -3110,7 +3262,15 @@
 					"401": {
 						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/tags": {
@@ -3184,7 +3344,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"operationId": "createTag",
@@ -3443,7 +3611,7 @@
 				"operationId": "assignConversationTag",
 				"summary": "Assign conversation tag",
 				"tags": ["Tags"],
-				"description": "Idempotent membership; records manual source, verified actor, creation and update times. The conversation must exist in this mailbox.",
+				"description": "Idempotent membership; records manual source, verified actor, creation and update times. The conversation must exist in this mailbox. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3521,13 +3689,21 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"operationId": "removeConversationTag",
 				"summary": "Remove conversation tag",
 				"tags": ["Tags"],
-				"description": "Keeps the shared tag. Persists a manual removal tombstone even if not assigned, so future classifiers can preserve human intent. Repeating an operation records the latest actor/time.",
+				"description": "Keeps the shared tag. Persists a manual removal tombstone even if not assigned, so future classifiers can preserve human intent. Repeating an operation records the latest actor/time. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3605,7 +3781,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/tags/bulk": {
@@ -3613,7 +3797,7 @@
 				"operationId": "bulkConversationTags",
 				"summary": "Add or remove tag on selected conversations",
 				"tags": ["Tags"],
-				"description": "Atomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers.",
+				"description": "Atomic within one mailbox: any missing conversation rejects the entire batch. Duplicate thread IDs are deduplicated. Manual provenance is server-derived; source and actor cannot be supplied by callers. API keys require conversations:manage and access to this mailbox.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3704,7 +3888,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/classifiers": {
@@ -3984,7 +4176,7 @@
 				"operationId": "listClassificationReviews",
 				"summary": "List uncertain and failed classifications",
 				"tags": ["Classifiers"],
-				"description": "Latest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned.",
+				"description": "Latest 1,000 review/error results. Manual tag decisions are omitted. No email bodies returned. API keys require classifications:read and access to this mailbox.",
 				"parameters": [
 					{
 						"in": "path",
@@ -4030,7 +4222,15 @@
 					"503": {
 						"description": "Classifiers disabled or provider key missing"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/results/{mailbox}/{thread}/{classifier}": {
@@ -4038,7 +4238,7 @@
 				"operationId": "correctClassification",
 				"summary": "Record a human yes/no correction",
 				"tags": ["Classifiers"],
-				"description": "Any authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative.",
+				"description": "Any authenticated inbox user. Supply token and revision from the result; a changed conversation returns 409. Correction persists until new conversation activity or an explicit reset. Ordinary manual tag decisions remain authoritative. API keys require classifications:review and access to this mailbox.",
 				"parameters": [
 					{
 						"in": "path",
@@ -4108,7 +4308,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/provider-runs": {
@@ -4356,7 +4564,16 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/agent/settings": {
@@ -4441,7 +4658,7 @@
 				"operationId": "postAgentChat",
 				"tags": ["Agent"],
 				"summary": "Stream an email agent turn; draft and organization tools can modify this mailbox",
-				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying.",
+				"description": "Never sends email. Streams the native Vercel AI SDK UI message protocol (SSE), including text and structured tool inputs/results. Use DefaultChatTransport with id and prompt from the latest user message. The server loads trusted history from Postgres. Duplicate request IDs return 409 and are not replayed. Disconnected runs abort and persist partial results; read history before retrying. API keys require agent:use and mail:read and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4522,7 +4739,15 @@
 					"400": {
 						"description": "Unknown, retired or invalid model, or invalid request"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/agent/models": {
@@ -4574,7 +4799,7 @@
 				"operationId": "stopAgentRun",
 				"tags": ["Agent"],
 				"summary": "Stop a specific mailbox agent run",
-				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run.",
+				"description": "Revokes the run mutation lease before returning. Generation aborts when the worker observes the stop. Existing saved changes are retained. Repeated stops cannot cancel a newer run. API keys require agent:use and mail:read and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailboxId",
@@ -4626,7 +4851,15 @@
 					"404": {
 						"description": "Run not found in this mailbox"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/tag-groups": {
@@ -4647,7 +4880,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"tags": ["Tags"],
@@ -4903,7 +5144,16 @@
 					"200": {
 						"description": "Up to 50 conversations and hasMore"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			},
 			"post": {
 				"operationId": "createAgentConversation",
@@ -4923,7 +5173,16 @@
 					"201": {
 						"description": "New conversation with id, title, and timestamps"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/mailboxes/{mailboxId}/threads/{threadId}/status": {
@@ -4954,6 +5213,14 @@
 							"type": "string",
 							"format": "uuid"
 						}
+					}
+				],
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
 					}
 				]
 			},
@@ -5021,13 +5288,22 @@
 							"format": "uuid"
 						}
 					}
-				]
+				],
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require conversations:manage and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}/rerun": {
 			"post": {
 				"summary": "Queue all configured classifiers in mailbox scope for this conversation, including automatic-assignment-disabled classifiers, preserving manual choices and human corrections",
-				"description": "Includes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples.",
+				"description": "Includes archived and sent conversations; excludes spam/trash and drafts. Existing explicit pending jobs are reused. Uses current saved instructions and teaching examples. API keys require classifications:run and access to this mailbox.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5061,7 +5337,15 @@
 					"404": {
 						"description": "Conversation not found"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}": {
@@ -5091,7 +5375,16 @@
 					"200": {
 						"description": "Counts of pending, complete, review, failed and skipped jobs"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require classifications:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/examples/{id}": {
@@ -5478,7 +5771,16 @@
 					"504": {
 						"description": "Generation cancelled or timed out"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			},
 			"get": {
 				"tags": ["Agent"],
@@ -5500,7 +5802,16 @@
 					"404": {
 						"description": "Mailbox not found"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require agent:use and mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/runs/preview": {
@@ -5668,7 +5979,16 @@
 					"404": {
 						"description": "Mailbox not found"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				],
+				"description": " API keys require mail:read and access to this mailbox."
 			}
 		},
 		"/api/v1/classification/threads/{mailbox}/{thread}/classifications": {
@@ -5776,14 +6096,22 @@
 					}
 				},
 				"operationId": "inspectThreadClassifications",
-				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled."
+				"description": "Returns at most 100 current-revision, current-generation records, including scale levels, stored score/confidence, manual override state and provenance. No provider logs or model rationale are exposed. Available to authenticated inbox users when classification is enabled. API keys require classifications:read and access to this mailbox.",
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}": {
 			"get": {
 				"tags": ["Webhooks"],
 				"summary": "List mailbox webhook endpoints",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5804,12 +6132,20 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Create a webhook endpoint; returns signing secret once",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5890,14 +6226,22 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}": {
 			"put": {
 				"tags": ["Webhooks"],
 				"summary": "Update endpoint",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. Tag filters apply at event creation; queued payloads are immutable snapshots. conversation.matched requires a nonempty filter and sends only on a false-to-true transition after the final transaction tag set. Saving filters or enabling endpoints establishes a baseline without backfilling. Test pings bypass filters. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -5986,12 +6330,20 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["Webhooks"],
 				"summary": "Delete endpoint and its deliveries",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6020,14 +6372,22 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}/deliveries": {
 			"get": {
 				"tags": ["Webhooks"],
 				"summary": "List latest 50 deliveries with payload and attempts",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6056,14 +6416,22 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}/test": {
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Queue a test event",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6092,14 +6460,22 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/webhooks/{mailbox}/{id}/deliveries/{delivery}/retry": {
 			"post": {
 				"tags": ["Webhooks"],
 				"summary": "Retry a failed delivery",
-				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id.",
+				"description": "Administrator only. Webhook delivery is at least once; consumers must deduplicate by event id. API keys require webhooks:manage and access to this mailbox. Keys can manage only endpoints they created; administrators can manage all endpoints.",
 				"parameters": [
 					{
 						"name": "mailbox",
@@ -6136,7 +6512,15 @@
 					"403": {
 						"description": "Administrator access required"
 					}
-				}
+				},
+				"security": [
+					{
+						"AccessSession": []
+					},
+					{
+						"InboxApiKey": []
+					}
+				]
 			}
 		},
 		"/api/v1/access/members": {
@@ -6292,7 +6676,7 @@
 				"operationId": "startClassifierBackfill",
 				"tags": ["Classifiers"],
 				"summary": "Start a resumable classifier backfill",
-				"description": "Administrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run\u2019s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
+				"description": "Administrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run’s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -6537,6 +6921,223 @@
 					},
 					"409": {
 						"description": "Configuration changed; preview again"
+					}
+				}
+			}
+		},
+		"/api/v1/api-keys": {
+			"get": {
+				"tags": ["Access"],
+				"summary": "List API keys (administrator only)",
+				"security": [
+					{
+						"AccessSession": []
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Metadata only; never includes secrets or hashes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "string",
+												"format": "uuid"
+											},
+											"name": {
+												"type": "string"
+											},
+											"prefix": {
+												"type": "string"
+											},
+											"mailbox_ids": {
+												"type": "array",
+												"minItems": 1,
+												"maxItems": 100,
+												"items": {
+													"type": "string"
+												}
+											},
+											"permissions": {
+												"type": "array",
+												"minItems": 1,
+												"maxItems": 10,
+												"items": {
+													"type": "string",
+													"enum": [
+														"mail:read",
+														"drafts:manage",
+														"mail:send",
+														"conversations:manage",
+														"webhooks:manage",
+														"classifications:read",
+														"classifications:review",
+														"classifications:run",
+														"folders:manage",
+														"agent:use"
+													]
+												}
+											},
+											"created_by": {
+												"type": "string"
+											},
+											"created_at": {
+												"type": "string",
+												"format": "date-time"
+											},
+											"last_used_at": {
+												"type": "string",
+												"format": "date-time",
+												"nullable": true
+											},
+											"expires_at": {
+												"type": "string",
+												"format": "date-time",
+												"nullable": true
+											},
+											"revoked_at": {
+												"type": "string",
+												"format": "date-time",
+												"nullable": true
+											},
+											"request_count": {
+												"type": "string",
+												"description": "Count of authenticated requests, including permission denials."
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			},
+			"post": {
+				"tags": ["Access"],
+				"summary": "Create an API key (administrator only)",
+				"security": [
+					{
+						"AccessSession": []
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"required": ["name", "mailbox_ids", "permissions"],
+								"additionalProperties": false,
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 80
+									},
+									"mailbox_ids": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 100,
+										"items": {
+											"type": "string"
+										}
+									},
+									"permissions": {
+										"type": "array",
+										"minItems": 1,
+										"maxItems": 10,
+										"items": {
+											"type": "string",
+											"enum": [
+												"mail:read",
+												"drafts:manage",
+												"mail:send",
+												"conversations:manage",
+												"webhooks:manage",
+												"classifications:read",
+												"classifications:review",
+												"classifications:run",
+												"folders:manage",
+												"agent:use"
+											]
+										}
+									},
+									"expires_at": {
+										"type": "string",
+										"format": "date-time",
+										"nullable": true
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "The key is returned once. Store it securely.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string",
+											"format": "uuid"
+										},
+										"key": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid permissions, mailboxes or expiry"
+					},
+					"403": {
+						"description": "Administrator access required"
+					}
+				}
+			}
+		},
+		"/api/v1/api-keys/{id}": {
+			"delete": {
+				"tags": ["Access"],
+				"summary": "Revoke an API key (administrator only)",
+				"description": "New requests using the key are denied immediately. Already accepted requests may finish. Existing webhook subscriptions remain active and administrators retain control.",
+				"security": [
+					{
+						"AccessSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Revoked"
+					},
+					"403": {
+						"description": "Administrator access required"
+					},
+					"404": {
+						"description": "Not found"
 					}
 				}
 			}
@@ -7628,7 +8229,13 @@
 				"type": "apiKey",
 				"in": "cookie",
 				"name": "CF_Authorization",
-				"description": "Managed by Cloudflare Access login. Sign in normally; do not paste or export session cookies. Service tokens are not yet supported by the backend."
+				"description": "Verified Cloudflare Access browser session; human membership and roles apply. Do not copy session cookies to integrations."
+			},
+			"InboxApiKey": {
+				"type": "http",
+				"scheme": "bearer",
+				"bearerFormat": "inbox_<64 hex characters>",
+				"description": "Created by an administrator in Settings → API keys. Scope and mailbox restrictions apply; revoked or expired keys return 401."
 			}
 		}
 	}

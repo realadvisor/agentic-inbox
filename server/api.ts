@@ -1,3 +1,9 @@
+import {
+	apiKeysApi,
+	authenticateApiKey,
+	keyCanRequest,
+	type KeyVariables,
+} from "./api-keys";
 import { membersApi, type MemberRole } from "./members";
 import { webhookApi } from "./webhooks/api";
 import {
@@ -115,10 +121,25 @@ export function createApi(db: Database, options: ApiOptions) {
 	const canCreate =
 		!isLive ||
 		(options.mailboxCreationEnabled === true && !!options.actor && isAdmin);
-	const app = new Hono();
+	const app = new Hono<{ Variables: KeyVariables }>();
 	app.use("*", bodyLimit({ maxSize: 256_000 }));
 	app.use("*", async (c, next) => {
-		if (isLive && options.membershipEnabled && !options.actorRole)
+		c.header("Cache-Control", "no-store");
+		const authorization = c.req.header("authorization");
+		if (authorization && /^Bearer\s/i.test(authorization)) {
+			const key = await authenticateApiKey(db, authorization);
+			c.set("apiKey", key);
+			if (!keyCanRequest(key, c.req.method, c.req.path))
+				throw new HTTPException(403, {
+					message: "API key does not permit this operation or mailbox",
+				});
+		}
+		if (
+			isLive &&
+			options.membershipEnabled &&
+			!options.actorRole &&
+			!c.get("apiKey")
+		)
 			throw new HTTPException(403, { message: "Inbox membership required" });
 		// Local origin checks are retained; the Worker authenticates remote requests.
 		const host = c.req.header("host") ?? new URL(c.req.url).host;
@@ -160,6 +181,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		console.error("Inbox request failed:", error.message);
 		return c.json({ error: "Request failed" }, 500);
 	});
+	app.route(
+		"/api/v1/api-keys",
+		apiKeysApi(db, { admin: isAdmin, actor: options.actor ?? "local-preview" }),
+	);
 	app.route(
 		"/api/v1/webhooks",
 		webhookApi(db, {
@@ -219,22 +244,36 @@ export function createApi(db: Database, options: ApiOptions) {
 		});
 	});
 	app.get("/api/v1/config", (c) =>
-		c.json({
-			domains:
-				options.mode === "live" ? ["ingest.realadvisor.com"] : ["example.test"],
-			emailAddresses: [],
-			access: {
-				role: isAdmin ? "admin" : "user",
-				managed: options.membershipEnabled === true || !isLive,
-			},
-			canCreateMailboxes: canCreate,
-			classifierPreview: !isLive && options.classifierPreview === true,
-			classifiersEnabled: options.classifiersEnabled === true,
-			canManageWebhooks: isAdmin,
-			canManageClassifiers: options.classifiersEnabled === true && isAdmin,
-			canDeleteMailboxes: !isLive,
-			mode: options.mode ?? "synthetic",
-		}),
+		c.json(
+			c.get("apiKey")
+				? {
+						access: { role: "integration", managed: true },
+						mailbox_ids: c.get("apiKey")!.mailbox_ids,
+						permissions: c.get("apiKey")!.permissions,
+						canManageWebhooks: c
+							.get("apiKey")!
+							.permissions.includes("webhooks:manage"),
+					}
+				: {
+						domains:
+							options.mode === "live"
+								? ["ingest.realadvisor.com"]
+								: ["example.test"],
+						emailAddresses: [],
+						access: {
+							role: isAdmin ? "admin" : "user",
+							managed: options.membershipEnabled === true || !isLive,
+						},
+						canCreateMailboxes: canCreate,
+						classifierPreview: !isLive && options.classifierPreview === true,
+						classifiersEnabled: options.classifiersEnabled === true,
+						canManageWebhooks: isAdmin,
+						canManageClassifiers:
+							options.classifiersEnabled === true && isAdmin,
+						canDeleteMailboxes: !isLive,
+						mode: options.mode ?? "synthetic",
+					},
+		),
 	);
 	app.route("/api/v1/tag-groups", tagGroupsApi(db, isAdmin));
 	app.get("/api/v1/tags", async (c) =>
@@ -280,7 +319,9 @@ export function createApi(db: Database, options: ApiOptions) {
 	app.get("/api/v1/mailboxes", async (c) =>
 		c.json(
 			(await store.listMailboxes()).filter(
-				(m) => options.mode !== "live" || liveSender(m.id),
+				(m) =>
+					(!c.get("apiKey") || c.get("apiKey")!.mailbox_ids.includes(m.id)) &&
+					(options.mode !== "live" || liveSender(m.id)),
 			),
 		),
 	);
@@ -335,7 +376,8 @@ export function createApi(db: Database, options: ApiOptions) {
 			},
 		}),
 	);
-	const tagActor = () => {
+	const tagActor = (key?: KeyVariables["apiKey"]) => {
+		if (key) return `api-key:${key.id}`;
 		if (isLive && !options.actor) throw new HTTPException(403);
 		return options.actor ?? "local-synthetic-user";
 	};
@@ -349,7 +391,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					[id.parse(c.req.param("threadId"))],
 					id.parse(c.req.param("tagId")),
 					method === "put" ? "add" : "remove",
-					tagActor(),
+					tagActor(c.get("apiKey")),
 				);
 				return c.body(null, 204);
 			},
@@ -370,7 +412,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			input.thread_ids,
 			input.tag_id,
 			input.action,
-			tagActor(),
+			tagActor(c.get("apiKey")),
 		);
 		return c.body(null, 204);
 	});
@@ -427,6 +469,13 @@ export function createApi(db: Database, options: ApiOptions) {
 		return c.json(await store.message(c.req.param("mailboxId"), messageId));
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
+		if (c.get("apiKey")) {
+			const rows =
+				await db`DELETE FROM emails WHERE mailbox_id=${c.req.param("mailboxId")} AND id=${id.parse(c.req.param("id"))} AND delivery_status='draft' AND NOT EXISTS (SELECT 1 FROM outbound_requests WHERE email_id=emails.id) RETURNING id`;
+			if (!rows.length)
+				throw new HTTPException(404, { message: "Draft not found" });
+			return c.body(null, 204);
+		}
 		const [outbound] =
 			await db`SELECT request_id FROM outbound_requests WHERE mailbox_id=${c.req.param("mailboxId")} AND email_id=${id.parse(c.req.param("id"))}`;
 		if (outbound)
@@ -482,7 +531,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					c.req.param("mailboxId"),
 					id.parse(c.req.param("threadId")),
 					parsed.data,
-					tagActor(),
+					tagActor(c.get("apiKey")),
 				),
 			);
 		},
@@ -580,7 +629,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		app.post(`/api/v1/mailboxes/:mailboxId/emails${action}`, async (c) => {
 			const input = sendSchema.parse(await c.req.json());
 			if (options.mode === "live") {
-				if (!options.sender || !options.actor)
+				const actor = c.get("apiKey")
+					? `api-key:${c.get("apiKey")!.id}`
+					: options.actor;
+				if (!options.sender || !actor)
 					throw new HTTPException(503, {
 						message: "Email sending is not configured",
 					});
@@ -592,7 +644,7 @@ export function createApi(db: Database, options: ApiOptions) {
 						c.req.param("mailboxId"),
 						key,
 						input,
-						options.actor,
+						actor,
 						action ? c.req.param("id") : undefined,
 						action.endsWith("reply"),
 					),

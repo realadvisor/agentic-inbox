@@ -573,3 +573,77 @@ and explicitly list its approved client IDs in `ACCESS_SERVICE_CLIENT_IDS` befor
 enabling membership. Only cryptographically verified service identities on that
 list receive User access; they cannot manage members or configuration. Service
 credentials stay separate from the human member list and are revoked in Cloudflare.
+
+## API keys for agents and n8n
+
+Administrators create keys in **Settings → API keys**. Select explicit mailboxes
+and permissions: **Read mail** (`mail:read`), **Manage drafts** (`drafts:manage`),
+**Send email** (`mail:send`), **Manage conversations** (`conversations:manage`),
+**Manage webhooks** (`webhooks:manage`), **Read classifications** (`classifications:read`),
+**Review classifications** (`classifications:review`), **Run classifications**
+(`classifications:run`), **Manage folders** (`folders:manage`), and **Use inbox agent**
+(`agent:use`). Only Read mail is selected by default. Select all grants these ten
+explicit permissions, not administrator access or future permissions. The secret is shown once; only its SHA-256 hash and a display prefix are
+stored. Expiry is optional. The list shows last use, authenticated request count
+(including permission denials), and revocation state. To rotate, create a new key,
+update the client, then revoke the old one. Keys cannot create other keys, change users or alter classifier definitions/settings.
+Existing keys retain their original permissions; create a replacement to change access.
+Draft management creates/updates via POST /mailboxes/{mailboxId}/drafts and deletes
+via DELETE /mailboxes/{mailboxId}/emails/{id}, restricted to actual drafts.
+Sending permits new messages, replies and forwards; live sends require an
+Idempotency-Key UUID and record the key identity in the delivery record.
+Conversation management permits flags, moving mail (including archive/trash),
+read status, workflow status and tag assignment/removal. It does not permit
+permanent mail deletion or changing shared tag/folder definitions.
+
+```sh
+curl --header "Authorization: Bearer $INBOX_API_KEY" \
+  https://inbox.realadvisor.com/api/v1/mailboxes
+```
+
+Read permission covers email lists/search, individual emails and attachments,
+threads/status, and folders in the allowed mailboxes. Mailbox discovery is filtered;
+the shared tag/group catalogue is readable for selecting webhook filters. Keys with
+webhook management can create subscriptions and manage/test/retry only endpoints
+created by that same key. Administrators retain access to all endpoints. Revocation
+blocks the next API request; already accepted requests may finish. Revoking a key
+**does not disable existing outgoing webhooks**. Administrators can disable/delete
+those separately; replacing a key does not transfer webhook ownership.
+
+Classification scopes permit mailbox-scoped results/inspection, corrections, and
+single-conversation reruns respectively. API corrections are attributed to the key
+as agent reviews and preserve human corrections; choice/score corrections use tag
+selection rather than boolean review. Bulk backfills and classifier configuration
+remain administrator-only. Folder management applies to custom folders only.
+
+Agent use also requires Read mail. The UI selects it automatically. Each agent tool
+is separately restricted by the key's draft, conversation and classification scopes;
+new tools are denied until explicitly mapped. Agent settings remain administrator
+configuration. The composer generates text; saving drafts requires Manage drafts.
+The existing chat agent has no send tool; Send email is available through the mail API.
+
+### Cloudflare Access rollout
+
+Deploy migrations 039–041 and the Worker **before** changing Access. This migration
+creates no keys, members, tags or mailboxes. Keep the existing human-login Access
+application protecting `inbox.realadvisor.com`, including `/api/docs` and
+`/api/openapi.json`. Add a more-specific self-hosted Access application for
+`inbox.realadvisor.com/api/v1/*` with an Everyone **Bypass** policy. Do not change
+the whole-host policy or the independently authenticated Cloud Tasks route.
+
+The Worker authenticates each request itself: an inbox Bearer key, or a verified
+Access JWT assertion/browser `CF_Authorization` cookie. Cookie fallback verifies
+the existing human application's issuer, audience, signature and expiry, then
+checks inbox membership; never trust an email header. Browser requests remain
+same-origin. Bearer keys never authorize pages or task endpoints. Requests with
+invalid Bearer credentials fail even if a valid browser session accompanies them.
+Existing service-token/JWT clients remain supported by the backend, but the new
+API path policy may require migrating clients that rely on Access to mint their
+assertion from service-token headers; use an inbox key instead.
+
+After the path-specific policy is enabled, verify: anonymous `/api/v1/config`
+returns **401** (not a login page), a valid key returns **200**, a revoked key
+returns **401**, another mailbox returns **403**, and normal Google login still
+loads mail and Settings. Keep the old host policy in place if any check fails.
+The application tests cover Worker Bearer/cookie authentication and permissions;
+the external Access policy must be verified against the deployed instance.

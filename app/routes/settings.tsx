@@ -1,3 +1,4 @@
+import ApiKeySettings from "~/components/ApiKeySettings";
 import AccessSettings from "~/components/AccessSettings";
 import WebhookSettings from "~/components/WebhookSettings";
 import AgentModelSettings from "~/components/AgentModelSettings";
@@ -78,7 +79,7 @@ export default function SettingsRoute() {
 
 			<div className="flex flex-wrap gap-2 mb-6" aria-label="Settings sections">
 				{[
-					...(admin ? ["account", "tags", "models"] : []),
+					...(admin ? ["account", "tags", "models", "api-keys"] : []),
 					"access",
 					...(mode.data?.canManageWebhooks ? ["webhooks"] : []),
 					...(hasClassifiers && mode.data?.canManageClassifiers
@@ -90,11 +91,13 @@ export default function SettingsRoute() {
 						variant={tab === t ? "primary" : "ghost"}
 						onClick={() => setParams({ tab: t })}
 					>
-						{t[0].toUpperCase() + t.slice(1)}
+						{t === "api-keys" ? "API keys" : t[0].toUpperCase() + t.slice(1)}
 					</Button>
 				))}
 			</div>
-			{tab === "access" ? (
+			{tab === "api-keys" && admin ? (
+				<ApiKeySettings mailboxId={mailboxId!} />
+			) : tab === "access" ? (
 				<AccessSettings />
 			) : tab === "webhooks" && mode.data?.canManageWebhooks ? (
 				<WebhookSettings mailboxId={mailboxId!} />
