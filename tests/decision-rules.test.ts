@@ -395,3 +395,18 @@ test("saved rules resolve pending group reviews without Jev and preserve protect
 		409,
 	);
 });
+
+test("equal binary thresholds require clear evidence without a review band", () => {
+	const rules = decisionRulesSchema.parse({ yes: 0.85, no: 0.85 });
+	const question = jevQuestion("Is action clearly required?");
+	for (const p of [0, 0.5, 0.84, 0.849999, 0.85, 0.99, 1]) {
+		assert.equal(
+			interpretAnswer(question, { type: "noul", noul: p }, undefined, rules)
+				.answer,
+			p >= 0.85,
+		);
+	}
+	assert.throws(() =>
+		interpretAnswer(question, { type: "noul", noul: null }, undefined, rules),
+	);
+});
