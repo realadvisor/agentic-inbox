@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import postgres from "postgres";
 import { connect } from "../server/db";
 import { migrate } from "../server/migrate";
 import { InboxStore } from "../server/store";
@@ -281,4 +282,97 @@ test("tag deletion emits removal, but inserting an absent tag does not", async (
 		).length,
 		1,
 	);
+});
+
+test("Worker connection creates, lists and updates webhook arrays", async () => {
+	const workerDb = postgres(process.env.DATABASE_URL!, {
+		fetch_types: false,
+		connection: { search_path: schema },
+	});
+	try {
+		const workerApp = webhookApi(workerDb, {
+			canManage: true,
+			secretKey: master,
+		});
+		const request = (path: string, method = "GET", body?: unknown) =>
+			workerApp.request("https://inbox.test/" + mailbox + path, {
+				method,
+				headers: { "content-type": "application/json" },
+				body: body ? JSON.stringify(body) : undefined,
+			});
+		const created = await request("", "POST", {
+			url: "https://hooks.example.com/worker",
+			events: ["email.received", "conversation.classified"],
+		});
+		assert.equal(created.status, 201);
+		const { id } = await created.json();
+		const list = await (await request("")).json();
+		const saved = list.find((row: { id: string }) => row.id === id);
+		assert.deepEqual(saved.events, [
+			"email.received",
+			"conversation.classified",
+		]);
+		assert.deepEqual(saved.include_tag_ids, []);
+		assert.deepEqual(saved.exclude_tag_ids, []);
+		assert.equal(
+			(
+				await request("/" + id, "PUT", {
+					url: "https://hooks.example.com/worker",
+					events: ["email.sent"],
+					enabled: false,
+				})
+			).status,
+			200,
+		);
+		const [tag] =
+			await db`INSERT INTO tags(name,color) VALUES('Worker filter','#123456') RETURNING id`;
+		assert.equal(
+			(
+				await request("/" + id, "PUT", {
+					url: "https://hooks.example.com/worker",
+					events: ["conversation.matched"],
+					include_tag_ids: [tag.id],
+					exclude_tag_ids: [],
+					enabled: false,
+				})
+			).status,
+			200,
+		);
+		assert.equal(
+			(
+				await request("/" + id, "PUT", {
+					url: "https://hooks.example.com/renamed",
+					events: ["conversation.matched"],
+					enabled: false,
+				})
+			).status,
+			200,
+		);
+		const filtered = (await (await request("")).json()).find(
+			(row: { id: string }) => row.id === id,
+		);
+		assert.deepEqual(filtered.include_tag_ids, [tag.id]);
+		assert.deepEqual(filtered.events, ["conversation.matched"]);
+
+		assert.equal((await request("/" + id, "DELETE")).status, 200);
+	} finally {
+		await workerDb.end();
+	}
+});
+
+test("Invalid encryption configuration returns a setup error", async () => {
+	const misconfigured = webhookApi(db, {
+		canManage: true,
+		secretKey: "invalid",
+	});
+	const r = await misconfigured.request("https://inbox.test/" + mailbox, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({
+			url: "https://hooks.example.com/test",
+			events: ["email.received"],
+		}),
+	});
+	assert.equal(r.status, 503);
+	assert.match((await r.json()).error, /WEBHOOK_SECRET_KEY/);
 });
