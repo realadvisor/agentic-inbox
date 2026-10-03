@@ -80,6 +80,15 @@ export async function migrate(db: Database) {
 					"classification_attempts_mailbox_page",
 				],
 			],
+			[
+				38,
+				"038_list_filters.sql",
+				[
+					"emails_thread_list",
+					"classifier_reviews_mailbox",
+					"conversation_tags_manual",
+				],
+			],
 		] as const) {
 			if (
 				(await sql`SELECT 1 FROM inbox_migrations WHERE version=${version}`)
