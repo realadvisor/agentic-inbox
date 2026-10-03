@@ -49,24 +49,30 @@ export async function deliverWebhook(
 	let status: number | null = null,
 		responseText = "",
 		error: string | null = null;
+	let stage = "destination validation";
 	try {
 		await resolve(row.url);
+		stage = "secret decryption";
 		const secret = await decryptSecret(row.secret, master);
 		const body = JSON.stringify(row.payload);
 		const timestamp = String(Math.floor(Date.now() / 1000));
+		stage = "request signing";
+		const signed = await signature(secret, timestamp, body);
+		stage = "outbound request";
 		const response = await request(row.url, {
 			method: "POST",
-			redirect: "error",
+			redirect: "manual",
 			headers: {
 				"Content-Type": "application/json",
 				"X-Webhook-ID": row.payload.id,
 				"X-Webhook-Timestamp": timestamp,
-				"X-Webhook-Signature": await signature(secret, timestamp, body),
+				"X-Webhook-Signature": signed,
 			},
 			body,
 			signal: AbortSignal.timeout(10000),
 		});
 		status = response.status;
+		stage = "response read";
 		// Bound response reads, including endpoints that never finish streaming.
 		const reader = response.body?.getReader();
 		if (reader) {
@@ -84,8 +90,11 @@ export async function deliverWebhook(
 			}
 		}
 		if (status < 200 || status >= 300) error = `HTTP ${status}`;
-	} catch {
-		error = "Delivery failed (network, timeout, or invalid destination)";
+	} catch (cause) {
+		const timeout =
+			cause instanceof Error &&
+			["TimeoutError", "AbortError"].includes(cause.name);
+		error = `Delivery failed during ${stage}${timeout ? " (timeout)" : ""}`;
 	}
 	const retry =
 		!!error &&
