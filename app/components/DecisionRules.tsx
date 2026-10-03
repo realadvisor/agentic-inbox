@@ -22,7 +22,12 @@ export function DecisionRules({
 			]
 		: [
 				["yes", "Apply tag at or above"],
-				["no", "Remove automatic tag at or below"],
+				[
+					"no",
+					rules.no === rules.yes
+						? "Leave untagged below"
+						: "Remove automatic tag at or below",
+				],
 			];
 	return (
 		<details className="rounded-lg border border-kumo-line p-3">
@@ -32,7 +37,9 @@ export function DecisionRules({
 			<p className="mt-2 text-xs text-kumo-subtle">
 				{choice
 					? "All three conditions must pass to apply a level or choice. Uncertain results need review."
-					: "Probabilities between these thresholds need human review. Manual tags are preserved."}{" "}
+					: rules.no === rules.yes
+						? "One cutoff: apply the tag at or above it; below it, leave untagged without review. Manual tags are preserved."
+						: "Probabilities between these thresholds need human review. Set them equal to use one cutoff without review. Manual tags are preserved."}{" "}
 				These rules apply after Jev answers.
 			</p>
 			<div className="mt-3 space-y-3">
@@ -64,9 +71,9 @@ export function DecisionRules({
 					</label>
 				))}
 			</div>
-			{!choice && rules.no >= rules.yes && (
+			{!choice && rules.no > rules.yes && (
 				<p role="alert" className="mt-2 text-xs text-kumo-danger">
-					The No threshold must be below the Yes threshold.
+					The No threshold must be at or below the Yes threshold.
 				</p>
 			)}
 			<button

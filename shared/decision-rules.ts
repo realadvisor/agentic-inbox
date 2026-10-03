@@ -19,8 +19,8 @@ export const decisionRulesSchema = z
 		margin: z.number().min(0).max(1).default(0.2),
 	})
 	.strict()
-	.refine((v) => v.no < v.yes, {
-		message: "The No threshold must be below the Yes threshold",
+	.refine((v) => v.no <= v.yes, {
+		message: "The No threshold must be at or below the Yes threshold",
 		path: ["no"],
 	});
 export type DecisionRules = z.infer<typeof decisionRulesSchema>;
