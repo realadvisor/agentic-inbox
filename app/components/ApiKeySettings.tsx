@@ -246,11 +246,11 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 					</fieldset>
 					<fieldset>
 						<legend className="mb-2 text-sm font-medium">Permissions</legend>
-						<div className="grid gap-2 sm:grid-cols-2">
+						<div className="divide-y divide-kumo-line overflow-hidden rounded-lg border border-kumo-line bg-kumo-base">
 							{permissions.map((scope) => (
 								<div
 									key={scope.id}
-									className="rounded-lg border border-kumo-line bg-kumo-base p-3"
+									className="grid items-center gap-x-3 gap-y-1 px-3 py-2 sm:grid-cols-[190px_minmax(0,1fr)]"
 								>
 									<Checkbox
 										label={scope.name}
@@ -263,7 +263,7 @@ export default function ApiKeySettings({ mailboxId }: { mailboxId: string }) {
 											)
 										}
 									/>
-									<p className="text-xs text-kumo-subtle ml-6 mt-1">
+									<p className="ml-6 text-xs text-kumo-subtle sm:ml-0">
 										{scope.description}
 									</p>
 								</div>
