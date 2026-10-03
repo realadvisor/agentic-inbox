@@ -1,7 +1,8 @@
 import { AppSelect } from "./AppSelect";
 import { useTags } from "~/queries/tags";
-import { Button, Input, Checkbox } from "@cloudflare/kumo";
+import { Button, Input, Checkbox, Loader } from "@cloudflare/kumo";
 import { useState } from "react";
+import { WebhooksLogoIcon, PlusIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 const eventLabels: Record<string, string> = {
 	"conversation.matched": "Tag conditions matched",
@@ -110,23 +111,36 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 		setSecret("");
 	};
 	return (
-		<div className="space-y-4">
-			<div className="flex items-center justify-between">
-				<div>
-					<h2 className="font-semibold">Webhooks</h2>
-					<p className="text-sm text-kumo-subtle">
-						Send signed events from this mailbox to your integrations.
-					</p>
+		<section className="overflow-hidden rounded-xl border border-kumo-line bg-kumo-base">
+			<div className="flex flex-wrap items-center justify-between gap-3 p-5">
+				<div className="flex items-center gap-3">
+					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+						<WebhooksLogoIcon size={21} />
+					</div>
+					<div>
+						<h2 className="text-sm font-semibold">Webhooks</h2>
+						<p className="mt-0.5 text-xs text-kumo-subtle">
+							Send mailbox events to your integrations.
+						</p>
+					</div>
 				</div>
-				<Button onClick={() => edit(null)}>Add endpoint</Button>
+				<Button
+					size="sm"
+					variant="primary"
+					icon={<PlusIcon size={14} />}
+					disabled={editing !== undefined || action.isPending}
+					onClick={() => edit(null)}
+				>
+					Add endpoint
+				</Button>
 			</div>
 			{(action.error || list.error) && (
-				<p role="alert" className="text-kumo-danger">
+				<p role="alert" className="px-5 py-3 text-sm text-kumo-danger">
 					{(action.error || list.error)?.message}
 				</p>
 			)}
 			{secret && (
-				<div className="rounded-lg border border-kumo-line p-4">
+				<div className="border-t border-kumo-line bg-kumo-tint/30 p-5 text-sm">
 					<p>Copy this signing secret now. It is shown only once.</p>
 					<code className="block break-all text-xs my-2">{secret}</code>
 					<Button
@@ -139,7 +153,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 			)}
 			{editing !== undefined && (
 				<form
-					className="rounded-lg border border-kumo-line bg-kumo-base p-4 space-y-3"
+					className="border-t border-kumo-line bg-kumo-tint/30 p-5 space-y-4"
 					onSubmit={async (e) => {
 						e.preventDefault();
 						await action
@@ -199,7 +213,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 					</fieldset>
 					<section
 						aria-label="Tag conditions"
-						className="rounded-lg border border-kumo-line"
+						className="rounded-lg border border-kumo-line bg-kumo-base"
 					>
 						{[
 							{
@@ -315,13 +329,11 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 								? "Add at least one tag or exclusion to define a condition."
 								: "No conditions added. All selected events will be sent."}
 					</p>
-					<p className="text-xs text-kumo-subtle">
-						Email bodies and attachments are not included.
-					</p>
-					<div className="flex gap-2">
+					<div className="flex flex-row-reverse justify-start gap-2 border-t border-kumo-line pt-4">
 						<Button
 							type="submit"
 							variant="primary"
+							size="sm"
 							disabled={
 								!selected.length ||
 								(selected.includes("conversation.matched") &&
@@ -335,6 +347,8 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						<Button
 							type="button"
 							variant="ghost"
+							size="sm"
+							disabled={action.isPending}
 							onClick={() => setEditing(undefined)}
 						>
 							Cancel
@@ -342,23 +356,44 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 					</div>
 				</form>
 			)}
-			{list.data?.length === 0 && (
-				<p className="text-sm text-kumo-subtle">
-					No endpoints yet. Add a URL, choose when to send, then send a test.
-				</p>
+			{list.isPending && (
+				<div className="flex justify-center border-t border-kumo-line p-10">
+					<Loader />
+				</div>
+			)}
+			{list.data?.length === 0 && editing === undefined && (
+				<div className="border-t border-kumo-line px-5 py-10 text-center">
+					<WebhooksLogoIcon
+						size={28}
+						className="mx-auto mb-3 text-kumo-subtle"
+					/>
+					<p className="text-sm font-medium">No endpoints yet</p>
+					<p className="mt-1 text-xs text-kumo-subtle">
+						Add a URL and choose the events to send.
+					</p>
+				</div>
 			)}
 			{list.data?.map((e) => (
 				<div
 					key={e.id}
-					className="rounded-lg border border-kumo-line bg-kumo-base p-5 space-y-3"
+					className="border-t border-kumo-line px-5 py-3 space-y-2"
 				>
-					<div className="font-medium break-all">{e.url}</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="min-w-0 break-all text-sm font-medium">
+							{e.url}
+						</span>
+						<span className="inline-flex items-center gap-1.5 rounded-md bg-kumo-tint px-1.5 py-0.5 text-[11px] text-kumo-subtle">
+							<span
+								className={`h-1.5 w-1.5 rounded-full ${e.enabled ? "bg-emerald-500" : "bg-kumo-subtle"}`}
+							/>
+							{e.enabled ? "Enabled" : "Disabled"}
+						</span>
+					</div>
 					<p className="text-xs text-kumo-subtle">
-						{e.enabled ? "Enabled" : "Disabled"} ·{" "}
 						{e.events.map((event) => eventLabels[event] ?? event).join(", ")}
 					</p>
 					{(e.include_tag_ids.length > 0 || e.exclude_tag_ids.length > 0) && (
-						<p className="text-sm text-kumo-subtle">
+						<p className="text-xs text-kumo-subtle">
 							{e.include_tag_ids.length > 0 &&
 								`Match ${e.tag_match}: ${e.include_tag_ids.map(tagLabel).join(", ")}`}
 							{e.exclude_tag_ids.length > 0 &&
@@ -366,11 +401,12 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						</p>
 					)}
 					<div className="flex flex-wrap gap-2">
-						<Button size="sm" onClick={() => edit(e)}>
+						<Button size="sm" variant="ghost" onClick={() => edit(e)}>
 							Edit
 						</Button>
 						<Button
 							size="sm"
+							variant="ghost"
 							disabled={action.isPending}
 							onClick={() =>
 								action.mutate({
@@ -391,6 +427,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						</Button>
 						<Button
 							size="sm"
+							variant="ghost"
 							disabled={!e.enabled || action.isPending}
 							onClick={() => {
 								setHistory(e.id);
@@ -401,6 +438,7 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 						</Button>
 						<Button
 							size="sm"
+							variant="ghost"
 							onClick={() => setHistory(history === e.id ? "" : e.id)}
 						>
 							Delivery history
@@ -466,6 +504,19 @@ export default function WebhookSettings({ mailboxId }: { mailboxId: string }) {
 					)}
 				</div>
 			))}
-		</div>
+			<div className="flex flex-wrap items-center justify-between gap-2 border-t border-kumo-line bg-kumo-tint/40 px-5 py-3 text-xs text-kumo-subtle">
+				<span>
+					Signed events. Email bodies and attachments are not included.
+				</span>
+				<a
+					href="/api/docs"
+					target="_blank"
+					rel="noreferrer"
+					className="font-medium text-kumo-default hover:underline"
+				>
+					API documentation ↗
+				</a>
+			</div>
+		</section>
 	);
 }
