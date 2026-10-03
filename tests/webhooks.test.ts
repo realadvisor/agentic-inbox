@@ -376,3 +376,86 @@ test("Invalid encryption configuration returns a setup error", async () => {
 	assert.equal(r.status, 503);
 	assert.match((await r.json()).error, /WEBHOOK_SECRET_KEY/);
 });
+
+test("delivery failures identify their stage without exposing secrets", async () => {
+	const resolve = async (url: string) => new URL(url);
+	for (const scenario of [
+		{
+			stage: "destination validation",
+			master,
+			resolve: async () => {
+				throw new Error("private diagnostic");
+			},
+			send: async () => new Response("OK"),
+		},
+		{
+			stage: "secret decryption",
+			master: "cd".repeat(32),
+			resolve,
+			send: async () => new Response("OK"),
+		},
+		{
+			stage: "outbound request (timeout)",
+			master,
+			resolve,
+			send: async () => {
+				throw new DOMException("private diagnostic", "TimeoutError");
+			},
+		},
+		{
+			stage: "response read",
+			master,
+			resolve,
+			send: async () =>
+				new Response(
+					new ReadableStream({
+						start(controller) {
+							controller.error(new Error("private diagnostic"));
+						},
+					}),
+				),
+		},
+	]) {
+		const { id } = await (await call(`/${endpoint}/test`, "POST")).json();
+		await deliverWebhook(
+			db,
+			id,
+			scenario.master,
+			scenario.send,
+			scenario.resolve,
+		);
+		const [attempt] =
+			await db`SELECT error,status_code FROM webhook_attempts WHERE delivery_id=${id}`;
+		assert.equal(attempt.error, `Delivery failed during ${scenario.stage}`);
+		assert.equal(
+			attempt.status_code,
+			scenario.stage === "response read" ? 200 : null,
+		);
+	}
+});
+test("redirects retain their HTTP status and are never followed", async () => {
+	const { id } = await (await call(`/${endpoint}/test`, "POST")).json();
+	let calls = 0;
+	await deliverWebhook(
+		db,
+		id,
+		master,
+		async (_url, init) => {
+			calls++;
+			assert.equal(init?.redirect, "manual");
+			return new Response(null, {
+				status: 302,
+				headers: { Location: "http://127.0.0.1/private" },
+			});
+		},
+		async (url) => new URL(url),
+	);
+	const [attempt] =
+		await db`SELECT error,status_code FROM webhook_attempts WHERE delivery_id=${id}`;
+	assert.equal(calls, 1);
+	assert.equal(attempt.error, "HTTP 302");
+	assert.equal(attempt.status_code, 302);
+	const [delivery] =
+		await db`SELECT status FROM webhook_deliveries WHERE id=${id}`;
+	assert.equal(delivery.status, "failed");
+});
