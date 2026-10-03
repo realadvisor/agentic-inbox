@@ -294,12 +294,17 @@ export function classifierApi(
 	app.get("/results/:mailbox", async (c) => {
 		const thread = c.req.query("thread");
 		if (thread) id.parse(thread);
+		const threads = c.req.query("threads");
+		const threadIds =
+			threads === undefined
+				? undefined
+				: z.array(id).min(1).max(100).parse(threads.split(","));
 		const rows =
 			await db`SELECT j.mailbox_id,j.thread_id,j.classifier_id,j.revision,j.generation,j.token,j.status,j.answer,j.probability,j.source,j.error,c.decision_rules,c.question,t.name,t.color,t.id AS tag_id,t.group_id,g.name AS group_name,g.selection AS group_selection,g.instructions AS group_instructions,log.response_body,log.question_key FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id LEFT JOIN tag_groups g ON g.id=t.group_id LEFT JOIN LATERAL (
  SELECT r.response_body,i.question_key FROM classifier_provider_run_items i JOIN classifier_provider_runs r ON r.id=i.run_id
  WHERE i.job_token=j.token AND i.classifier_id=j.classifier_id AND r.mailbox_id=j.mailbox_id AND r.thread_id=j.thread_id
  ORDER BY r.started_at DESC,r.id DESC LIMIT 1
- ) log ON g.selection IN ('single','score') WHERE j.mailbox_id=${c.req.param("mailbox")} AND (c.enabled OR j.priority=2) AND j.revision=c.revision AND j.status IN ('review','error') ${thread ? db`AND j.thread_id=${thread}` : db``} AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.updated_at DESC LIMIT 1000`;
+ ) log ON g.selection IN ('single','score') WHERE j.mailbox_id=${c.req.param("mailbox")} AND (c.enabled OR j.priority=2) AND j.revision=c.revision AND j.status IN ('review','error') ${thread ? db`AND j.thread_id=${thread}` : db``} ${threadIds ? db`AND j.thread_id IN ${db(threadIds)}` : db``} AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.updated_at DESC LIMIT 1000`;
 		return c.json(
 			rows.map(({ response_body, question_key, ...row }) => {
 				let confidence: number | null = null;

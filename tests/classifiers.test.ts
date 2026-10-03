@@ -1221,6 +1221,16 @@ test("needs-review filter counts and paginates unresolved conversations across f
 	await db`UPDATE conversation_classifications SET revision=0 WHERE thread_id=${staleThread}`;
 	await db`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at)
 		VALUES(${mailbox},${manualThread},${tagId},'manual','review-test',now())`;
+	const scoped = await call(`/results/${mailbox}?threads=${reviewThread}`);
+	assert.equal(scoped.status, 200);
+	const scopedRows = await scoped.json();
+	assert.ok(scopedRows.length > 0);
+	assert.ok(
+		scopedRows.every(
+			(row: { thread_id: string }) => row.thread_id === reviewThread,
+		),
+	);
+	assert.equal((await call(`/results/${mailbox}?threads=invalid`)).status, 400);
 	const path = `/api/v1/mailboxes/${mailbox}/emails?needs_review=true&threaded=true&limit=1`;
 	const firstResponse = await app.request(`http://127.0.0.1:4311${path}`);
 	assert.equal(firstResponse.status, 200);
