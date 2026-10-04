@@ -1282,6 +1282,30 @@
 								}
 							}
 						}
+					},
+					"422": {
+						"description": "Draft intent rejected before delivery. Keep unsaved text, reload and reopen the draft. The code draft_intent_conflict identifies this rejection. In live mode, rejected_request_id is returned only after idempotency lookup confirms that exact key has no persisted outbound attempt; clients may release that key. Existing sent, sending or unknown attempts take precedence and do not return this proof. Other 409/422 errors are not such proof.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"error": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": ["draft_intent_conflict"]
+										},
+										"rejected_request_id": {
+											"type": "string",
+											"format": "uuid"
+										}
+									},
+									"required": ["error", "code"]
+								}
+							}
+						}
 					}
 				},
 				"requestBody": {
@@ -3010,6 +3034,30 @@
 								}
 							}
 						}
+					},
+					"422": {
+						"description": "Draft intent rejected before delivery. Keep unsaved text, reload and reopen the draft. The code draft_intent_conflict identifies this rejection. In live mode, rejected_request_id is returned only after idempotency lookup confirms that exact key has no persisted outbound attempt; clients may release that key. Existing sent, sending or unknown attempts take precedence and do not return this proof. Other 409/422 errors are not such proof.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"error": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": ["draft_intent_conflict"]
+										},
+										"rejected_request_id": {
+											"type": "string",
+											"format": "uuid"
+										}
+									},
+									"required": ["error", "code"]
+								}
+							}
+						}
 					}
 				},
 				"requestBody": {
@@ -3161,6 +3209,30 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Draft intent rejected before delivery. Keep unsaved text, reload and reopen the draft. The code draft_intent_conflict identifies this rejection. In live mode, rejected_request_id is returned only after idempotency lookup confirms that exact key has no persisted outbound attempt; clients may release that key. Existing sent, sending or unknown attempts take precedence and do not return this proof. Other 409/422 errors are not such proof.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"error": {
+											"type": "string"
+										},
+										"code": {
+											"type": "string",
+											"enum": ["draft_intent_conflict"]
+										},
+										"rejected_request_id": {
+											"type": "string",
+											"format": "uuid"
+										}
+									},
+									"required": ["error", "code"]
 								}
 							}
 						}
@@ -8008,7 +8080,12 @@
 					"draft_id": {
 						"type": "string",
 						"format": "uuid",
-						"description": "Use the saved draft sender when sender_identity_id is omitted. Draft must belong to this mailbox. Sending does not delete the draft."
+						"description": "Use the saved draft sender when sender_identity_id is omitted. Draft must belong to this mailbox. Sending does not delete the draft. Saved mode/source govern threading; legacy unknown intent requires explicit draft_mode=new confirmation."
+					},
+					"draft_mode": {
+						"type": "string",
+						"enum": ["new", "reply", "reply-all", "forward"],
+						"description": "Optional confirmation of saved draft intent. Must match explicit persisted intent when supplied. For legacy drafts whose intent is unknown, only the generic emails endpoint with draft_mode=new is allowed after informing the operator that sending starts a new conversation. Legacy reply/forward requests, missing legacy confirmation, or mismatched intent return 422 before delivery; preserve unsaved text, reload, and reopen the draft."
 					}
 				},
 				"required": ["to"],
@@ -8085,7 +8162,7 @@
 						"type": "string",
 						"format": "uuid",
 						"deprecated": true,
-						"description": "Legacy internal source alias. Does not infer reply intent; supply draft_mode and draft_source_id."
+						"description": "Legacy internal source alias. Alias-only new drafts retain unknown intent. Does not infer reply/forward intent; supply draft_mode and draft_source_id. Old ambiguous send requests require reload/reopen and explicit review."
 					},
 					"draft_version": {
 						"type": "string",

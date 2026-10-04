@@ -66,6 +66,7 @@ for (const kind of ["new", "reply", "forward", "draft"] as const) {
 						subject: input.subject,
 						body: input.text,
 						folder_id: "draft",
+						draft_mode: "new",
 						delivery_status: "draft",
 					})
 				: undefined;
@@ -346,6 +347,7 @@ for (const lost of ["before acceptance", "after acceptance"]) {
 			subject: "Frozen sender",
 			body: input.text,
 			folder_id: "draft",
+			draft_mode: "new",
 			delivery_status: "draft",
 		}))!;
 		const payload = { ...input, draft_id: draft.id };
@@ -492,3 +494,123 @@ test("failed confirmation receipt keeps every remounted scope on the original ke
 	assert.equal(keys.length, 3);
 	assert.equal(new Set(keys).size, 1);
 });
+
+for (const scenario of [
+	"first-rejection",
+	"lost-rejection",
+	"accepted",
+	"unknown",
+] as const) {
+	test(`draft rollout ${scenario}: only proof of no attempt releases the saved key`, async () => {
+		const store = new InboxStore(db);
+		const draft = (await store.insert(mailbox, {
+			sender: privacy,
+			sender_identity_id: privacy,
+			recipient: input.to,
+			subject: input.subject,
+			body: input.text,
+			delivery_status: "draft",
+			folder_id: "draft",
+			draft_mode:
+				scenario === "accepted" || scenario === "unknown" ? "reply" : null,
+			draft_source_id: parentId,
+		}))!;
+		const payload = { ...input, draft_id: draft.id };
+		const storage = journal();
+		let providerCalls = 0;
+		const server = createApi(db, {
+			mode: "live",
+			actor: "rollout-test",
+			readAttachment: async () => null,
+			sender: {
+				send: async () => {
+					providerCalls++;
+					if (scenario === "unknown")
+						throw new Error("Injected ambiguous provider outcome");
+					return { messageId: `<${crypto.randomUUID()}@example.test>` };
+				},
+			},
+		});
+		const previousFetch = globalThis.fetch;
+		const previousWindow = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"window",
+		);
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			value: { sessionStorage: storage, confirm: () => false },
+		});
+		const responses: {
+			status: number;
+			body: Record<string, unknown>;
+			key: string;
+		}[] = [];
+		globalThis.fetch = async (url, options) => {
+			const response = await server.request(`http://127.0.0.1${url}`, options);
+			const key = (options!.headers as Record<string, string>)[
+				"Idempotency-Key"
+			];
+			responses.push({
+				status: response.status,
+				body: await response.clone().json(),
+				key,
+			});
+			if (
+				responses.length === 1 &&
+				(scenario === "lost-rejection" || scenario === "accepted")
+			)
+				throw new TypeError("Injected lost response");
+			return response;
+		};
+		const send = () => api.replyToEmail(mailbox, parentId, payload, draft.id);
+		const slot = `inbox-send-intent:v1:${mailbox}`;
+		try {
+			await assert.rejects(send());
+			if (scenario === "first-rejection") {
+				assert.equal(storage.getItem(slot), null);
+			} else {
+				assert.ok(storage.getItem(slot));
+				// Even if intent becomes unknown after deployment, an earlier attempt wins.
+				await db`UPDATE emails SET draft_mode=NULL WHERE id=${draft.id}`;
+				if (scenario === "accepted") {
+					await send();
+					assert.equal(providerCalls, 1);
+					assert.equal(responses[1].status, 201);
+					assert.equal(responses[1].body.code, undefined);
+					assert.equal(JSON.parse(storage.getItem(slot)!).confirmed, true);
+				} else {
+					await assert.rejects(send());
+					if (scenario === "unknown") {
+						assert.equal(responses[1].status, 409);
+						assert.equal(responses[1].body.rejected_request_id, undefined);
+						assert.equal(JSON.parse(storage.getItem(slot)!).confirmed, false);
+						assert.equal(
+							JSON.parse(storage.getItem(slot)!).key,
+							responses[0].key,
+						);
+						assert.equal(providerCalls, 1);
+					} else assert.equal(storage.getItem(slot), null);
+				}
+				assert.equal(responses[1].key, responses[0].key);
+			}
+			if (scenario === "first-rejection" || scenario === "lost-rejection") {
+				const rejected = responses.at(-1)!;
+				assert.equal(rejected.status, 422);
+				assert.equal(rejected.body.rejected_request_id, rejected.key);
+				assert.equal(providerCalls, 0);
+				await api.sendEmail(
+					mailbox,
+					{ ...payload, draft_mode: "new" },
+					draft.id,
+				);
+				assert.equal(providerCalls, 1);
+				assert.notEqual(responses.at(-1)!.key, rejected.key);
+			}
+		} finally {
+			globalThis.fetch = previousFetch;
+			if (previousWindow)
+				Object.defineProperty(globalThis, "window", previousWindow);
+			else Reflect.deleteProperty(globalThis, "window");
+		}
+	});
+}

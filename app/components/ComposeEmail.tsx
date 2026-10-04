@@ -19,7 +19,8 @@ export default function ComposeEmail() {
 		folder: string;
 	}>();
 
-	const { isComposeModalOpen, closeComposeModal } = useUIStore();
+	const { isComposeModalOpen, closeComposeModal, composeOptions } =
+		useUIStore();
 
 	const {
 		senderConfig,
@@ -60,7 +61,14 @@ export default function ComposeEmail() {
 					onSubmit={(e) => handleSend(e, closeComposeModal)}
 					className="space-y-4"
 				>
-					<DraftDeliveryNotice mailboxId={mailboxId} draftId={deliveryId} />
+					<DraftDeliveryNotice
+						mailboxId={mailboxId}
+						draftId={deliveryId}
+						legacyIntent={Boolean(
+							composeOptions.draftEmail &&
+							!composeOptions.draftEmail.draft_mode,
+						)}
+					/>
 					{error && <Banner variant="error" text={error} />}
 					<SenderSelect
 						config={senderConfig}

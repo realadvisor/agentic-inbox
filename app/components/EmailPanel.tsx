@@ -247,6 +247,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				bcc: toEmailListValue(splitEmailList(target.bcc)),
 				sender_identity_id: target.sender_identity_id ?? undefined,
 				draft_id: target.id,
+				draft_mode: target.draft_mode ?? "new",
 				subject: target.subject || "",
 				html: target.body || "",
 				text: htmlToPlainText(target.body || ""),
@@ -410,6 +411,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 							key={msg.id}
 							mailboxId={mailboxId}
 							draftId={msg.id}
+							legacyIntent={!msg.draft_mode}
 						/>
 					))}
 				{hasThread ? (

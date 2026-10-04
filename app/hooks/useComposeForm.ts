@@ -348,6 +348,7 @@ export function useComposeForm(
 			bcc: toEmailListValue(bccRecipients),
 			sender_identity_id: senderIdentityId,
 			draft_id: savedDraftId,
+			draft_mode: composeOptions.mode,
 			subject,
 			html: body + quotedBody,
 			text: htmlToPlainText(body + quotedBody),

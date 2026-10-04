@@ -113,6 +113,11 @@ const sendIntents = new SendIntents(
 	(error) =>
 		error instanceof ApiError &&
 		[400, 401, 403, 404, 413, 422].includes(error.status),
+	(error, key) =>
+		error instanceof ApiError &&
+		error.status === 422 &&
+		error.body.code === "draft_intent_conflict" &&
+		error.body.rejected_request_id === key,
 );
 
 // ---------- Typed response shapes ----------

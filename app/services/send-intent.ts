@@ -19,6 +19,11 @@ export class SendIntents {
 		private transport: Transport,
 		private confirmRecovery: (message: string) => boolean,
 		private definitelyRejected: (error: unknown) => boolean = () => false,
+		// Server proof for this exact key, after checking its persisted attempts.
+		private keyWasNeverSubmitted: (
+			error: unknown,
+			key: string,
+		) => boolean = () => false,
 	) {}
 
 	async send(
@@ -134,8 +139,12 @@ export class SendIntents {
 			})
 			.catch((error: unknown) => {
 				// Only a first-attempt pre-send rejection can release the payload lock.
-				// A later rejection cannot disprove an earlier ambiguous acceptance.
-				if (firstAttempt && this.definitelyRejected(error))
+				// Generic later rejections cannot disprove earlier ambiguous acceptance.
+				// Only explicit server proof for this exact key can release an old journal.
+				if (
+					(firstAttempt && this.definitelyRejected(error)) ||
+					this.keyWasNeverSubmitted(error, intent.key)
+				)
 					journal.removeItem(slot);
 				throw error;
 			})

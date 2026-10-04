@@ -1,10 +1,11 @@
-import { draftSendIntent } from "./draft-intent";
+import { DraftIntentConflict, draftSendIntent } from "./draft-intent";
 import { HTTPException } from "hono/http-exception";
 import type { Database } from "./db";
 import { InboxStore } from "./store";
 import { mailboxConfig } from "./mailboxes";
 import { SenderStore } from "./senders";
 export interface OutgoingMail {
+	draft_mode?: "new" | "reply" | "reply-all" | "forward";
 	sender_identity_id?: string;
 	draft_id?: string;
 	to: string | string[];
@@ -80,13 +81,20 @@ export async function sendReal(
 			: undefined;
 		if (draft && draft.delivery_status !== "draft")
 			throw new HTTPException(404, { message: "Draft not found" });
-		({ parent, isReply } = await draftSendIntent(
-			store,
-			mailbox,
-			draft,
-			parentId,
-			isReply,
-		));
+		try {
+			({ parent, isReply } = await draftSendIntent(
+				store,
+				mailbox,
+				draft,
+				parentId,
+				isReply,
+				input.draft_mode,
+			));
+		} catch (error) {
+			if (error instanceof DraftIntentConflict)
+				error.rejectedRequestId = requestId;
+			throw error;
+		}
 		const identity = await new SenderStore(db).resolve(
 			{
 				explicit: input.sender_identity_id,

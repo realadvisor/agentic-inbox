@@ -222,7 +222,13 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 						</details>
 					)}
 				</div>
-				<DraftDeliveryNotice mailboxId={mailboxId} draftId={form.deliveryId} />
+				<DraftDeliveryNotice
+					mailboxId={mailboxId}
+					draftId={form.deliveryId}
+					legacyIntent={Boolean(
+						composeOptions.draftEmail && !composeOptions.draftEmail.draft_mode,
+					)}
+				/>
 				{form.error && (
 					<p role="alert" className="px-5 py-2 text-sm text-kumo-destructive">
 						{form.error}

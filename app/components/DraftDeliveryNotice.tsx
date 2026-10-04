@@ -5,14 +5,23 @@ import { useDraftCleanup, useDraftDelivery } from "~/hooks/useDraftDelivery";
 export default function DraftDeliveryNotice({
 	mailboxId,
 	draftId,
+	legacyIntent = false,
 }: {
 	mailboxId?: string;
 	draftId?: string;
+	legacyIntent?: boolean;
 }) {
 	const state = useDraftDelivery(mailboxId, draftId);
 	const remove = useDraftCleanup();
 	const [failed, setFailed] = useState(false);
-	if (!state) return null;
+	if (!state)
+		return legacyIntent ? (
+			<p role="status" className="p-3 text-sm border-b border-kumo-line">
+				This older draft's original reply/forward intent is unknown. Sending
+				starts a new conversation. To reply in the original thread, compose a
+				fresh reply and copy your text.
+			</p>
+		) : null;
 	return (
 		<div role="status" className="p-3 text-sm border-b border-kumo-line">
 			<p>Message submitted. This draft cannot be sent again.</p>

@@ -14,7 +14,7 @@ import {
 	messageFlagsSchema,
 	setThreadRead,
 } from "./email-actions";
-import { draftSendIntent } from "./draft-intent";
+import { DraftIntentConflict, draftSendIntent } from "./draft-intent";
 import { recipientSuggestions } from "./contacts";
 import {
 	statusChangeSchema,
@@ -45,6 +45,7 @@ const recipients = z.union([
 ]);
 const sendSchema = z
 	.object({
+		draft_mode: z.enum(["new", "reply", "reply-all", "forward"]).optional(),
 		sender_identity_id: z.string().min(1).max(254).optional(),
 		draft_id: id.optional(),
 		to: recipients,
@@ -172,6 +173,15 @@ export function createApi(db: Database, options: ApiOptions) {
 		await next();
 	});
 	app.onError((error, c) => {
+		if (error instanceof DraftIntentConflict)
+			return c.json(
+				{
+					error: error.message,
+					code: "draft_intent_conflict",
+					rejected_request_id: error.rejectedRequestId,
+				},
+				422,
+			);
 		if (error instanceof HTTPException)
 			return c.json({ error: error.message }, error.status);
 		if (error instanceof z.ZodError || error instanceof SyntaxError)
@@ -694,7 +704,13 @@ export function createApi(db: Database, options: ApiOptions) {
 			input.in_reply_to !== existing.draft_source_id
 		)
 			throw new HTTPException(409, { message: "Draft source cannot change" });
-		const mode = input.draft_mode ?? existing?.draft_mode ?? "new";
+		// An already-open pre-upgrade composer supplies only the legacy alias.
+		// Keep that intent unknown, rather than inventing an explicit new mode
+		// that would conflict with the old tab's subsequent reply endpoint.
+		const mode =
+			input.draft_mode ??
+			existing?.draft_mode ??
+			(input.in_reply_to ? null : "new");
 		const parentId =
 			input.draft_source_id ?? input.in_reply_to ?? existing?.draft_source_id;
 		if (mode !== "new" && !parentId)
@@ -797,6 +813,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				draft,
 				action ? id.parse(c.req.param("id")) : undefined,
 				action.endsWith("reply"),
+				input.draft_mode,
 			);
 			const sender = await senders.resolve(
 				{

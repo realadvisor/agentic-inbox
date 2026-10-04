@@ -187,7 +187,7 @@ test("missing/cross-mailbox sources and mismatched explicit send actions fail cl
 	});
 	const { draft_id } = await saved.json();
 	const payload = { draft_id, to: other, subject: "Fwd", html: "Hi" };
-	assert.equal((await call(`emails/${parent.id}/reply`, payload)).status, 409);
+	assert.equal((await call(`emails/${parent.id}/reply`, payload)).status, 422);
 	assert.equal(
 		(await call("drafts", { draft_id, draft_mode: "reply", body: "Hi" }))
 			.status,
@@ -239,6 +239,7 @@ test("migration retains legacy source without guessing mode or rewriting deliver
 	assert.equal(useUIStore.getState().composeOptions.mode, "new");
 	const sent = await call("emails", {
 		draft_id: draft.id,
+		draft_mode: "new",
 		to: "legacy@example.test",
 		html: "Hi",
 	});
@@ -250,4 +251,176 @@ test("migration retains legacy source without guessing mode or rewriting deliver
 		(await store.message(box, parent.id)).message_id,
 		parent.message_id,
 	);
+});
+
+for (const endpoint of ["reply", "forward"] as const) {
+	test(`pre-upgrade open ${endpoint} composer saves all content but must refresh before sending ambiguous intent`, async () => {
+		const parent = (await store.insert(box, {
+			sender: "original@example.test",
+			recipient: "info@realadvisor.com",
+			subject: "Original",
+			body: "Source",
+		}))!;
+		const original = {
+			in_reply_to: parent.id,
+			thread_id: parent.thread_id,
+			sender_identity_id: "info@realadvisor.com",
+			to: "chosen@example.test",
+			cc: "copied@example.test",
+			bcc: "private@example.test",
+			subject: "Untouched subject",
+			body: "<p>Unsaved work &amp; formatting</p><blockquote>Quoted source</blockquote>",
+		};
+		const response = await call("drafts", original);
+		assert.equal(response.status, 201);
+		const { draft_id, draft_version } = await response.json();
+		const fresh = await store.message(box, draft_id);
+		assert.equal(fresh.draft_mode, null);
+		assert.equal(fresh.draft_source_id, parent.id);
+		assert.equal(fresh.in_reply_to, null);
+		assert.equal(fresh.body, original.body);
+		assert.equal(fresh.recipient, original.to);
+		assert.equal(fresh.cc, original.cc);
+		assert.equal(fresh.bcc, original.bcc);
+		assert.equal(fresh.sender_identity_id, original.sender_identity_id);
+		const edited = {
+			...original,
+			body: `${original.body}<p>Further edits</p>`,
+			draft_id,
+			draft_version,
+		};
+		assert.equal((await call("drafts", edited)).status, 200);
+		const payload = {
+			draft_id,
+			sender_identity_id: original.sender_identity_id,
+			to: original.to,
+			cc: original.cc,
+			bcc: original.bcc,
+			subject: original.subject,
+			html: edited.body,
+		};
+		const rejected = await call(`emails/${parent.id}/${endpoint}`, payload);
+		assert.equal(rejected.status, 422);
+		const error = await rejected.json();
+		assert.match(
+			error.error,
+			/Nothing was sent.*Keep any unsaved text.*reload/,
+		);
+		assert.equal(error.code, "draft_intent_conflict");
+		assert.equal((await call("emails", payload)).status, 422); // Old agent modal also cannot silently send as new.
+		assert.equal((await store.message(box, draft_id)).body, edited.body);
+		const calls: Parameters<MailSender["send"]>[0][] = [];
+		const fake: MailSender = {
+			send: async (mail) => {
+				calls.push(mail);
+				return { messageId: `<${crypto.randomUUID()}@fake.test>` };
+			},
+		};
+		const key = crypto.randomUUID();
+		await assert.rejects(
+			sendReal(
+				db,
+				fake,
+				box,
+				key,
+				payload,
+				"legacy-fixture",
+				parent.id,
+				endpoint === "reply",
+			),
+			(error) =>
+				error instanceof Error &&
+				"rejectedRequestId" in error &&
+				error.rejectedRequestId === key,
+		);
+		assert.equal(calls.length, 0);
+		assert.equal(
+			(
+				await db`SELECT count(*)::int AS n FROM outbound_requests WHERE request_id=${key}`
+			)[0].n,
+			0,
+		);
+		// A refreshed client discloses the fallback and explicitly requests new.
+		const reviewed = { ...payload, draft_mode: "new" as const };
+		const sentResponse = await call("emails", reviewed);
+		assert.equal(sentResponse.status, 201);
+		const sent = await store.message(box, (await sentResponse.json()).id);
+		for (const [field, expected] of Object.entries({
+			body: edited.body,
+			recipient: original.to,
+			cc: original.cc,
+			bcc: original.bcc,
+			sender_identity_id: original.sender_identity_id,
+		}))
+			assert.equal(sent[field as keyof typeof sent], expected);
+		assert.equal(sent.in_reply_to, null);
+		assert.notEqual(sent.thread_id, parent.thread_id);
+		const reviewedKey = crypto.randomUUID();
+		await sendReal(db, fake, box, reviewedKey, reviewed, "legacy-fixture");
+		assert.equal(calls[0].to, original.to);
+		assert.equal(calls[0].cc, original.cc);
+		assert.equal(calls[0].bcc, original.bcc);
+		assert.equal(calls[0].html, edited.body);
+		assert.equal(calls[0].from, original.sender_identity_id);
+		assert.equal(calls[0].headers, undefined);
+		await db`DELETE FROM emails WHERE id=${draft_id}`;
+		await sendReal(db, fake, box, reviewedKey, reviewed, "legacy-fixture");
+		assert.equal(calls.length, 1);
+	});
+}
+
+test("pre-upgrade draft version rejects stale save without changing content, then old-client refresh can save safely", async () => {
+	const parent = (await store.insert(box, {
+		sender: "source@example.test",
+		recipient: box,
+		subject: "Source",
+		body: "Hi",
+	}))!;
+	const legacy = (await store.insert(box, {
+		sender: "info@realadvisor.com",
+		sender_identity_id: "info@realadvisor.com",
+		recipient: "kept@example.test",
+		cc: "copy@example.test",
+		bcc: "private@example.test",
+		subject: "Saved work",
+		body: "<p>Saved formatting</p>",
+		in_reply_to: parent.id,
+		draft_source_id: parent.id,
+		delivery_status: "draft",
+		folder_id: "draft",
+	}))!;
+	const [old] =
+		await db`SELECT md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) AS version FROM emails WHERE id=${legacy.id}`;
+	const oldRequest = {
+		draft_id: legacy.id,
+		draft_version: old.version,
+		in_reply_to: parent.id,
+		sender_identity_id: legacy.sender_identity_id,
+		to: legacy.recipient,
+		cc: legacy.cc,
+		bcc: legacy.bcc,
+		subject: legacy.subject,
+		body: "<p>Unsaved tab edits</p>",
+	};
+	assert.equal((await call("drafts", oldRequest)).status, 409);
+	const unchanged = await store.message(box, legacy.id);
+	for (const field of [
+		"body",
+		"recipient",
+		"cc",
+		"bcc",
+		"subject",
+		"sender_identity_id",
+	] as const)
+		assert.equal(unchanged[field], legacy[field]);
+	assert.equal(
+		(
+			await call("drafts", {
+				...oldRequest,
+				draft_version: unchanged.draft_version,
+			})
+		).status,
+		200,
+	);
+	assert.equal((await store.message(box, legacy.id)).body, oldRequest.body);
 });

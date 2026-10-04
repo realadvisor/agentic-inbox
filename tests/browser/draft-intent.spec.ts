@@ -132,79 +132,88 @@ for (const mode of ["new", "reply", "reply-all", "forward"] as const) {
 	}
 }
 
-test("agent-created reply opens in modal and keeps reply intent through save and send", async ({
-	page,
-}) => {
-	const { claimRun, createTools } = await import("../../server/agent/service");
-	const db = connect(),
-		store = new InboxStore(db);
-	const mailbox = `agent-intent-${crypto.randomUUID()}@example.test`;
-	try {
-		await store.createMailbox(mailbox, "Agent draft intent fixture");
-		const source = (await store.insert(mailbox, {
-			sender: "customer@example.test",
-			recipient: mailbox,
-			subject: "Agent source",
-			body: "Synthetic request",
-		}))!;
-		const run = {
-			id: crypto.randomUUID(),
-			mailbox,
-			actor: "synthetic-browser-test",
-			prompt: "Draft a synthetic reply",
-		};
-		await claimRun(db, run);
-		// Explicit fixture calls only the deterministic tool, never an AI provider.
-		await createTools(db, run, () => {}).draft_reply.execute!(
-			{
-				originalEmailId: source.id,
-				body: "Synthetic agent reply",
-				sender_identity_id: mailbox,
-			},
-			{ toolCallId: "synthetic-browser-fixture", messages: [] },
-		);
-		await db`UPDATE agent_turns SET status='complete' WHERE id=${run.id}`;
-		await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${mailbox}`;
-		const [draft] =
-			await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='draft'`;
-		expect(draft.draft_mode).toBe("reply");
-		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
-		await page.getByRole("button", { name: "Agent", exact: true }).click();
-		await page
-			.getByRole("button", { name: "Review draft", exact: true })
-			.click();
-		const modal = page.getByRole("dialog");
-		await expect(
-			modal.getByRole("combobox", { name: "From", exact: true }),
-		).toContainText(mailbox);
-		await modal
-			.getByRole("button", { name: "Save as Draft", exact: true })
-			.click();
-		await expect(
-			page.getByText("Draft saved!", { exact: true }).first(),
-		).toBeVisible();
-		await modal
-			.getByRole("button", { name: "Simulate send", exact: true })
-			.click();
-		await expect
-			.poll(
-				async () =>
-					(
-						await db`SELECT count(*)::int n FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`
-					)[0].n,
-			)
-			.toBe(1);
-		const [sent] =
-			await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`;
-		expect(sent.in_reply_to).toBe(source.message_id);
-		expect(sent.thread_id).toBe(source.thread_id);
-		expect(sent.sender).toBe(mailbox);
-	} finally {
-		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
-		await db`DELETE FROM sender_identities WHERE id=${mailbox}`;
-		await db.end();
-	}
-});
+for (const legacy of [false, true]) {
+	test(`agent-created ${legacy ? "legacy" : "reply"} draft opens in modal and keeps disclosed intent through save and send`, async ({
+		page,
+	}) => {
+		const { claimRun, createTools } =
+			await import("../../server/agent/service");
+		const db = connect(),
+			store = new InboxStore(db);
+		const mailbox = `agent-intent-${crypto.randomUUID()}@example.test`;
+		try {
+			await store.createMailbox(mailbox, "Agent draft intent fixture");
+			const source = (await store.insert(mailbox, {
+				sender: "customer@example.test",
+				recipient: mailbox,
+				subject: "Agent source",
+				body: "Synthetic request",
+			}))!;
+			const run = {
+				id: crypto.randomUUID(),
+				mailbox,
+				actor: "synthetic-browser-test",
+				prompt: "Draft a synthetic reply",
+			};
+			await claimRun(db, run);
+			// Explicit fixture calls only the deterministic tool, never an AI provider.
+			await createTools(db, run, () => {}).draft_reply.execute!(
+				{
+					originalEmailId: source.id,
+					body: "Synthetic agent reply",
+					sender_identity_id: mailbox,
+				},
+				{ toolCallId: "synthetic-browser-fixture", messages: [] },
+			);
+			await db`UPDATE agent_turns SET status='complete' WHERE id=${run.id}`;
+			await db`UPDATE agent_settings SET active_run=NULL,lease_until=NULL WHERE mailbox_id=${mailbox}`;
+			const [draft] =
+				await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='draft'`;
+			expect(draft.draft_mode).toBe("reply");
+			if (legacy)
+				await db`UPDATE emails SET draft_mode=NULL WHERE id=${draft.id}`;
+			await page.goto(`/mailbox/${mailbox}/emails/inbox`);
+			await page.getByRole("button", { name: "Agent", exact: true }).click();
+			await page
+				.getByRole("button", { name: "Review draft", exact: true })
+				.click();
+			const modal = page.getByRole("dialog");
+			if (legacy)
+				await expect(
+					modal.getByText(/original reply\/forward intent is unknown/),
+				).toBeVisible();
+			await expect(
+				modal.getByRole("combobox", { name: "From", exact: true }),
+			).toContainText(mailbox);
+			await modal
+				.getByRole("button", { name: "Save as Draft", exact: true })
+				.click();
+			await expect(
+				page.getByText("Draft saved!", { exact: true }).first(),
+			).toBeVisible();
+			await modal
+				.getByRole("button", { name: "Simulate send", exact: true })
+				.click();
+			await expect
+				.poll(
+					async () =>
+						(
+							await db`SELECT count(*)::int n FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`
+						)[0].n,
+				)
+				.toBe(1);
+			const [sent] =
+				await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`;
+			expect(sent.in_reply_to).toBe(legacy ? null : source.message_id);
+			expect(sent.thread_id === source.thread_id).toBe(!legacy);
+			expect(sent.sender).toBe(mailbox);
+		} finally {
+			await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
+			await db`DELETE FROM sender_identities WHERE id=${mailbox}`;
+			await db.end();
+		}
+	});
+}
 
 for (const mode of ["new", "reply", "reply-all", "forward"] as const) {
 	test(`${mode}: direct-send retry in reopened composer retains exact endpoint, payload and key`, async ({
@@ -285,6 +294,145 @@ for (const mode of ["new", "reply", "reply-all", "forward"] as const) {
 						? /\/emails$/
 						: /\/reply$/,
 			);
+		} finally {
+			await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
+			await db`DELETE FROM sender_identities WHERE id=${mailbox}`;
+			await db.end();
+		}
+	});
+}
+
+for (const mode of ["reply", "forward"] as const) {
+	test(`old ${mode} tab preserves saved/unsaved text on rejection and refreshed draft discloses new-conversation fallback`, async ({
+		page,
+		context,
+	}) => {
+		const db = connect(),
+			store = new InboxStore(db);
+		const mailbox = `legacy-tab-${crypto.randomUUID()}@example.test`;
+		let emulateOldTab = true;
+		try {
+			await store.createMailbox(mailbox, "Legacy tab fixture");
+			const source = (await store.insert(mailbox, {
+				sender: "original@example.test",
+				recipient: mailbox,
+				subject: "Legacy source",
+				body: "Source",
+			}))!;
+			await context.route("**/api/v1/mailboxes/**", async (route) => {
+				const request = route.request();
+				if (
+					emulateOldTab &&
+					request.method() === "POST" &&
+					/\/(drafts|reply|forward)$/.test(request.url())
+				) {
+					const body = request.postDataJSON();
+					if (body.draft_source_id) body.in_reply_to = body.draft_source_id;
+					delete body.draft_source_id;
+					delete body.draft_mode;
+					await route.continue({ postData: JSON.stringify(body) });
+				} else await route.continue();
+			});
+			await page.goto(`/mailbox/${mailbox}/emails/inbox?email=${source.id}`);
+			await page
+				.getByRole("button", {
+					name: mode === "reply" ? "Reply" : "Forward",
+					exact: true,
+				})
+				.first()
+				.click();
+			const composer = page.getByRole("region", { name: "Email composer" });
+			if (mode === "forward") {
+				await composer
+					.getByLabel("To", { exact: true })
+					.fill("chosen@example.test");
+				await composer.getByLabel("To", { exact: true }).press("Enter");
+			}
+			await composer
+				.getByRole("combobox", { name: "From", exact: true })
+				.click();
+			await page
+				.getByRole("option")
+				.filter({ hasText: `<${mailbox}>` })
+				.click();
+			await composer
+				.locator('[contenteditable="true"]')
+				.fill("Saved content stays intact");
+			await composer
+				.getByRole("button", { name: "Save as Draft", exact: true })
+				.click();
+			await expect
+				.poll(
+					async () =>
+						(
+							await db`SELECT count(*)::int n FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='draft'`
+						)[0].n,
+				)
+				.toBe(1);
+			const [draft] =
+				await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='draft'`;
+			expect(draft.draft_mode).toBeNull();
+			await composer
+				.locator('[contenteditable="true"]')
+				.fill("Unsaved changes must stay in the tab");
+			await composer
+				.getByRole("button", { name: "Simulate send", exact: true })
+				.click();
+			await expect(
+				composer.getByText(
+					/Nothing was sent by this request.*Keep any unsaved text/,
+				),
+			).toBeVisible();
+			await expect(composer.locator('[contenteditable="true"]')).toContainText(
+				"Unsaved changes must stay in the tab",
+			);
+			const [unchanged] = await db`SELECT * FROM emails WHERE id=${draft.id}`;
+			expect(unchanged.body).toBe(draft.body);
+			expect(unchanged.recipient).toBe(draft.recipient);
+			expect(
+				await page.evaluate(
+					(box) => sessionStorage.getItem(`inbox-send-intent:v1:${box}`),
+					mailbox,
+				),
+			).toBeNull();
+			expect(
+				(
+					await db`SELECT count(*)::int n FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`
+				)[0].n,
+			).toBe(0);
+			// Persist retained edits before the explicit reload/reopen recovery step.
+			await composer
+				.getByRole("button", { name: "Save as Draft", exact: true })
+				.click();
+			await expect
+				.poll(
+					async () =>
+						(await db`SELECT body FROM emails WHERE id=${draft.id}`)[0].body,
+				)
+				.toContain("Unsaved changes must stay in the tab");
+			emulateOldTab = false;
+			await page.goto(`/mailbox/${mailbox}/emails/draft?email=${draft.id}`);
+			await expect(
+				page.getByText(/original reply\/forward intent is unknown/).first(),
+			).toBeVisible();
+			await page
+				.getByRole("button", { name: "Simulate send", exact: true })
+				.first()
+				.click();
+			await expect
+				.poll(
+					async () =>
+						(
+							await db`SELECT count(*)::int n FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`
+						)[0].n,
+				)
+				.toBe(1);
+			const [sent] =
+				await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`;
+			expect(sent.recipient).toBe(draft.recipient);
+			expect(sent.body).toContain("Unsaved changes must stay in the tab");
+			expect(sent.in_reply_to).toBeNull();
+			expect(sent.thread_id).not.toBe(source.thread_id);
 		} finally {
 			await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
 			await db`DELETE FROM sender_identities WHERE id=${mailbox}`;

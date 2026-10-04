@@ -63,7 +63,13 @@ reliably distinguished. Migration preserves any matching same-mailbox UUID sourc
 as context without guessing from the subject or changing old headers. These drafts
 reopen/send as new messages without reply headers; compose a fresh reply if threading
 is needed. Older clients may still submit the deprecated `in_reply_to` source alias,
-but must provide explicit `draft_mode` to request reply/forward behavior. Nullable
+but alias-only new drafts keep unknown legacy intent. Old tabs' ambiguous or
+mismatched send requests return 422 before delivery, with guidance to keep unsaved
+text, reload and reopen. Reopened legacy drafts show a notice that sending starts a
+new conversation; the refreshed client explicitly confirms `draft_mode: "new"` in
+the send request. Explicit reply/forward intent requires a fresh composition.
+Pre-upgrade stale saves reject without changing stored contents or clearing the
+tab's text; retain unsaved text before reloading the draft. Nullable
 columns keep older application writes compatible during rollout. Existing version
 tokens become stale once after upgrade; reload a draft before editing it.
 
