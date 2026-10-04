@@ -14,6 +14,7 @@ import api from "~/services/api";
 import type { ConversationTag, Tag } from "~/types";
 
 export function TagChips({
+	inline = false,
 	compact = false,
 	tags = [],
 	onRemove,
@@ -21,6 +22,7 @@ export function TagChips({
 	disabled,
 	details,
 }: {
+	inline?: boolean;
 	compact?: boolean;
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	onRemove?: (id: string) => void;
@@ -30,7 +32,11 @@ export function TagChips({
 }) {
 	return (
 		<span
-			className={`inline-flex max-w-full flex-wrap ${compact ? "gap-1" : "gap-1.5"}`}
+			className={
+				inline
+					? "contents"
+					: `inline-flex max-w-full flex-wrap ${compact ? "gap-1" : "gap-1.5"}`
+			}
 		>
 			{tags.map((tag) => (
 				<span
@@ -286,12 +292,14 @@ export function TagPicker({
 }
 
 export function TagActions({
+	compact = false,
 	children,
 	mailboxId,
 	threadIds,
 	tags,
 	bulk = false,
 }: {
+	compact?: boolean;
 	mailboxId: string;
 	threadIds: string[];
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
@@ -314,13 +322,15 @@ export function TagActions({
 		mutation.mutate({ id, action });
 	return (
 		<div
-			className="flex flex-wrap items-center gap-1.5 text-sm"
+			className={`flex flex-wrap items-center text-sm ${compact ? "gap-1" : "gap-1.5"}`}
 			aria-label={bulk ? "Bulk tags" : "Conversation tags"}
 		>
 			{children}
 			{!bulk && (
 				<>
 					<TagChips
+						inline={compact}
+						compact={compact}
 						tags={tags?.filter(
 							(tag) =>
 								tag.group_selection !== "single" &&
