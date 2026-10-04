@@ -1,3 +1,4 @@
+import { singleRequestByteLimit } from "../shared/jev-budget";
 import { readFile } from "node:fs/promises";
 import {
 	publishOutbox,
@@ -356,7 +357,7 @@ test("config changes fence results and do not automatically scan history", async
 });
 test("spam is skipped, oversized conversations need review without provider calls; read updates do not requeue", async () => {
 	await reset();
-	const thread = await message(undefined, "x".repeat(100001));
+	const thread = await message(undefined, "x".repeat(singleRequestByteLimit));
 	let calls = 0;
 	await runQueue(db, "test", 3, async (...args) => {
 		calls++;
