@@ -1,0 +1,207 @@
+import { test, expect } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { connect } from "../../server/db";
+import { InboxStore } from "../../server/store";
+
+test.use({ locale: "fr-CH" });
+test("one-click translation uses browser language, caches toggles and remembers language choice", async ({
+	page,
+}) => {
+	const db = connect(),
+		store = new InboxStore(db),
+		mailbox = `translation-${randomUUID()}@example.test`;
+	let requests = 0;
+	try {
+		await store.createMailbox(mailbox, "Translation");
+		await store.insert(mailbox, {
+			sender: "person@example.test",
+			recipient: mailbox,
+			subject: "Translate this message",
+			body: "<p>Hello from the original message.</p>",
+		});
+		await page.route("**/emails/*/translation", async (route) => {
+			requests++;
+			const { targetLanguage } = route.request().postDataJSON();
+			await route.fulfill({
+				json: {
+					text:
+						targetLanguage === "fr"
+							? "Bonjour ! <script>bad()</script>"
+							: "Hallo!",
+					targetLanguage,
+				},
+			});
+		});
+		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
+		await page.getByText("Translate this message", { exact: true }).click();
+		await expect(
+			page.getByRole("combobox", { name: "Translation language" }),
+		).toContainText("Français");
+		expect(requests).toBe(0);
+		await page
+			.getByRole("button", { name: "See translation", exact: true })
+			.click();
+		const translated = page.getByRole("region", { name: "Translated email" });
+		await expect(translated).toHaveText("Bonjour ! <script>bad()</script>");
+		await expect(translated.locator("script")).toHaveCount(0);
+		await page
+			.getByRole("button", { name: "See original", exact: true })
+			.click();
+		await expect(
+			page.frameLocator('iframe[title="Email content"]').locator("body"),
+		).toContainText("Hello from the original message.");
+		await page
+			.getByRole("button", { name: "See translation", exact: true })
+			.click();
+		await expect(translated).toContainText("Bonjour");
+		expect(requests).toBe(1);
+		await page.getByRole("combobox", { name: "Translation language" }).click();
+		await page.getByRole("option", { name: "Deutsch", exact: true }).click();
+		await expect(translated).toHaveText("Hallo!");
+		expect(requests).toBe(2);
+		await page.screenshot({ path: ".local/translation-desktop.png" });
+		// Check the control's narrow layout independently of the app's desktop sidebar.
+		await translated.locator("..").evaluate((element) => {
+			element.style.width = "260px";
+		});
+		await translated
+			.locator("..")
+			.screenshot({ path: ".local/translation-narrow.png" });
+		await page.reload();
+		await expect(
+			page.getByRole("combobox", { name: "Translation language" }),
+		).toContainText("Deutsch");
+		await expect(
+			page.getByRole("button", { name: "See translation", exact: true }),
+		).toBeVisible();
+		expect(requests).toBe(2);
+	} finally {
+		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
+		await db.end();
+	}
+});
+
+test("failure keeps original visible, explicit retry works and translation does not leak to another message", async ({
+	page,
+}) => {
+	const db = connect(),
+		store = new InboxStore(db),
+		mailbox = `translation-error-${randomUUID()}@example.test`;
+	let requests = 0;
+	try {
+		await store.createMailbox(mailbox, "Translation errors");
+		const first = await store.insert(mailbox, {
+			sender: "first@example.test",
+			recipient: mailbox,
+			subject: "Thread translation",
+			body: "<p>First original.</p>",
+		});
+		await store.insert(mailbox, {
+			sender: "second@example.test",
+			recipient: mailbox,
+			subject: "Thread translation",
+			body: "<p>Second original.</p>",
+			thread_id: first!.thread_id!,
+		});
+		await page.route("**/emails/*/translation", async (route) => {
+			requests++;
+			if (requests === 1)
+				return route.fulfill({
+					status: 502,
+					json: { error: "Translation unavailable." },
+				});
+			return route.fulfill({
+				json: { text: "Traduction réussie.", targetLanguage: "fr" },
+			});
+		});
+		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
+		await page.getByText("Thread translation", { exact: true }).click();
+		await page.getByRole("button", { name: /^F first@example\.test/ }).click();
+		await page
+			.getByRole("button", { name: "See translation", exact: true })
+			.click();
+		await expect(page.getByRole("alert")).toContainText(
+			"Translation unavailable.",
+		);
+		await expect(page.locator('iframe[title="Email content"]')).toBeVisible();
+		await page.getByRole("button", { name: "Retry translation" }).click();
+		await expect(
+			page.getByRole("region", { name: "Translated email" }),
+		).toHaveText("Traduction réussie.");
+		await page
+			.getByRole("button", { name: "Collapse message" })
+			.first()
+			.click();
+		await page.getByRole("button", { name: /^S second@example\.test/ }).click();
+		await expect(
+			page.getByRole("region", { name: "Translated email" }),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: "See translation", exact: true }),
+		).toBeVisible();
+		expect(requests).toBe(2);
+	} finally {
+		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
+		await db.end();
+	}
+});
+
+test("a late translation never replaces a newly selected language", async ({
+	page,
+}) => {
+	const db = connect(),
+		store = new InboxStore(db),
+		mailbox = `translation-race-${randomUUID()}@example.test`;
+	let finishFrench: (() => void) | undefined;
+	try {
+		await store.createMailbox(mailbox, "Translation race");
+		await store.insert(mailbox, {
+			sender: "sender@example.test",
+			recipient: mailbox,
+			subject: "Slow translation",
+			body: "<p>The original stays readable.</p>",
+		});
+		await page.route("**/emails/*/translation", async (route) => {
+			const { targetLanguage } = route.request().postDataJSON();
+			if (targetLanguage === "fr")
+				await new Promise<void>((resolve) => {
+					finishFrench = resolve;
+				});
+			await route
+				.fulfill({
+					json: {
+						text:
+							targetLanguage === "fr"
+								? "Réponse tardive."
+								: "Deutsche Übersetzung.",
+						targetLanguage,
+					},
+				})
+				.catch(() => {});
+		});
+		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
+		await page.getByText("Slow translation", { exact: true }).click();
+		await page
+			.getByRole("button", { name: "See translation", exact: true })
+			.click();
+		await expect(
+			page.getByRole("status").filter({ hasText: "Translating…" }),
+		).toHaveText("Translating…");
+		await expect(
+			page.frameLocator('iframe[title="Email content"]').locator("body"),
+		).toContainText("The original stays readable.");
+		await page.getByRole("combobox", { name: "Translation language" }).click();
+		await page.getByRole("option", { name: "Deutsch", exact: true }).click();
+		await expect(
+			page.getByRole("region", { name: "Translated email" }),
+		).toHaveText("Deutsche Übersetzung.");
+		finishFrench?.();
+		await expect(
+			page.getByRole("region", { name: "Translated email" }),
+		).toHaveText("Deutsche Übersetzung.");
+	} finally {
+		finishFrench?.();
+		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
+		await db.end();
+	}
+});

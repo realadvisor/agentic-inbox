@@ -7781,6 +7781,125 @@
 				},
 				"operationId": "replayInboundRecovery"
 			}
+		},
+		"/api/v1/mailboxes/{mailboxId}/emails/{emailId}/translation": {
+			"post": {
+				"tags": ["Agent"],
+				"summary": "Translate a delivered email for reading",
+				"operationId": "translateEmail",
+				"description": "Authenticated inbox access; integration API keys cannot call this route. Uses the mailbox AI model. Returns plain text without changing the message or attachments. Maximum source HTML 200,000 characters and extracted text 16,000 characters; no silent truncation.",
+				"parameters": [
+					{
+						"name": "mailboxId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "emailId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["targetLanguage"],
+								"properties": {
+									"targetLanguage": {
+										"type": "string",
+										"enum": [
+											"en",
+											"fr",
+											"de",
+											"it",
+											"es",
+											"pt",
+											"nl",
+											"pl",
+											"uk",
+											"ru",
+											"ar",
+											"he",
+											"tr",
+											"el",
+											"ro",
+											"cs",
+											"hu",
+											"sv",
+											"da",
+											"no",
+											"fi",
+											"ja",
+											"ko",
+											"zh",
+											"hi",
+											"id",
+											"vi",
+											"th"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Complete translation",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["text", "targetLanguage"],
+									"properties": {
+										"text": {
+											"type": "string"
+										},
+										"targetLanguage": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input or draft"
+					},
+					"403": {
+						"description": "Access denied"
+					},
+					"404": {
+						"description": "Message not found in mailbox"
+					},
+					"413": {
+						"description": "Message too large"
+					},
+					"422": {
+						"description": "No readable text"
+					},
+					"502": {
+						"description": "Translation unavailable or incomplete"
+					},
+					"503": {
+						"description": "AI provider not configured"
+					},
+					"504": {
+						"description": "Translation timed out"
+					}
+				}
+			}
 		}
 	},
 	"components": {
