@@ -29,6 +29,7 @@ interface EmailPanelToolbarProps {
 	mailboxId?: string;
 	isDraftFolder: boolean;
 	isSending: boolean;
+	sendBlocked?: boolean;
 	moveToFolders: Folder[];
 	canReply: boolean;
 	onBack: () => void;
@@ -49,6 +50,7 @@ export default function EmailPanelToolbar({
 	mailboxId,
 	isDraftFolder,
 	isSending,
+	sendBlocked,
 	moveToFolders,
 	canReply,
 	onBack,
@@ -83,6 +85,7 @@ export default function EmailPanelToolbar({
 						icon={<PaperPlaneTiltIcon size={16} />}
 						onClick={onSendDraft}
 						loading={isSending}
+						disabled={isSending || sendBlocked}
 					>
 						<SendLabel sending={isSending} />
 					</Button>

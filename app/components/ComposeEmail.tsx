@@ -1,4 +1,5 @@
 import SenderSelect from "./SenderSelect";
+import DraftDeliveryNotice from "./DraftDeliveryNotice";
 import { SendLabel } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
@@ -24,6 +25,8 @@ export default function ComposeEmail() {
 		senderConfig,
 		senderIdentityId,
 		changeSender,
+		deliveryId,
+		sendBlocked,
 		to,
 		setTo,
 		cc,
@@ -57,6 +60,7 @@ export default function ComposeEmail() {
 					onSubmit={(e) => handleSend(e, closeComposeModal)}
 					className="space-y-4"
 				>
+					<DraftDeliveryNotice mailboxId={mailboxId} draftId={deliveryId} />
 					{error && <Banner variant="error" text={error} />}
 					<SenderSelect
 						config={senderConfig}
@@ -137,7 +141,7 @@ export default function ComposeEmail() {
 								variant="secondary"
 								size="sm"
 								loading={isSavingDraft}
-								disabled={isSending}
+								disabled={isSending || sendBlocked}
 								icon={<FloppyDiskIcon size={14} />}
 								onClick={handleSaveDraft}
 							>
@@ -148,7 +152,7 @@ export default function ComposeEmail() {
 								variant="primary"
 								size="sm"
 								loading={isSending}
-								disabled={isSavingDraft || isSending}
+								disabled={isSavingDraft || isSending || sendBlocked}
 								icon={<PaperPlaneTiltIcon size={14} />}
 							>
 								<SendLabel sending={isSending} />

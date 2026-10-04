@@ -1,3 +1,11 @@
+import { sendErrorMessage } from "~/lib/send-error";
+import DraftDeliveryNotice from "./DraftDeliveryNotice";
+import { draftDelivery } from "~/lib/draft-delivery";
+import {
+	notifyDraftDelivery,
+	useDraftDelivery,
+	useDraftCleanup,
+} from "~/hooks/useDraftDelivery";
 import "./composer-ai.css";
 import {
 	ArrowBendUpLeftIcon,
@@ -79,6 +87,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 	const updateEmail = useUpdateEmail();
 	const deleteEmailMut = useDeleteEmail();
+	const draftCleanup = useDraftCleanup();
 	const moveEmailMut = useMoveEmail();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
@@ -88,6 +97,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 	const { closePanel, startCompose, isComposing } = useUIStore();
 	const toastManager = useKumoToastManager();
+	const deliveryState = useDraftDelivery(mailboxId, emailId);
 	const [isSending, setIsSending] = useState(false);
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(
@@ -200,7 +210,13 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const handleSendDraft = async (draftMsg?: Email) => {
 		let target = draftMsg || email;
-		if (!mailboxId || !currentMailbox) return;
+		if (
+			!mailboxId ||
+			!currentMailbox ||
+			isSending ||
+			draftDelivery.read(mailboxId, target.id)
+		)
+			return;
 		setIsSending(true);
 		try {
 			if (!target.recipient || !target.subject) {
@@ -239,27 +255,42 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				html: target.body || "",
 				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",
 			};
-			if (originalEmail)
-				await replyMut.mutateAsync({
-					mailboxId,
-					emailId: originalEmail.id,
-					email: emailData,
-					sendScope: target.id,
-				});
-			else
-				await sendEmailMut.mutateAsync({
-					mailboxId,
-					email: emailData,
-					sendScope: target.id,
-				});
-			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });
+			const accepted = await draftDelivery.submit(
+				mailboxId,
+				target.id,
+				async () => {
+					if (originalEmail)
+						await replyMut.mutateAsync({
+							mailboxId,
+							emailId: originalEmail.id,
+							email: emailData,
+							sendScope: target.id,
+						});
+					else
+						await sendEmailMut.mutateAsync({
+							mailboxId,
+							email: emailData,
+							sendScope: target.id,
+						});
+				},
+			);
+			if (!accepted) return;
+			notifyDraftDelivery();
 			toastManager.add({ title: "Message submitted" });
-			if (isDraftFolder) closePanel();
+			try {
+				await draftCleanup.cleanup(mailboxId, target.id);
+				if (isDraftFolder) closePanel();
+			} catch {
+				toastManager.add({
+					title:
+						"Message submitted. Draft cleanup failed; retry cleanup from the draft.",
+				});
+			}
 		} catch (err) {
-			const message =
-				(err instanceof Error ? err.message : null) || "Failed to send email.";
+			const message = sendErrorMessage(err);
 			toastManager.add({ title: message, variant: "error" });
 		} finally {
+			notifyDraftDelivery();
 			setIsSending(false);
 		}
 	};
@@ -274,6 +305,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				isDraftFolder={isDraftFolder}
 				isSending={isSending}
 				canReply={Boolean(lastReceivedMessage)}
+				sendBlocked={!!deliveryState}
 				moveToFolders={moveToFolders}
 				onBack={closePanel}
 				onSendDraft={() => handleSendDraft()}
@@ -368,6 +400,15 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			/>
 
 			<div className="flex-1 overflow-y-auto">
+				{allMessages
+					.filter((msg) => draftMessageIds.has(msg.id))
+					.map((msg) => (
+						<DraftDeliveryNotice
+							key={msg.id}
+							mailboxId={mailboxId}
+							draftId={msg.id}
+						/>
+					))}
 				{hasThread ? (
 					allMessages.map((msg, idx) => {
 						const isDraft = draftMessageIds.has(msg.id);
