@@ -118,8 +118,9 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 			>
 				<div className="flex-1 min-h-0 overflow-y-auto">
 					<div>
-						<div className="px-4 py-2 border-b border-kumo-line/60">
+						<div className="px-4 py-1.5 min-h-9 border-b border-kumo-line/60">
 							<SenderSelect
+								compact
 								config={form.senderConfig}
 								value={form.senderIdentityId}
 								onChange={form.changeSender}
