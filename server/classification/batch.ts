@@ -140,7 +140,11 @@ export function batchRequests(
 				(JSON.stringify(group[0].body.state) !==
 					JSON.stringify(item.body.state) ||
 					group[0].body.model !== item.body.model ||
-					!requestFits(item.body.state, payload([...group, item]).questions))
+					(!requestFits(item.body.state, payload([...group, item]).questions) &&
+						JSON.stringify(Object.values(payload(group).questions)) !==
+							JSON.stringify(
+								Object.values(payload([...group, item]).questions),
+							)))
 			) {
 				await send(group);
 				group = [];

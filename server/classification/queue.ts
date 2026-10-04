@@ -7,6 +7,8 @@ import {
 import { reuseResult } from "./result-cache";
 import {
 	requestFits,
+	encodedSize,
+	singleRequestByteLimit,
 	providerError,
 	withoutExamples,
 } from "../../shared/jev-budget";
@@ -65,8 +67,8 @@ export async function askJev(
 		prepared.questions.match = withoutExamples(
 			prepared.questions.match,
 		) as JevQuestion;
-	if (!requestFits(state, prepared.questions))
-		throw new JevError("provider_context_limit", false);
+	if (encodedSize(prepared) > singleRequestByteLimit)
+		throw new JevError("conversation_too_large", false);
 	let response: Response;
 	try {
 		response = await request("https://api.typesafe.ai/v1/systemone", {
