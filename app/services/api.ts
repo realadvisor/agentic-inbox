@@ -1,3 +1,4 @@
+import { SendIntents } from "./send-intent";
 import type { RecipientSuggestion } from "shared/contacts";
 import type { AgentSettings, AgentCatalog } from "shared/agent";
 import type { ComposerAiInput, ComposerAiResult } from "shared/composer-ai";
@@ -99,6 +100,20 @@ function put<T>(url: string, body?: unknown) {
 function del<T>(url: string) {
 	return request<T>(url, { method: "DELETE" });
 }
+
+const sendIntents = new SendIntents(
+	() => window.sessionStorage,
+	(url, body, key) =>
+		request<void>(url, {
+			method: "POST",
+			body,
+			headers: { "Idempotency-Key": key },
+		}),
+	(message) => window.confirm(message),
+	(error) =>
+		error instanceof ApiError &&
+		[400, 401, 403, 404, 413, 422].includes(error.status),
+);
 
 // ---------- Typed response shapes ----------
 
@@ -241,8 +256,13 @@ const api = {
 			params,
 			signal: opts?.signal,
 		}),
-	sendEmail: (mailboxId: string, email: unknown) =>
-		post<void>(`/api/v1/mailboxes/${mailboxId}/emails`, email),
+	sendEmail: (mailboxId: string, email: unknown, sendScope: string) =>
+		sendIntents.send(
+			mailboxId,
+			sendScope,
+			`/api/v1/mailboxes/${mailboxId}/emails`,
+			email,
+		),
 	getEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, {
 			signal: opts?.signal,
@@ -302,10 +322,27 @@ const api = {
 			`/api/v1/mailboxes/${mailboxId}/drafts`,
 			draft,
 		),
-	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
-		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
-	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
-		post<void>(
+	replyToEmail: (
+		mailboxId: string,
+		emailId: string,
+		email: unknown,
+		sendScope: string,
+	) =>
+		sendIntents.send(
+			mailboxId,
+			sendScope,
+			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`,
+			email,
+		),
+	forwardEmail: (
+		mailboxId: string,
+		emailId: string,
+		email: unknown,
+		sendScope: string,
+	) =>
+		sendIntents.send(
+			mailboxId,
+			sendScope,
 			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`,
 			email,
 		),

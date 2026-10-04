@@ -234,6 +234,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				cc: toEmailListValue(splitEmailList(target.cc)),
 				bcc: toEmailListValue(splitEmailList(target.bcc)),
 				draft_id: target.id,
+				sender_identity_id: target.sender_identity_id ?? undefined,
 				subject: target.subject || "(no subject)",
 				html: target.body || "",
 				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",
@@ -243,8 +244,14 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					mailboxId,
 					emailId: originalEmail.id,
 					email: emailData,
+					sendScope: target.id,
 				});
-			else await sendEmailMut.mutateAsync({ mailboxId, email: emailData });
+			else
+				await sendEmailMut.mutateAsync({
+					mailboxId,
+					email: emailData,
+					sendScope: target.id,
+				});
 			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });
 			toastManager.add({ title: "Message submitted" });
 			if (isDraftFolder) closePanel();

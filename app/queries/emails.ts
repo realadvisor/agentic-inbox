@@ -112,8 +112,15 @@ function useInvalidateEmailData() {
 export function useSendEmail() {
 	const invalidate = useInvalidateEmailData();
 	return useMutation({
-		mutationFn: ({ mailboxId, email }: { mailboxId: string; email: unknown }) =>
-			api.sendEmail(mailboxId, email),
+		mutationFn: ({
+			mailboxId,
+			email,
+			sendScope,
+		}: {
+			mailboxId: string;
+			email: unknown;
+			sendScope: string;
+		}) => api.sendEmail(mailboxId, email, sendScope),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
 	});
 }
@@ -276,11 +283,13 @@ export function useReplyToEmail() {
 			mailboxId,
 			emailId,
 			email,
+			sendScope,
 		}: {
 			mailboxId: string;
 			emailId: string;
 			email: unknown;
-		}) => api.replyToEmail(mailboxId, emailId, email),
+			sendScope: string;
+		}) => api.replyToEmail(mailboxId, emailId, email, sendScope),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
 	});
 }
@@ -292,11 +301,13 @@ export function useForwardEmail() {
 			mailboxId,
 			emailId,
 			email,
+			sendScope,
 		}: {
 			mailboxId: string;
 			emailId: string;
 			email: unknown;
-		}) => api.forwardEmail(mailboxId, emailId, email),
+			sendScope: string;
+		}) => api.forwardEmail(mailboxId, emailId, email, sendScope),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
 	});
 }
