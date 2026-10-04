@@ -350,3 +350,73 @@ test("new draft supports multiple To recipients and Cc/Bcc without sending", asy
 		await stopRun(db, mailbox, run.id);
 	}
 });
+
+test("agent draft sender selection honors the API key mailbox scope", async () => {
+	const run = {
+		id: randomUUID(),
+		mailbox,
+		actor: "integration@example.test",
+		prompt: "Draft a reply",
+		permissions: ["mail:read", "drafts:manage"],
+		mailboxIds: [mailbox],
+	};
+	await claimRun(db, run);
+	const tools = createTools(db, run, () => {});
+	assert.ok(
+		"draft_email" in tools &&
+			"list_senders" in tools &&
+			"update_draft" in tools,
+	);
+	try {
+		const config = await tools.list_senders.execute!({}, options);
+		assert.ok(config && "senders" in config);
+		assert.deepEqual(
+			config.senders.map((s) => s.id),
+			[mailbox],
+		);
+		await assert.rejects(
+			async () =>
+				tools.draft_email.execute!(
+					{
+						to: "customer@example.test",
+						subject: "Wrong sender",
+						body: "Hello",
+						sender_identity_id: other,
+					},
+					options,
+				),
+			/does not permit/,
+		);
+		const result = await tools.draft_email.execute!(
+			{
+				to: "customer@example.test",
+				subject: "Allowed sender",
+				body: "Hello",
+				sender_identity_id: mailbox,
+			},
+			options,
+		);
+		assert.ok(
+			result &&
+				typeof result === "object" &&
+				"draft_id" in result &&
+				typeof result.draft_id === "string",
+		);
+		const draft = await store.message(mailbox, result.draft_id);
+		assert.equal(draft.sender_identity_id, mailbox);
+		await assert.rejects(
+			async () =>
+				tools.update_draft.execute!(
+					{
+						draftId: draft.id,
+						draftVersion: draft.draft_version!,
+						sender_identity_id: other,
+					},
+					options,
+				),
+			/does not permit/,
+		);
+	} finally {
+		await stopRun(db, mailbox, run.id);
+	}
+});

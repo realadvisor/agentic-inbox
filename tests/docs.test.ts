@@ -14,7 +14,7 @@ test("OpenAPI is valid and covers every implemented API operation", async () => 
 		const actual = api.routes
 			.filter(
 				(r) =>
-					["GET", "POST", "PUT", "DELETE"].includes(r.method) &&
+					["GET", "POST", "PUT", "PATCH", "DELETE"].includes(r.method) &&
 					!r.path.startsWith("/api/docs") &&
 					!r.path.startsWith("/api/openapi"),
 			)

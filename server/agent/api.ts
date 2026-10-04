@@ -170,6 +170,7 @@ export function agentApi(db: Database, options: AgentOptions) {
 				? `api-key:${c.get("apiKey")!.id}`
 				: (options.actor ?? "local-synthetic-user"),
 			permissions: c.get("apiKey")?.permissions,
+			mailboxIds: c.get("apiKey")?.mailbox_ids,
 			classification: options.classification && {
 				...options.classification,
 				admin: c.get("apiKey")

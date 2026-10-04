@@ -14,7 +14,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { Database } from "../db";
 import { InboxStore } from "../store";
-import { liveSender } from "../mailboxes";
+import { SenderStore } from "../senders";
 import { classificationTools } from "./classification-tools";
 import {
 	createActionTools,
@@ -93,6 +93,7 @@ export async function saveSettings(
 	return settings;
 }
 export interface Run {
+	mailboxIds?: string[];
 	permissions?: string[];
 	id: string;
 	mailbox: string;
@@ -414,9 +415,10 @@ export function createTools(
 				"Save a plain-text reply in Drafts for human review. Never sends. Recipient and thread come from the original message.",
 			inputSchema: z.object({
 				originalEmailId: uuid,
+				sender_identity_id: z.string().min(1).max(254).optional(),
 				body: z.string().trim().min(1).max(20000),
 			}),
-			execute: async ({ originalEmailId, body }) =>
+			execute: async ({ originalEmailId, body, sender_identity_id }) =>
 				mutate(
 					"draft_reply",
 					async (tx) => {
@@ -432,8 +434,21 @@ export function createTools(
 							.string()
 							.email()
 							.parse(original.reply_to || original.sender);
+						const sender = await new SenderStore(tx).resolve(
+							{
+								explicit: sender_identity_id,
+								reply: original,
+								mailboxId: run.mailbox,
+							},
+							{
+								mailboxIds:
+									run.mailboxIds ??
+									(run.permissions ? [run.mailbox] : undefined),
+							},
+						);
 						const draft = await scoped.insert(run.mailbox, {
-							sender: liveSender(run.mailbox) ?? run.mailbox,
+							sender: sender.email,
+							sender_identity_id: sender.id,
 							recipient,
 							subject: /^Re:/i.test(original.subject)
 								? original.subject
@@ -445,9 +460,13 @@ export function createTools(
 							thread_id: original.thread_id ?? original.id,
 							in_reply_to: original.id,
 						});
-						return { draft_id: draft!.id, subject: draft!.subject };
+						return {
+							draft_id: draft!.id,
+							subject: draft!.subject,
+							sender_identity_id: sender.id,
+						};
 					},
-					`reply:${originalEmailId}`,
+					`reply:${originalEmailId}:${sender_identity_id ?? "auto"}`,
 				),
 		}),
 	};
@@ -460,23 +479,40 @@ export function createTools(
 	const tools = {
 		...reads,
 		...reply,
-		...createActionTools(db, run.mailbox, run.actor, mutate, consumeText),
+		...createActionTools(
+			db,
+			run.mailbox,
+			run.actor,
+			mutate,
+			consumeText,
+			run.mailboxIds ?? (run.permissions ? [run.mailbox] : undefined),
+		),
 		draft_email: tool({
 			description:
 				"Save a new email as a draft. Never sends. Body is plain text.",
 			inputSchema: z.object({
 				to: recipientList,
+				sender_identity_id: z.string().min(1).max(254).optional(),
 				cc: carbonCopyList.optional(),
 				bcc: carbonCopyList.optional(),
 				subject: z.string().max(1000),
 				body: z.string().trim().min(1).max(20000),
 			}),
-			execute: async ({ to, cc, bcc, subject, body }) =>
+			execute: async ({ to, cc, bcc, subject, body, sender_identity_id }) =>
 				mutate(
 					"draft_email",
 					async (tx) => {
+						const sender = await new SenderStore(tx).resolve(
+							{ explicit: sender_identity_id, mailboxId: run.mailbox },
+							{
+								mailboxIds:
+									run.mailboxIds ??
+									(run.permissions ? [run.mailbox] : undefined),
+							},
+						);
 						const draft = await new InboxStore(tx).insert(run.mailbox, {
-							sender: liveSender(run.mailbox) ?? run.mailbox,
+							sender: sender.email,
+							sender_identity_id: sender.id,
 							recipient: to,
 							cc: cc ?? "",
 							bcc: bcc ?? "",
@@ -486,9 +522,13 @@ export function createTools(
 							delivery_status: "draft",
 							read: true,
 						});
-						return { draft_id: draft!.id, subject };
+						return {
+							draft_id: draft!.id,
+							subject,
+							sender_identity_id: sender.id,
+						};
 					},
-					`new:${JSON.stringify([to, cc, bcc, subject])}`,
+					`new:${JSON.stringify([to, cc, bcc, subject, sender_identity_id])}`,
 				),
 		}),
 		...(run.classification?.enabled
@@ -540,6 +580,7 @@ export function createTools(
 			search_recipients: "mail:read",
 			get_draft: "mail:read",
 			get_thread_status: "mail:read",
+			list_senders: "drafts:manage",
 			draft_reply: "drafts:manage",
 			draft_email: "drafts:manage",
 			update_draft: "drafts:manage",

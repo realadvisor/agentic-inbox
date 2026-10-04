@@ -18,6 +18,12 @@ type Key = {
 };
 const permissions = [
 	{
+		id: "senders:manage",
+		name: "Manage default sender",
+		description:
+			"Change the workspace default sender to an identity in the selected mailboxes.",
+	},
+	{
 		id: "mail:read",
 		name: "Read mail",
 		description: "Read conversations, emails, attachments and tags.",

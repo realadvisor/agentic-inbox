@@ -2,7 +2,10 @@ import { HTTPException } from "hono/http-exception";
 import type { Database } from "./db";
 import { InboxStore } from "./store";
 import { mailboxConfig } from "./mailboxes";
+import { SenderStore } from "./senders";
 export interface OutgoingMail {
+	sender_identity_id?: string;
+	draft_id?: string;
 	to: string | string[];
 	cc?: string | string[];
 	bcc?: string | string[];
@@ -28,9 +31,9 @@ export async function sendReal(
 	actor: string,
 	parentId?: string,
 	isReply = false,
+	mailboxIds?: string[],
 ) {
-	const config = await mailboxConfig(db, mailbox);
-	if (!config)
+	if (!(await mailboxConfig(db, mailbox)))
 		throw new HTTPException(403, {
 			message: "Mailbox is not enabled for sending",
 		});
@@ -57,7 +60,7 @@ export async function sendReal(
 	const claimed = await db.begin(async (tx) => {
 		await tx`SELECT pg_advisory_xact_lock(hashtext(${mailbox + requestId}))`;
 		const [existing] =
-			await tx`SELECT r.payload_hash,e.id,e.delivery_status FROM outbound_requests r JOIN emails e ON e.id=r.email_id WHERE r.mailbox_id=${mailbox} AND r.request_id=${requestId}`;
+			await tx`SELECT r.payload_hash,e.id,e.delivery_status,e.sender,e.sender_identity_id FROM outbound_requests r JOIN emails e ON e.id=r.email_id WHERE r.mailbox_id=${mailbox} AND r.request_id=${requestId}`;
 		if (existing) {
 			if (existing.payload_hash !== hash)
 				throw new HTTPException(409, {
@@ -67,8 +70,24 @@ export async function sendReal(
 				id: existing.id as string,
 				status: existing.delivery_status as string,
 				existing: true,
+				sender: String(existing.sender),
+				sender_identity_id: String(existing.sender_identity_id),
 			};
 		}
+		const draft = input.draft_id
+			? await store.message(mailbox, input.draft_id)
+			: undefined;
+		if (draft && draft.delivery_status !== "draft")
+			throw new HTTPException(404, { message: "Draft not found" });
+		const identity = await new SenderStore(db).resolve(
+			{
+				explicit: input.sender_identity_id,
+				draft: draft?.sender_identity_id,
+				reply: isReply ? parent : undefined,
+				mailboxId: mailbox,
+			},
+			{ live: true, mailboxIds },
+		);
 		const id = crypto.randomUUID();
 		const body =
 			input.html ??
@@ -77,12 +96,24 @@ export async function sendReal(
 				.replace(/</g, "&lt;")
 				.replace(/>/g, "&gt;")
 				.replace(/\n/g, "<br>");
-		await tx`INSERT INTO emails (id,mailbox_id,folder_id,subject,sender,recipient,cc,bcc,body,thread_id,message_id,in_reply_to,email_references,delivery_status,read) VALUES (${id},${mailbox},'sent',${input.subject},${config.from},${join(input.to)},${join(input.cc)},${join(input.bcc)},${body},${isReply ? (parent?.thread_id ?? id) : id},${`<${id}@realadvisor.com>`},${isReply ? (parent?.message_id ?? null) : null},${isReply ? [parent?.email_references, parent?.message_id].filter(Boolean).join(" ") : null},'sending',true)`;
+		await tx`INSERT INTO emails (id,mailbox_id,folder_id,subject,sender,sender_identity_id,recipient,cc,bcc,body,thread_id,message_id,in_reply_to,email_references,delivery_status,read) VALUES (${id},${mailbox},'sent',${input.subject},${identity.email},${identity.id},${join(input.to)},${join(input.cc)},${join(input.bcc)},${body},${isReply ? (parent?.thread_id ?? id) : id},${`<${id}@realadvisor.com>`},${isReply ? (parent?.message_id ?? null) : null},${isReply ? [parent?.email_references, parent?.message_id].filter(Boolean).join(" ") : null},'sending',true)`;
 		await tx`INSERT INTO outbound_requests (mailbox_id,request_id,payload_hash,email_id,actor) VALUES (${mailbox},${requestId},${hash},${id},${actor})`;
-		return { id, status: "sending", existing: false };
+		return {
+			id,
+			status: "sending",
+			existing: false,
+			sender: identity.email,
+			sender_identity_id: identity.id,
+		};
 	});
 	if (claimed.existing) {
-		if (claimed.status === "sent") return { id: claimed.id, status: "sent" };
+		if (claimed.status === "sent")
+			return {
+				id: claimed.id,
+				status: "sent",
+				sender: claimed.sender,
+				sender_identity_id: claimed.sender_identity_id,
+			};
 		throw new HTTPException(409, {
 			message: `Previous send is ${claimed.status}; inspect it before trying again`,
 		});
@@ -90,9 +121,14 @@ export async function sendReal(
 	let result;
 	try {
 		result = await sender.send({
-			...input,
-			from: config.from,
-			replyTo: config.from,
+			to: input.to,
+			cc: input.cc,
+			bcc: input.bcc,
+			subject: input.subject,
+			html: input.html,
+			text: input.text,
+			from: claimed.sender,
+			replyTo: claimed.sender,
 			headers:
 				isReply && parent?.message_id
 					? {
@@ -117,5 +153,10 @@ export async function sendReal(
 		});
 	}
 	await db`UPDATE emails SET delivery_status='sent',message_id=${result.messageId} WHERE id=${claimed.id}`;
-	return { id: claimed.id, status: "sent" };
+	return {
+		id: claimed.id,
+		status: "sent",
+		sender: claimed.sender,
+		sender_identity_id: claimed.sender_identity_id,
+	};
 }

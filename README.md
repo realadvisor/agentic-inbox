@@ -14,6 +14,36 @@ This is an intentionally standalone pnpm workspace with its own lockfile: the up
 - Attachment bytes live outside Postgres: `.local/attachments` locally and a private R2 bucket on Cloudflare. Live raw MIME is retained privately in R2.
 - Probo, historical imports, and the upstream MCP server are not connected. The hosted inbox uses Cloudflare Workers, Hyperdrive, Neon Postgres, and private R2 attachments.
 
+## Sender identities
+
+Settings → Senders selects the workspace default. The composer From dropdown can
+select another sender independently of the current mailbox, including All.
+Migration 042 registers existing mailbox identities (excluding the All collector),
+backfills saved drafts, and selects `info@realadvisor.com` as the initial default
+when that mailbox exists. Privacy uses `privacy@realadvisor.com`. Fresh local seed
+and live mailbox setup also initialize Info without replacing an existing default.
+Run `pnpm db:migrate` before deploying code that uses these settings.
+
+The UI, API and agent drafts use the same precedence: explicit identity, saved
+draft identity, matching reply recipients, then the default. When no default has
+yet been configured, a mailbox's own identity is used. Multiple matching identities
+require an explicit choice; unavailable identities never silently fall back.
+Replies remain in the original mailbox and conversation. Sender changes update the
+signature in the composer and are included in draft conflict detection.
+
+`GET /api/v1/sender-identities` lists sender IDs and the default.
+`PATCH /api/v1/inbox-settings` accepts `default_sender_identity_id`.
+Draft, send, reply and forward requests accept `sender_identity_id`; send requests
+can also supply `draft_id` to retain its sender. Responses report the selected
+identity. See the bundled API reference for request schemas.
+
+The default can be changed by administrators or keys with `senders:manage`.
+API keys can select only identities in their allowed mailboxes, in addition to
+having access to the conversation mailbox. Live sending still validates the
+registered ingest mailbox and its public address; arbitrary From addresses are
+not accepted. A send retry retains the identity of the original accepted request,
+even if the default changes. Local sending remains simulated.
+
 ## Composer AI assistance
 
 The composer offers Quick Draft, an Advanced prompt/model dialog, and Improve / Shorten / Formal actions through

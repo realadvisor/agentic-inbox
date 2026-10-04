@@ -1,3 +1,4 @@
+import SenderSelect from "./SenderSelect";
 import { SendLabel } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
@@ -20,6 +21,9 @@ export default function ComposeEmail() {
 	const { isComposeModalOpen, closeComposeModal } = useUIStore();
 
 	const {
+		senderConfig,
+		senderIdentityId,
+		changeSender,
 		to,
 		setTo,
 		cc,
@@ -54,6 +58,12 @@ export default function ComposeEmail() {
 					className="space-y-4"
 				>
 					{error && <Banner variant="error" text={error} />}
+					<SenderSelect
+						config={senderConfig}
+						value={senderIdentityId}
+						onChange={changeSender}
+						disabled={isSending || isSavingDraft}
+					/>
 					<div className="flex items-center gap-2">
 						<div className="flex-1">
 							<Input

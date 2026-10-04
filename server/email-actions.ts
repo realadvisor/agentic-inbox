@@ -1,3 +1,4 @@
+import { SenderStore } from "./senders";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { Database } from "./db";
@@ -32,6 +33,7 @@ export async function setThreadRead(
 }
 export const draftVersionSchema = z.string().regex(/^[a-f0-9]{32}$/);
 export const draftContentSchema = z.object({
+	sender_identity_id: z.string().min(1).max(254).optional(),
 	to: z.string().max(4000).default(""),
 	cc: z.string().max(4000).default(""),
 	bcc: z.string().max(4000).default(""),
@@ -45,13 +47,21 @@ export async function updateDraft(
 	id: string,
 	content: Partial<z.infer<typeof draftContentSchema>>,
 	version?: string,
+	senderAccess: { mailboxIds?: string[] } = {},
 ) {
 	const input = draftContentSchema.partial().parse(content);
+	const sender = input.sender_identity_id
+		? await new SenderStore(db).resolve(
+				{ explicit: input.sender_identity_id, mailboxId: mailbox },
+				senderAccess,
+			)
+		: undefined;
 	const changes = Object.fromEntries(
 		Object.entries(input)
 			.filter(([, value]) => value !== undefined)
 			.map(([key, value]) => [key === "to" ? "recipient" : key, value]),
 	);
+	if (sender) changes.sender = sender.email;
 	if (!Object.keys(changes).length)
 		throw new HTTPException(400, {
 			message: "Provide at least one draft field to change",
@@ -59,8 +69,8 @@ export async function updateDraft(
 	if (version !== undefined) draftVersionSchema.parse(version);
 	const [row] = await db`UPDATE emails SET ${db(changes)},date=clock_timestamp()
  WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'
- AND (${version ?? null}::text IS NULL OR md5(jsonb_build_array(recipient,cc,bcc,subject,body)::text)=${version ?? null})
- RETURNING id,md5(jsonb_build_array(recipient,cc,bcc,subject,body)::text) AS draft_version`;
+ AND (${version ?? null}::text IS NULL OR md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text)=${version ?? null})
+ RETURNING id,sender,sender_identity_id,md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) AS draft_version`;
 	if (!row) {
 		const [exists] =
 			await db`SELECT id FROM emails WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'`;
@@ -72,6 +82,11 @@ export async function updateDraft(
 	}
 	return {
 		draft_id: row.id as string,
+		sender: String(row.sender),
+		sender_identity_id:
+			typeof row.sender_identity_id === "string"
+				? row.sender_identity_id
+				: null,
 		draft_version: row.draft_version as string,
 	};
 }

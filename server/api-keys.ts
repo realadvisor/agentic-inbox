@@ -7,6 +7,7 @@ export const apiKeyPermissions = [
 	"mail:read",
 	"drafts:manage",
 	"mail:send",
+	"senders:manage",
 	"conversations:manage",
 	"webhooks:manage",
 	"classifications:read",
@@ -61,6 +62,12 @@ export function keyCanRequest(key: ApiKey, method: string, path: string) {
 	if (api !== "api" || v1 !== "v1") return false;
 	const read = method === "GET" || method === "HEAD";
 	if (read && path === "/api/v1/config") return true;
+	if (read && path === "/api/v1/sender-identities")
+		return key.permissions.some((p) =>
+			["mail:read", "mail:send", "drafts:manage", "senders:manage"].includes(p),
+		);
+	if (method === "PATCH" && path === "/api/v1/inbox-settings")
+		return key.permissions.includes("senders:manage");
 	if (
 		read &&
 		["/api/v1/tags", "/api/v1/tag-groups", "/api/v1/mailboxes"].includes(path)

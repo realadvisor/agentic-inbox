@@ -1,3 +1,4 @@
+import { liveSender } from "./mailboxes";
 import { HTTPException } from "hono/http-exception";
 import type {
 	Email,
@@ -22,6 +23,7 @@ export interface MessageRow extends Omit<Email, "date"> {
 }
 export interface NewMessage {
 	id?: string;
+	sender_identity_id?: string;
 	sender: string;
 	recipient: string;
 	subject: string;
@@ -89,6 +91,11 @@ export class InboxStore {
 			for (const [id, label] of Object.entries(FOLDER_DISPLAY_NAMES)) {
 				await tx`INSERT INTO folders (mailbox_id, id, name, is_deletable) VALUES (${email}, ${id}, ${label}, false)`;
 			}
+			if (email !== "all@ingest.realadvisor.com") {
+				const address = liveSender(email) ?? email;
+				await tx`INSERT INTO sender_identities (id,email,mailbox_id) VALUES (${address},${address},${email})
+     ON CONFLICT (id) DO UPDATE SET mailbox_id=EXCLUDED.mailbox_id WHERE sender_identities.mailbox_id IS NULL OR (EXCLUDED.mailbox_id LIKE '%@ingest.realadvisor.com' AND sender_identities.mailbox_id NOT LIKE '%@ingest.realadvisor.com')`;
+			}
 			return required(mailbox);
 		});
 	}
@@ -103,7 +110,7 @@ export class InboxStore {
 			(
 				await this.db<
 					MessageRow[]
-				>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
+				>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
 			)[0],
 		);
 		const attachments = await this.db<
@@ -119,7 +126,7 @@ export class InboxStore {
 	async thread(mailbox: string, thread: string) {
 		const rows = await this.db<
 			MessageRow[]
-		>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
+		>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
 		const attachments = await this.db<
 			(Attachment & { email_id: string })[]
 		>`SELECT a.id, a.email_id, a.filename, a.mimetype, a.size
@@ -140,6 +147,9 @@ export class InboxStore {
 			id,
 			mailbox_id: mailbox,
 			sender: input.sender,
+			...(input.sender_identity_id
+				? { sender_identity_id: input.sender_identity_id }
+				: {}),
 			recipient: input.recipient,
 			subject: input.subject,
 			body: input.body,
@@ -267,7 +277,7 @@ export class InboxStore {
 		const projection =
 			params.view === "summary"
 				? this
-						.db`e.id,e.mailbox_id,e.folder_id,e.subject,e.sender,e.recipient,e.cc,e.bcc,e.date,e.read,e.starred,e.thread_id,e.message_id,e.in_reply_to,e.email_references,e.delivery_status,e.reply_to,
+						.db`e.id,e.mailbox_id,e.folder_id,e.subject,e.sender,e.recipient,e.cc,e.bcc,e.date,e.read,e.starred,e.thread_id,e.message_id,e.in_reply_to,e.email_references,e.delivery_status,e.reply_to,e.sender_identity_id,
  left(regexp_replace(e.body, '<[^>]*>', ' ', 'g'),180) AS snippet`
 				: this.db`e.*`;
 		const records = await this.db<

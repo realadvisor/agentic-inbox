@@ -16,14 +16,14 @@ import {
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import { useUIStore } from "~/hooks/useUIStore";
-import { useMailbox } from "~/queries/mailboxes";
+import SenderSelect from "./SenderSelect";
 import { SendLabel } from "~/components/MailMode";
 import RichTextEditor from "./RichTextEditor";
 import RecipientField from "./RecipientField";
 
 export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 	const { mailboxId, folder } = useParams();
-	const { data: mailbox } = useMailbox(mailboxId);
+
 	const { composeOptions } = useUIStore();
 	const form = useComposeForm(mailboxId, folder, true);
 	const [expanded, setExpanded] = useState(false);
@@ -118,14 +118,13 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 			>
 				<div className="flex-1 min-h-0 overflow-y-auto">
 					<div>
-						<div className="flex items-center gap-2 px-4 min-h-9 py-1 border-b border-kumo-line/60 text-xs">
-							<span className="w-10 shrink-0 text-kumo-subtle">From</span>
-							<span className="min-w-0 truncate text-kumo-subtle">
-								{mailbox?.name}{" "}
-								<span className="text-kumo-inactive">
-									&lt;{mailbox?.email}&gt;
-								</span>
-							</span>
+						<div className="px-4 py-2 border-b border-kumo-line/60">
+							<SenderSelect
+								config={form.senderConfig}
+								value={form.senderIdentityId}
+								onChange={form.changeSender}
+								disabled={busy}
+							/>
 						</div>
 						<RecipientField
 							excluded={[form.cc, form.bcc]
