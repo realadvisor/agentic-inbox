@@ -331,7 +331,7 @@ export function TagActions({
 		mutation.mutate({ id, action });
 	return (
 		<div
-			className={`flex flex-wrap items-center text-sm ${compact ? "gap-x-1.5 gap-y-2" : "gap-1.5"}`}
+			className={`flex flex-wrap items-center text-sm ${compact ? "gap-x-1 gap-y-2" : "gap-1.5"}`}
 			aria-label={bulk ? "Bulk tags" : "Conversation tags"}
 		>
 			{children}
