@@ -27,6 +27,7 @@ import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
+import { getLastReceivedMessage } from "~/lib/replies";
 import api from "~/services/api";
 import {
 	useDeleteEmail,
@@ -136,15 +137,10 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 		return ids;
 	}, [allMessages, isDraftFolder, emailId]);
 
-	const lastReceivedMessage = useMemo(() => {
-		const ce = currentMailbox?.email;
-		const received = allMessages.filter(
-			(msg) => !draftMessageIds.has(msg.id) && msg.sender !== ce,
-		);
-		if (received.length > 0) return received[0];
-		const nonDrafts = allMessages.filter((msg) => !draftMessageIds.has(msg.id));
-		return nonDrafts.length > 0 ? nonDrafts[0] : email;
-	}, [allMessages, draftMessageIds, currentMailbox?.email, email]);
+	const lastReceivedMessage = useMemo(
+		() => getLastReceivedMessage(allMessages, draftMessageIds),
+		[allMessages, draftMessageIds],
+	);
 
 	const moveToFolders = useMemo(() => {
 		const cur = folder || email?.folder_id;
@@ -270,6 +266,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				mailboxId={mailboxId}
 				isDraftFolder={isDraftFolder}
 				isSending={isSending}
+				canReply={Boolean(lastReceivedMessage)}
 				moveToFolders={moveToFolders}
 				onBack={closePanel}
 				onSendDraft={() => handleSendDraft()}
@@ -402,7 +399,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				{isComposing ? (
 					<ComposePanel inline />
 				) : (
-					!isDraftFolder && (
+					!isDraftFolder &&
+					lastReceivedMessage && (
 						<div className="px-5 py-4 border-t border-kumo-line/60 flex items-center gap-2">
 							<Button
 								type="button"
