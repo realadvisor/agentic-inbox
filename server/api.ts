@@ -1,6 +1,8 @@
 import {
 	sendEmailSchema as sendSchema,
 	saveDraftSchema as draftSchema,
+	saveDraftResultSchema,
+	type SendResult,
 } from "../shared/mail";
 import { operationsApi, readiness } from "./operations";
 import type { ObjectStore } from "./inbound";
@@ -751,13 +753,13 @@ export function createApi(db: Database, options: ApiOptions) {
 			draft_source_id: parentId,
 		});
 		return c.json(
-			{
+			saveDraftResultSchema.parse({
 				draft_id: draft!.id,
 				sender_identity_id: sender.id,
 				sender: sender.email,
 				draft_version: (await store.message(mailbox.id, draft!.id))
 					.draft_version,
-			},
+			}),
 			201,
 		);
 	});
@@ -837,7 +839,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					status: "simulated",
 					sender_identity_id: sender.id,
 					sender: sender.email,
-				},
+				} satisfies SendResult,
 				201,
 			);
 		});

@@ -1,3 +1,5 @@
+// Mail UI types adapted from Cloudflare Agentic Inbox.
+// Copyright (c) 2026 Cloudflare, Inc. Licensed under Apache-2.0 (see LICENSE).
 import { z } from "zod";
 
 // Wire contracts shared by the HTTP API, store mappings and browser client.

@@ -77,7 +77,9 @@ export async function updateDraft(
 			message: "Provide at least one draft field to change",
 		});
 	if (version !== undefined) draftVersionSchema.parse(version);
-	const [row] = await db`UPDATE emails SET ${db(changes)},date=clock_timestamp()
+	const [row] = await db<
+		(Omit<SaveDraftResult, "draft_id"> & { id: string })[]
+	>`UPDATE emails SET ${db(changes)},date=clock_timestamp()
  WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'
  AND (${version ?? null}::text IS NULL OR md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text)=${version ?? null})
  RETURNING id,sender,sender_identity_id,md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text) AS draft_version`;
@@ -91,12 +93,12 @@ export async function updateDraft(
 		});
 	}
 	return {
-		draft_id: row.id as string,
+		draft_id: row.id,
 		sender: String(row.sender),
 		sender_identity_id:
 			typeof row.sender_identity_id === "string"
 				? row.sender_identity_id
 				: null,
-		draft_version: row.draft_version as string,
+		draft_version: row.draft_version,
 	};
 }
