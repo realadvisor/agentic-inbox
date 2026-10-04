@@ -1,3 +1,9 @@
+import {
+	draftContentSchema,
+	draftVersionSchema,
+	type SaveDraftResult,
+} from "../shared/mail";
+export { draftContentSchema, draftVersionSchema } from "../shared/mail";
 import { SenderStore } from "./senders";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -31,17 +37,6 @@ export async function setThreadRead(
 		throw new HTTPException(404, { message: "Conversation not found" });
 	return { thread_id: thread, read, message_count: rows.length };
 }
-export const draftVersionSchema = z.string().regex(/^[a-f0-9]{32}$/);
-export const draftContentSchema = z.object({
-	draft_mode: z.enum(["new", "reply", "reply-all", "forward"]).optional(),
-	draft_source_id: z.string().uuid().nullable().optional(),
-	sender_identity_id: z.string().min(1).max(254).optional(),
-	to: z.string().max(4000).default(""),
-	cc: z.string().max(4000).default(""),
-	bcc: z.string().max(4000).default(""),
-	subject: z.string().max(1000).default(""),
-	body: z.string().max(100_000),
-});
 // Hash the exact editable fields in SQL, including intent, avoiding timestamp precision loss.
 export async function updateDraft(
 	db: Database,
@@ -50,7 +45,7 @@ export async function updateDraft(
 	content: Partial<z.infer<typeof draftContentSchema>>,
 	version?: string,
 	senderAccess: { mailboxIds?: string[] } = {},
-) {
+): Promise<SaveDraftResult> {
 	const input = draftContentSchema.partial().parse(content);
 	const [current] =
 		await db`SELECT draft_mode,draft_source_id FROM emails WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'`;

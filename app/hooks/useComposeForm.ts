@@ -336,14 +336,15 @@ export function useComposeForm(
 			return;
 		}
 		const toRecipients = splitEmailList(to);
-		if (toRecipients.length === 0) {
+		const toValue = toEmailListValue(toRecipients);
+		if (!toValue) {
 			setError("Add at least one recipient.");
 			return;
 		}
 		const ccRecipients = splitEmailList(cc);
 		const bccRecipients = splitEmailList(bcc);
 		const emailData = {
-			to: toEmailListValue(toRecipients),
+			to: toValue,
 			cc: toEmailListValue(ccRecipients),
 			bcc: toEmailListValue(bccRecipients),
 			sender_identity_id: senderIdentityId,

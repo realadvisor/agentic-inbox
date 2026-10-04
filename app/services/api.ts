@@ -1,4 +1,12 @@
 import type {
+	MailListResponse,
+	MessageDetail,
+	SaveDraftInput,
+	SaveDraftResult,
+	SendEmailInput,
+	SendResult,
+} from "shared/mail";
+import type {
 	TranslationLanguage,
 	TranslationResult,
 } from "shared/translation";
@@ -16,7 +24,7 @@ import type {
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox, Tag } from "~/types";
+import type { Folder, Mailbox, Tag } from "~/types";
 import type { TagGroup, TagGroupInput } from "../../shared/tag-groups";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -108,11 +116,11 @@ function del<T>(url: string) {
 const sendIntents = new SendIntents(
 	() => window.sessionStorage,
 	(url, body, key) =>
-		request<void>(url, {
+		request<SendResult>(url, {
 			method: "POST",
 			body,
 			headers: { "Idempotency-Key": key },
-		}),
+		}).then(() => undefined),
 	(message) => window.confirm(message),
 	(error) =>
 		error instanceof ApiError &&
@@ -123,13 +131,6 @@ const sendIntents = new SendIntents(
 		error.body.code === "draft_intent_conflict" &&
 		error.body.rejected_request_id === key,
 );
-
-// ---------- Typed response shapes ----------
-
-interface EmailListResponse {
-	emails: Email[];
-	totalCount: number;
-}
 
 // ---------- API client ----------
 
@@ -271,11 +272,11 @@ const api = {
 		params: Record<string, string>,
 		opts?: { signal?: AbortSignal },
 	) =>
-		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/emails`, {
+		get<MailListResponse>(`/api/v1/mailboxes/${mailboxId}/emails`, {
 			params,
 			signal: opts?.signal,
 		}),
-	sendEmail: (mailboxId: string, email: unknown, sendScope: string) =>
+	sendEmail: (mailboxId: string, email: SendEmailInput, sendScope: string) =>
 		sendIntents.send(
 			mailboxId,
 			sendScope,
@@ -283,11 +284,11 @@ const api = {
 			email,
 		),
 	getEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
-		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, {
+		get<MessageDetail>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, {
 			signal: opts?.signal,
 		}),
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
-		put<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
+		put<MessageDetail>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
 	deleteEmail: (mailboxId: string, id: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
@@ -299,7 +300,7 @@ const api = {
 		threadId: string,
 		opts?: { signal?: AbortSignal },
 	) =>
-		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, {
+		get<MessageDetail[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, {
 			signal: opts?.signal,
 		}),
 	getThreadStatus: (mailboxId: string, threadId: string) =>
@@ -322,31 +323,12 @@ const api = {
 			`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`,
 			{ responseType: "blob" },
 		),
-	saveDraft: (
-		mailboxId: string,
-		draft: {
-			to?: string;
-			cc?: string;
-			bcc?: string;
-			subject?: string;
-			body: string;
-			in_reply_to?: string;
-			draft_mode?: "new" | "reply" | "reply-all" | "forward";
-			draft_source_id?: string;
-			thread_id?: string;
-			draft_id?: string;
-			sender_identity_id?: string;
-			draft_version?: string;
-		},
-	) =>
-		post<{ draft_id: string; draft_version: string }>(
-			`/api/v1/mailboxes/${mailboxId}/drafts`,
-			draft,
-		),
+	saveDraft: (mailboxId: string, draft: SaveDraftInput) =>
+		post<SaveDraftResult>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
 	replyToEmail: (
 		mailboxId: string,
 		emailId: string,
-		email: unknown,
+		email: SendEmailInput,
 		sendScope: string,
 	) =>
 		sendIntents.send(
@@ -358,7 +340,7 @@ const api = {
 	forwardEmail: (
 		mailboxId: string,
 		emailId: string,
-		email: unknown,
+		email: SendEmailInput,
 		sendScope: string,
 	) =>
 		sendIntents.send(
@@ -384,7 +366,7 @@ const api = {
 		params: Record<string, string>,
 		opts?: { signal?: AbortSignal },
 	) =>
-		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, {
+		get<MailListResponse>(`/api/v1/mailboxes/${mailboxId}/search`, {
 			params,
 			signal: opts?.signal,
 		}),

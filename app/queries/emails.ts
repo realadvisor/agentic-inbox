@@ -1,3 +1,9 @@
+import type {
+	MailListResponse,
+	MessageDetail,
+	SaveDraftInput,
+	SendEmailInput,
+} from "shared/mail";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -7,13 +13,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
 import type { Email } from "~/types";
 import { queryKeys } from "./keys";
-
-// ---------- Types ----------
-
-interface EmailListResponse {
-	emails: Email[];
-	totalCount: number;
-}
 
 // ---------- Queries ----------
 
@@ -28,23 +27,12 @@ export function useEmails(
 		...(params.folder ? { threaded: "true" } : {}),
 	};
 
-	return useQuery<EmailListResponse>({
+	return useQuery<MailListResponse>({
 		queryKey: mailboxId
 			? queryKeys.emails.list(mailboxId, queryParams)
 			: ["emails", "_disabled"],
-		queryFn: async ({ signal }) => {
-			const data = (await api.listEmails(mailboxId!, queryParams, {
-				signal,
-			})) as EmailListResponse | Email[];
-			if (data && typeof data === "object" && "emails" in data) {
-				return {
-					emails: (data as EmailListResponse).emails ?? [],
-					totalCount: (data as EmailListResponse).totalCount ?? 0,
-				};
-			}
-			const arr = Array.isArray(data) ? data : [];
-			return { emails: arr, totalCount: arr.length };
-		},
+		queryFn: ({ signal }) =>
+			api.listEmails(mailboxId!, queryParams, { signal }),
 		enabled: !!mailboxId && (options?.enabled ?? true),
 		refetchInterval: options?.refetchInterval,
 	});
@@ -54,12 +42,12 @@ export function useEmail(
 	mailboxId: string | undefined,
 	emailId: string | undefined,
 ) {
-	return useQuery<Email>({
+	return useQuery<MessageDetail>({
 		queryKey:
 			mailboxId && emailId
 				? queryKeys.emails.detail(mailboxId, emailId)
 				: ["emails", "_disabled_detail"],
-		queryFn: () => api.getEmail(mailboxId!, emailId!) as Promise<Email>,
+		queryFn: () => api.getEmail(mailboxId!, emailId!),
 		enabled: !!mailboxId && !!emailId,
 	});
 }
@@ -70,7 +58,7 @@ export function useThreadReplies(
 ) {
 	const qc = useQueryClient();
 
-	return useQuery<Email[]>({
+	return useQuery<MessageDetail[]>({
 		queryKey:
 			mailboxId && threadId
 				? queryKeys.emails.thread(mailboxId, threadId)
@@ -79,9 +67,9 @@ export function useThreadReplies(
 			// Single request returns all thread emails with full bodies +
 			// attachments. Eliminates the previous N+1 pattern that fired
 			// a separate getEmail call per thread message.
-			const emails = (await api.getThread(mailboxId!, threadId!, {
+			const emails = await api.getThread(mailboxId!, threadId!, {
 				signal,
-			})) as Email[];
+			});
 
 			// Populate individual email detail caches so clicking a thread
 			// message in the panel doesn't re-fetch.
@@ -118,7 +106,7 @@ export function useSendEmail() {
 			sendScope,
 		}: {
 			mailboxId: string;
-			email: unknown;
+			email: SendEmailInput;
 			sendScope: string;
 		}) => api.sendEmail(mailboxId, email, sendScope),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
@@ -259,20 +247,7 @@ export function useSaveDraft() {
 			draft,
 		}: {
 			mailboxId: string;
-			draft: {
-				to?: string;
-				cc?: string;
-				bcc?: string;
-				subject?: string;
-				body: string;
-				in_reply_to?: string;
-				draft_mode?: "new" | "reply" | "reply-all" | "forward";
-				draft_source_id?: string;
-				thread_id?: string;
-				draft_id?: string;
-				sender_identity_id?: string;
-				draft_version?: string;
-			};
+			draft: SaveDraftInput;
 		}) => api.saveDraft(mailboxId, draft),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
 	});
@@ -289,7 +264,7 @@ export function useReplyToEmail() {
 		}: {
 			mailboxId: string;
 			emailId: string;
-			email: unknown;
+			email: SendEmailInput;
 			sendScope: string;
 		}) => api.replyToEmail(mailboxId, emailId, email, sendScope),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
@@ -307,7 +282,7 @@ export function useForwardEmail() {
 		}: {
 			mailboxId: string;
 			emailId: string;
-			email: unknown;
+			email: SendEmailInput;
 			sendScope: string;
 		}) => api.forwardEmail(mailboxId, emailId, email, sendScope),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),

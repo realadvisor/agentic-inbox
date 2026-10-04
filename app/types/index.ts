@@ -23,81 +23,13 @@ export interface Mailbox {
 	settings?: MailboxSettings;
 }
 
-export interface Tag {
-	group_id?: string | null;
-	group_name?: string | null;
-	group_selection?: "single" | "multiple" | "score" | null;
-	id: string;
-	name: string;
-	color: string;
-}
-
-export interface ConversationTag extends Tag {
-	source: "manual" | "classifier";
-	actor: string;
-	created_at: string;
-	updated_at: string;
-}
-
-export interface ConversationScore {
-	group_id: string;
-	name: string;
-	score: number;
-	maximum: number;
-	confidence: number;
-	needs_review: boolean;
-}
-export interface Email {
-	sender_identity_id?: string | null;
-	scores?: ConversationScore[];
-	thread_status?: import("shared/thread-status").ThreadStatus;
-	delivery_status?:
-		| "received"
-		| "draft"
-		| "simulated"
-		| "sending"
-		| "sent"
-		| "failed"
-		| "unknown";
-	tags?: ConversationTag[];
-	reply_to?: string | null;
-	id: string;
-	thread_id?: string | null;
-	folder_id?: string | null;
-	subject: string;
-	sender: string;
-	recipient: string;
-	cc?: string;
-	bcc?: string;
-	date: string;
-	read: boolean;
-	starred: boolean;
-	body?: string | null;
-	in_reply_to?: string | null;
-	draft_mode?: "new" | "reply" | "reply-all" | "forward" | null;
-	draft_source_id?: string | null;
-	email_references?: string | null;
-	message_id?: string | null;
-	raw_headers?: string | null;
-	attachments?: Attachment[];
-	snippet?: string | null;
-	// Thread aggregate fields (only present in threaded list view)
-	thread_count?: number;
-	thread_unread_count?: number;
-	participants?: string;
-	needs_reply?: boolean;
-	has_draft?: boolean;
-	draft_version?: string | null;
-}
-
-export interface Attachment {
-	id: string;
-	filename: string;
-	mimetype: string;
-	size: number;
-	content_id?: string;
-	disposition?: string;
-}
+export type {
+	Tag,
+	ConversationTag,
+	ConversationScore,
+	Attachment,
+	MailMessage as Email,
+} from "../../shared/mail";
 
 export interface Folder {
 	is_deletable?: boolean;

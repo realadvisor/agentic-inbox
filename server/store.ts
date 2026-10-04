@@ -1,25 +1,25 @@
-import { liveSender } from "./mailboxes";
-import { HTTPException } from "hono/http-exception";
 import type {
-	Email,
-	Mailbox,
+	MailMessage as Email,
+	MessageSummary,
+	ConversationSummary,
+	MessageDetail,
+	MailListResponse,
 	Attachment,
 	ConversationTag,
-} from "../app/types/index";
+	ConversationScore,
+} from "../shared/mail";
+import { liveSender } from "./mailboxes";
+import { HTTPException } from "hono/http-exception";
+import type { Mailbox } from "../app/types/index";
 import { FOLDER_DISPLAY_NAMES } from "../shared/folders";
 import type { Database } from "./db";
 
-export interface MessageRow extends Omit<Email, "date"> {
+export interface MessageRow extends Omit<
+	MessageDetail,
+	"date" | "attachments" | "draft_version" | "tags" | "scores" | "snippet"
+> {
 	date: Date;
-	mailbox_id: string;
-	delivery_status:
-		| "received"
-		| "draft"
-		| "simulated"
-		| "sending"
-		| "sent"
-		| "failed"
-		| "unknown";
+	draft_version?: string | null;
 }
 export interface NewMessage {
 	id?: string;
@@ -42,11 +42,18 @@ export interface NewMessage {
 	read?: boolean;
 }
 
-export function serialize(row: MessageRow) {
+export function serialize<
+	T extends Omit<MessageSummary, "date" | "tags" | "scores" | "snippet"> & {
+		date: Date;
+		body?: string;
+		snippet?: string | null;
+	},
+>(row: T): Omit<T, "date"> & { date: string; snippet: string } {
 	return {
 		...row,
 		date: row.date.toISOString(),
-		snippet: row.snippet ?? row.body?.replace(/<[^>]*>/g, " ").slice(0, 180),
+		snippet:
+			row.snippet ?? row.body?.replace(/<[^>]*>/g, " ").slice(0, 180) ?? "",
 	};
 }
 
@@ -74,7 +81,7 @@ export class InboxStore {
 	async scoresForThreads(mailbox: string, threads: string[]) {
 		if (!threads.length) return [];
 		return this.db<
-			(import("../app/types/index").ConversationScore & { thread_id: string })[]
+			(ConversationScore & { thread_id: string })[]
 		>`SELECT DISTINCT ON (j.thread_id,g.id) j.thread_id,g.id AS group_id,g.name,j.score,j.confidence,(j.status='review') AS needs_review,(SELECT count(*)::int-1 FROM tags levels WHERE levels.group_id=g.id AND levels.archived_at IS NULL) AS maximum FROM conversation_classifications j JOIN classifiers c ON c.id=j.classifier_id JOIN tags t ON t.id=c.tag_id JOIN tag_groups g ON g.id=t.group_id JOIN conversations v ON v.mailbox_id=j.mailbox_id AND v.thread_id=j.thread_id WHERE j.mailbox_id=${mailbox} AND j.thread_id IN ${this.db([...new Set(threads)])} AND g.selection='score' AND t.archived_at IS NULL AND j.score IS NOT NULL AND j.revision=c.revision AND j.generation=v.generation AND j.status IN ('complete','review') AND NOT tag_manually_overridden(j.mailbox_id,j.thread_id,c.tag_id) ORDER BY j.thread_id,g.id,j.updated_at DESC`;
 	}
 	async listMailboxes() {
@@ -107,7 +114,7 @@ export class InboxStore {
 			FROM folders f LEFT JOIN emails e ON e.mailbox_id = f.mailbox_id AND e.folder_id = f.id
 			WHERE f.mailbox_id = ${mailbox} GROUP BY f.mailbox_id, f.id ORDER BY f.is_deletable, f.name`;
 	}
-	async message(mailbox: string, id: string) {
+	async message(mailbox: string, id: string): Promise<MessageDetail> {
 		const row = required(
 			(
 				await this.db<
@@ -120,12 +127,13 @@ export class InboxStore {
 		>`SELECT id, filename, mimetype, size FROM attachments WHERE mailbox_id = ${mailbox} AND email_id = ${id}`;
 		return {
 			...serialize(row),
+			draft_version: row.draft_version ?? null,
 			attachments,
 			scores: await this.scoresForThreads(mailbox, [row.thread_id!]),
 			tags: await this.tagsForThreads(mailbox, [row.thread_id!]),
 		};
 	}
-	async thread(mailbox: string, thread: string) {
+	async thread(mailbox: string, thread: string): Promise<MessageDetail[]> {
 		const rows = await this.db<
 			MessageRow[]
 		>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
@@ -140,6 +148,7 @@ export class InboxStore {
 			scores,
 			tags,
 			...serialize(row),
+			draft_version: row.draft_version ?? null,
 			attachments: attachments.filter((a) => a.email_id === row.id),
 		}));
 	}
@@ -174,7 +183,10 @@ export class InboxStore {
 		})} ON CONFLICT (mailbox_id, message_id) DO NOTHING RETURNING *`;
 		return row ? serialize(row) : null;
 	}
-	async list(mailbox: string, params: Record<string, string>) {
+	async list(
+		mailbox: string,
+		params: Record<string, string>,
+	): Promise<MailListResponse> {
 		const page = Math.max(1, Number(params.page) || 1);
 		const limit = Math.min(100, Math.max(1, Number(params.limit) || 25));
 		const conditions = [this.db`e.mailbox_id = ${mailbox}`];
@@ -289,7 +301,12 @@ export class InboxStore {
  left(regexp_replace(e.body, '<[^>]*>', ' ', 'g'),180) AS snippet`
 				: this.db`e.*`;
 		const records = await this.db<
-			(MessageRow & { total_count: number })[]
+			(Omit<ConversationSummary, "date" | "tags" | "scores"> & {
+				date: Date;
+				body?: string;
+				raw_headers?: string | null;
+				total_count: number;
+			})[]
 		>`WITH matched AS MATERIALIZED (${selection}), page AS MATERIALIZED (
  SELECT selected.* FROM matched selected ORDER BY ${scoreOrder} ${this.db(column)} ${direction},id LIMIT ${limit} OFFSET ${(page - 1) * limit}
  ) SELECT ${projection},workflow.status AS thread_status,stats.*,totals.total_count
