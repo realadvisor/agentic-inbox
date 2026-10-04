@@ -3,8 +3,8 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { useEffect, useRef } from "react";
-import { Outlet, useParams, useSearchParams } from "react-router";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { Outlet, useParams, useLocation, useNavigate } from "react-router";
 import AgentPanel from "~/components/AgentPanel";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
@@ -14,8 +14,10 @@ import { useUIStore } from "~/hooks/useUIStore";
 
 export default function MailboxRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
-	const [searchParams] = useSearchParams();
-	const deepLinkedEmail = searchParams.get("email");
+	const location = useLocation();
+	const navigate = useNavigate();
+	const locationRef = useRef(location);
+	const syncingUrl = useRef(false);
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);
 	const prevMailboxIdRef = useRef<string | undefined>(undefined);
@@ -24,33 +26,63 @@ export default function MailboxRoute() {
 		closeSidebar,
 		closePanel,
 		closeComposeModal,
-		selectEmail,
 		isAgentOpen,
 		closeAgent,
 	} = useUIStore();
 
-	useEffect(() => {
-		if (
-			prevMailboxIdRef.current &&
-			mailboxId &&
-			prevMailboxIdRef.current !== mailboxId
-		) {
-			closePanel();
-			closeComposeModal();
-			closeSidebar();
+	useLayoutEffect(() => {
+		locationRef.current = location;
+		syncingUrl.current = true;
+		try {
+			if (prevMailboxIdRef.current && prevMailboxIdRef.current !== mailboxId) {
+				closePanel();
+				closeComposeModal();
+				closeSidebar();
+			}
+			const candidate = new URLSearchParams(location.search).get("email");
+			const detailRoute = /\/(?:emails\/[^/]+|search)\/?$/.test(
+				location.pathname,
+			);
+			const email =
+				detailRoute &&
+				candidate &&
+				/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(candidate)
+					? candidate
+					: null;
+			if (useUIStore.getState().selectedEmailId !== email)
+				useUIStore.getState().selectEmail(email);
+			prevMailboxIdRef.current = mailboxId;
+		} finally {
+			syncingUrl.current = false;
 		}
+	}, [location, mailboxId, closePanel, closeComposeModal, closeSidebar]);
 
-		if (deepLinkedEmail && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(deepLinkedEmail))
-			selectEmail(deepLinkedEmail);
-		prevMailboxIdRef.current = mailboxId;
-	}, [
-		mailboxId,
-		deepLinkedEmail,
-		selectEmail,
-		closeComposeModal,
-		closePanel,
-		closeSidebar,
-	]);
+	useEffect(
+		() =>
+			useUIStore.subscribe((state, previous) => {
+				if (
+					syncingUrl.current ||
+					state.selectedEmailId === previous.selectedEmailId
+				)
+					return;
+				const current = locationRef.current;
+				if (!/\/(?:emails\/[^/]+|search)\/?$/.test(current.pathname)) return;
+				const params = new URLSearchParams(current.search);
+				if (state.selectedEmailId) params.set("email", state.selectedEmailId);
+				else params.delete("email");
+				const search = params.toString();
+				if (search === current.search.replace(/^\?/, "")) return;
+				void navigate(
+					{
+						pathname: current.pathname,
+						search: search ? `?${search}` : "",
+						hash: current.hash,
+					},
+					{ preventScrollReset: true },
+				);
+			}),
+		[navigate],
+	);
 
 	return (
 		<div className="flex h-[calc(100dvh-36px)] overflow-hidden">
