@@ -295,10 +295,9 @@ export default function EmailListRoute() {
 	useEffect(() => {
 		if (viewChanged) {
 			prevFolderRef.current = viewKey;
-			closePanel();
 			setPage(1);
 		}
-	}, [viewChanged, viewKey, closePanel]);
+	}, [viewChanged, viewKey]);
 
 	const toggleStar = (e: React.MouseEvent, email: Email) => {
 		e.preventDefault();
