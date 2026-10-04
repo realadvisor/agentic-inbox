@@ -5,7 +5,11 @@ import { migrate } from "../server/migrate";
 import { InboxStore } from "../server/store";
 import { createApi } from "../server/api";
 import { ingest, type ObjectStore } from "../server/inbound";
-import { readiness, pruneInboundRecovery } from "../server/operations";
+import {
+	readiness,
+	pruneInboundRecovery,
+	requiredMigrations,
+} from "../server/operations";
 const schema = "test_recovery_" + crypto.randomUUID().replaceAll("-", "");
 const admin = connect();
 const db = connect(process.env.DATABASE_URL, schema);
@@ -324,4 +328,44 @@ test("retention removes only completed metadata and preserves unresolved records
 		unresolved,
 	);
 	assert.equal(blobs.size, count);
+});
+
+test("readiness migration manifest matches every checked-in migration", async () => {
+	const { readdir } = await import("node:fs/promises");
+	const files = await readdir(new URL("../migrations", import.meta.url));
+	const versions = files
+		.filter((name) => /^\d+_.*\.sql$/.test(name))
+		.map((name) => Number(name.split("_")[0]))
+		.sort((a, b) => a - b);
+	assert.deepEqual(
+		[...requiredMigrations].sort((a, b) => a - b),
+		versions,
+	);
+});
+test("migration045 upgrades existing mail without creating recovery jobs and reruns safely", async () => {
+	const upgradeSchema =
+		"test_recovery_upgrade_" + crypto.randomUUID().replaceAll("-", "");
+	const upgrade = connect(process.env.DATABASE_URL, upgradeSchema);
+	try {
+		await admin`CREATE SCHEMA ${admin(upgradeSchema)}`;
+		await migrate(upgrade);
+		await upgrade`DROP TABLE inbound_recovery`;
+		await upgrade`DELETE FROM inbox_migrations WHERE version=45`;
+		const store = new InboxStore(upgrade);
+		await store.createMailbox(mailbox, "Synthetic upgrade");
+		const existing = await store.insert(mailbox, {
+			sender: "fixture@example.test",
+			recipient: mailbox,
+			subject: "Pre-upgrade synthetic mail",
+			body: "Synthetic",
+		});
+		await migrate(upgrade);
+		await migrate(upgrade);
+		assert.equal((await upgrade`SELECT id FROM emails`)[0].id, existing!.id);
+		assert.equal((await upgrade`SELECT id FROM inbound_recovery`).length, 0);
+		assert.equal(await readiness(upgrade), true);
+	} finally {
+		await upgrade.end();
+		await admin`DROP SCHEMA ${admin(upgradeSchema)} CASCADE`;
+	}
 });

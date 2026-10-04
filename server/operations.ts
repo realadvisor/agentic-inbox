@@ -2,6 +2,12 @@ import { Hono } from "hono";
 import type { Database } from "./db";
 import { ingest, type ObjectStore } from "./inbound";
 
+export const requiredMigrations = [
+	1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+	23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+	43, 45,
+];
+
 export async function readiness(
 	db: Database,
 	dependencyCheck?: () => Promise<boolean>,
@@ -9,12 +15,9 @@ export async function readiness(
 	try {
 		const versions = await db`SELECT version FROM inbox_migrations`;
 		const applied = new Set(versions.map((row) => row.version));
-		const required = [
-			1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-			22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-			41, 42, 43, 45,
-		];
-		if (!required.every((version) => applied.has(version))) return false;
+
+		if (!requiredMigrations.every((version) => applied.has(version)))
+			return false;
 		await db`SELECT id FROM inbound_recovery LIMIT 0`;
 		return dependencyCheck ? await dependencyCheck() : true;
 	} catch {
