@@ -1,7 +1,9 @@
-/** Conservative UTF-8 byte ceiling, not a tokenizer. Leaves room for provider
- * framing below the documented 32k per question / 64k per request limits. */
+/** Conservative byte budgets for packing batches, NOT token limits.
+ * Larger single questions must be allowed through to the provider tokenizer. */
 export const questionBudget = 28_000;
 export const requestBudget = 56_000;
+// Application memory/transport guard, not an estimate of the provider token limit.
+export const singleRequestByteLimit = 1_000_000;
 export function encodedSize(value: unknown) {
 	return new TextEncoder().encode(JSON.stringify(value)).length;
 }
