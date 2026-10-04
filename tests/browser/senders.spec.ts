@@ -103,7 +103,7 @@ test("All inbox replies retain their sender across draft saves and default chang
 			.getByRole("option", { name: /<privacy@realadvisor\.com>/ })
 			.click();
 		await page.screenshot({
-			path: ".local/senders-preview.png",
+			path: test.info().outputPath("senders-preview.png"),
 			fullPage: true,
 		});
 		await page

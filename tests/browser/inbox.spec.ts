@@ -96,7 +96,7 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 		await expect(
 			page.getByText("Request to delete my account", { exact: true }),
 		).toBeVisible();
-		await page.screenshot({ path: ".local/inbox-preview.png", fullPage: true });
+		await page.screenshot({ path: test.info().outputPath("inbox-preview.png"), fullPage: true });
 	} finally {
 		await db`DELETE FROM mailboxes WHERE id = ${mailbox}`;
 		await db.end();

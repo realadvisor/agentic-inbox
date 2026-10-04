@@ -49,7 +49,7 @@ test("save and remove an example directly from the inbox conversation without ch
 			.getByRole("button", { name: "Save as example", exact: true })
 			.click();
 		await expect(
-			page.getByRole("button", { name: "Saved as example", exact: true }),
+			page.getByRole("button", { name: "Remove saved example", exact: true }),
 		).toBeVisible();
 		await expect(
 			page.getByRole("region", { name: "Save conversation as example" }),
@@ -61,11 +61,14 @@ test("save and remove an example directly from the inbox conversation without ch
 		expect(saved.role).toBe("teach");
 		expect(saved.thread_id).toBe(email!.thread_id);
 		await page.reload();
-		await page
-			.getByText("Label directly from this thread", { exact: true })
-			.click();
+		await expect(
+			page.getByRole("heading", {
+				name: "Label directly from this thread",
+				exact: true,
+			}),
+		).toBeVisible();
 		const savedButton = page.getByRole("button", {
-			name: "Saved as example",
+			name: "Remove saved example",
 			exact: true,
 		});
 		await expect(savedButton).toHaveAttribute("aria-pressed", "true");
@@ -93,7 +96,7 @@ test("save and remove an example directly from the inbox conversation without ch
 			.getByRole("button", { name: "Save as example", exact: true })
 			.click();
 		await expect(
-			page.getByRole("button", { name: "Saved as example", exact: true }),
+			page.getByRole("button", { name: "Remove saved example", exact: true }),
 		).toBeVisible();
 
 		const rows =

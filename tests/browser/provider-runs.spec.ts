@@ -5,6 +5,7 @@ import { connect } from "../../server/db";
 import { migrate } from "../../server/migrate";
 import { createApi } from "../../server/api";
 import { InboxStore } from "../../server/store";
+import { advanceBackfills } from "../../server/classification/backfills";
 import { processJob } from "../../server/classification/queue";
 
 // Uses the built UI and an isolated schema. No Jev calls or email sending.
@@ -121,7 +122,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await detail.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(detail.locator("pre")).toContainText("jev-test");
 	await page.screenshot({
-		path: ".local/classifier-runs-desktop.png",
+		path: test.info().outputPath("classifier-runs-desktop.png"),
 		fullPage: true,
 		animations: "disabled",
 	});
@@ -156,7 +157,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	await drawer.getByRole("tab", { name: "Response", exact: true }).click();
 	await expect(drawer.locator("pre")).toContainText("jev-test");
 	await page.screenshot({
-		path: ".local/classifier-run-drawer-desktop.png",
+		path: test.info().outputPath("classifier-run-drawer-desktop.png"),
 		animations: "disabled",
 	});
 	await page.setViewportSize({ width: 390, height: 844 });
@@ -165,7 +166,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 	expect(bounds?.width).toBeLessThanOrEqual(390);
 	expect(bounds?.x).toBeGreaterThanOrEqual(0);
 	await page.screenshot({
-		path: ".local/classifier-run-drawer-mobile.png",
+		path: test.info().outputPath("classifier-run-drawer-mobile.png"),
 		animations: "disabled",
 	});
 	await page.keyboard.press("Escape");
@@ -236,7 +237,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 			.getByRole("grid"),
 	).toHaveCount(1);
 	await page.screenshot({
-		path: ".local/classifier-runs-date-picker.png",
+		path: test.info().outputPath("classifier-runs-date-picker.png"),
 		fullPage: true,
 		animations: "disabled",
 	});
@@ -251,7 +252,7 @@ test("inspect requests and responses, filter failures, and open the conversation
 		),
 	).toBe(true);
 	await page.screenshot({
-		path: ".local/classifier-runs-mobile.png",
+		path: test.info().outputPath("classifier-runs-mobile.png"),
 		fullPage: true,
 		animations: "disabled",
 	});
@@ -444,13 +445,19 @@ test("Runs starts a scoped reprocessing batch with a whole tag group", async ({
 		.getByRole("combobox", { name: "Conversations", exact: true })
 		.click();
 	await page
-		.getByRole("option", { name: "Not yet processed", exact: true })
+		.getByRole("option", {
+			name: "Missing or outdated results (recommended)",
+			exact: true,
+		})
 		.click();
 	await dialog
 		.getByRole("combobox", { name: "Conversations", exact: true })
 		.click();
 	await page
-		.getByRole("option", { name: "All active conversations", exact: true })
+		.getByRole("option", {
+			name: "Force reprocess, including current results",
+			exact: true,
+		})
 		.click();
 	await dialog.getByRole("button", { name: "Date range", exact: true }).click();
 	const calendar = page.getByLabel("Date range calendar", { exact: true });
@@ -458,7 +465,7 @@ test("Runs starts a scoped reprocessing batch with a whole tag group", async ({
 	await calendar.locator("[data-day] button").nth(10).click();
 	await calendar.locator("[data-day] button").nth(12).click();
 	await page.screenshot({
-		path: ".local/kumo-range-desktop.png",
+		path: test.info().outputPath("kumo-range-desktop.png"),
 		animations: "disabled",
 	});
 	await page.getByRole("button", { name: "Apply dates", exact: true }).click();
@@ -509,6 +516,18 @@ test("Runs starts a scoped reprocessing batch with a whole tag group", async ({
 		),
 	).toBeVisible();
 	await expect(page).not.toHaveURL(/status=failed/);
+	const runs =
+		await db`SELECT r.request FROM classifier_runs r JOIN classifiers c ON c.id=r.classifier_id JOIN tags t ON t.id=c.tag_id WHERE t.group_id=${group.id}`;
+	expect(runs).toHaveLength(2);
+	for (const run of runs)
+		expect(run.request).toMatchObject({
+			mailbox_ids: [mailbox],
+			selection: "all",
+			limit: 1,
+		});
+	// The hosted dispatcher prepares deferred run items; this local fixture has no cron.
+	await advanceBackfills(db);
+	await advanceBackfills(db);
 	const jobs =
 		await db`SELECT r.id, count(i.*)::int total FROM classifier_runs r JOIN classifiers c ON c.id=r.classifier_id JOIN tags t ON t.id=c.tag_id JOIN classifier_run_items i ON i.run_id=r.id WHERE t.group_id=${group.id} GROUP BY r.id`;
 	expect(jobs).toHaveLength(2);

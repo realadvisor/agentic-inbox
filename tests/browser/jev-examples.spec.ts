@@ -136,7 +136,7 @@ test("curate frozen examples, preview teaching context and run a held-out test s
 		await expect(
 			section.getByRole("button", { name: "Add example", exact: true }),
 		).toHaveCount(0);
-		await page.screenshot({ path: ".local/examples-desktop.png" });
+		await page.screenshot({ path: test.info().outputPath("examples-desktop.png") });
 		await page.setViewportSize({ width: 390, height: 844 });
 		expect(
 			await page.evaluate(

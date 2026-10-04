@@ -165,7 +165,7 @@ test("compact detail controls remain accessible on desktop and mobile", async ({
 	expect((await status.boundingBox())!.y).toBeLessThan(
 		(await tags.boundingBox())!.y,
 	);
-	await page.screenshot({ path: "/tmp/compact-desktop.png" });
+	await page.screenshot({ path: test.info().outputPath("compact-desktop.png") });
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.reload();
 	await expect(
@@ -175,5 +175,5 @@ test("compact detail controls remain accessible on desktop and mobile", async ({
 	expect(
 		await page.evaluate(() => document.documentElement.scrollWidth),
 	).toBeLessThanOrEqual(390);
-	await page.screenshot({ path: "/tmp/compact-mobile.png" });
+	await page.screenshot({ path: test.info().outputPath("compact-mobile.png") });
 });

@@ -122,7 +122,7 @@ test("AI composer generates, previews replacement and protects text written duri
 			)
 			.toBe(true);
 		await expect(dialog.locator(".agent-model-menu")).toHaveCSS("opacity", "1");
-		await page.screenshot({ path: ".local/ai-model-dropdown.png" });
+		await page.screenshot({ path: test.info().outputPath("ai-model-dropdown.png") });
 		await dialog.getByText("GLM 4.7 Flash", { exact: true }).click();
 		await dialog
 			.getByRole("button", { name: "Quick Draft", exact: true })
@@ -166,7 +166,7 @@ test("AI composer generates, previews replacement and protects text written duri
 			"Hello Sophie",
 		);
 		await expect(editor).toContainText("Writing while the model works.");
-		await page.screenshot({ path: ".local/ai-composer.png", fullPage: true });
+		await page.screenshot({ path: test.info().outputPath("ai-composer.png"), fullPage: true });
 		const [count] =
 			await db`SELECT count(*)::int AS n FROM emails WHERE mailbox_id=${mailbox}`;
 		expect(count.n).toBe(1);

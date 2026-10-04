@@ -32,7 +32,7 @@ test("recipient suggestions support keyboard, click, exclusion and free entry", 
 		await to.pressSequentially("e");
 		await expect(to).toHaveValue("alice");
 		await expect(alice).toBeVisible();
-		await page.screenshot({ path: ".local/recipient-suggestions.png" });
+		await page.screenshot({ path: test.info().outputPath("recipient-suggestions.png") });
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect
 			.poll(() =>
@@ -45,7 +45,7 @@ test("recipient suggestions support keyboard, click, exclusion and free entry", 
 		const bounds = await page.getByRole("listbox").boundingBox();
 		expect(bounds!.x).toBeGreaterThanOrEqual(0);
 		expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
-		await page.screenshot({ path: ".local/recipient-suggestions-mobile.png" });
+		await page.screenshot({ path: test.info().outputPath("recipient-suggestions-mobile.png") });
 		await page.setViewportSize({ width: 1440, height: 1000 });
 		await to.press("ArrowDown");
 		await to.press("Enter");
@@ -109,7 +109,7 @@ test("recipient suggestions support keyboard, click, exclusion and free entry", 
 		await expect(composer.getByRole("alert")).toHaveText(
 			"Enter a valid email address.",
 		);
-		await page.screenshot({ path: ".local/recipient-invalid.png" });
+		await page.screenshot({ path: test.info().outputPath("recipient-invalid.png") });
 		await to.fill("valid@example.test");
 		await expect(composer.getByRole("alert")).not.toBeVisible();
 		await to.press("Enter");
@@ -124,7 +124,7 @@ test("recipient suggestions support keyboard, click, exclusion and free entry", 
 		await expect(
 			page.getByText("Suggestions unavailable. You can still type an address."),
 		).toBeVisible();
-		await page.screenshot({ path: ".local/recipient-unavailable.png" });
+		await page.screenshot({ path: test.info().outputPath("recipient-unavailable.png") });
 		await to.fill("someone@example.test");
 		await to.press("Enter");
 		await expect(

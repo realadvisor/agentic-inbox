@@ -57,8 +57,11 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		).toBeVisible();
 		tagId = (await db`SELECT id FROM tags WHERE name=${name}`)[0].id;
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
-		await page.getByText("Synthetic privacy request", { exact: true }).click();
-		await page.getByRole("button", { name: "+ Tag", exact: true }).click();
+		await page
+			.getByRole("button", { name: /^(Unread )?Select conversation / })
+			.getByText("Synthetic privacy request", { exact: true })
+			.click();
+		await page.getByRole("button", { name: "Add tag", exact: true }).click();
 		await page.getByRole("textbox", { name: "Search tags" }).fill(name);
 		await page
 			.getByRole("button", { name: `Choose tag ${name}`, exact: true })
@@ -69,10 +72,14 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		await page.reload();
 		await choose("Tag filter", name);
 		await expect(
-			page.getByText("Synthetic viewing enquiry", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic viewing enquiry", { exact: true }),
 		).toHaveCount(0);
 		await expect(
-			page.getByText("Synthetic privacy request", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic privacy request", { exact: true }),
 		).toBeVisible();
 		await store.insert(mailbox, {
 			sender: "alex@example.test",
@@ -83,9 +90,14 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 		});
 		await page.getByRole("button", { name: "Refresh", exact: true }).click();
 		await expect(
-			page.getByText("Synthetic follow-up", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic follow-up", { exact: true }),
 		).toBeVisible();
-		await page.getByText("Synthetic follow-up", { exact: true }).click();
+		await page
+			.getByRole("button", { name: /^(Unread )?Select conversation / })
+			.getByText("Synthetic follow-up", { exact: true })
+			.click();
 		await page
 			.getByRole("button", { name: `Remove tag ${name}`, exact: true })
 			.click();
@@ -104,7 +116,10 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			.check();
 		await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
 		await choose("Tag for selected conversations", name);
-		await page.getByRole("button", { name: "Add tag", exact: true }).click();
+		await page
+			.getByLabel("Bulk tags", { exact: true })
+			.getByRole("button", { name: "Add tag", exact: true })
+			.click();
 		await expect
 			.poll(
 				async () =>
@@ -113,7 +128,10 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			)
 			.toBe(2);
 		await choose("Tag for selected conversations", name);
-		await page.getByRole("button", { name: "Remove tag", exact: true }).click();
+		await page
+			.getByLabel("Bulk tags", { exact: true })
+			.getByRole("button", { name: "Remove tag", exact: true })
+			.click();
 		await expect
 			.poll(
 				async () =>
@@ -122,7 +140,10 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			)
 			.toBe(0);
 		await choose("Tag for selected conversations", name);
-		await page.getByRole("button", { name: "Add tag", exact: true }).click();
+		await page
+			.getByLabel("Bulk tags", { exact: true })
+			.getByRole("button", { name: "Add tag", exact: true })
+			.click();
 		await expect
 			.poll(
 				async () =>
@@ -141,10 +162,14 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			page.getByRole("heading", { name, exact: true }),
 		).toBeVisible();
 		await expect(
-			page.getByText("Synthetic follow-up", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic follow-up", { exact: true }),
 		).toBeVisible();
 		await expect(
-			page.getByText("Synthetic viewing enquiry", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic viewing enquiry", { exact: true }),
 		).toBeVisible();
 		await page.reload();
 		await expect(
@@ -153,7 +178,9 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 				.getByRole("link", { name, exact: true }),
 		).toHaveAttribute("aria-current", "page");
 		await expect(
-			page.getByText("Synthetic follow-up", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic follow-up", { exact: true }),
 		).toBeVisible();
 		await page
 			.getByRole("navigation")
@@ -161,7 +188,9 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			.click();
 		await expect(page).toHaveURL(new RegExp(`/emails/inbox$`));
 		await expect(
-			page.getByText("Synthetic follow-up", { exact: true }),
+			page
+				.getByRole("button", { name: /^(Unread )?Select conversation / })
+				.getByText("Synthetic follow-up", { exact: true }),
 		).toHaveCount(0);
 		await db`UPDATE emails SET folder_id='inbox' WHERE mailbox_id=${mailbox} AND thread_id=${first!.thread_id!}`;
 		await page.goto(`/mailbox/${mailbox}/settings?tab=tags`);
@@ -184,11 +213,17 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 				.filter({ hasText: "Synthetic follow-up" })
 				.getByText(renamed, { exact: true }),
 		).toBeVisible();
-		await page.getByText("Synthetic follow-up", { exact: true }).click();
+		await page
+			.getByRole("button", { name: /^(Unread )?Select conversation / })
+			.getByText("Synthetic follow-up", { exact: true })
+			.click();
 		await expect(
 			page.getByRole("button", { name: `Remove tag ${renamed}` }),
 		).toBeVisible();
-		await page.screenshot({ path: ".local/tags-preview.png", fullPage: true });
+		await page.screenshot({
+			path: test.info().outputPath("tags-preview.png"),
+			fullPage: true,
+		});
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect(
 			page.getByRole("button", { name: "Mailboxes", exact: true }),
@@ -197,7 +232,7 @@ test("create, edit, filter, apply/remove and bulk tag synthetic conversations", 
 			page.getByRole("button", { name: `Remove tag ${renamed}` }),
 		).toBeInViewport();
 		await page.screenshot({
-			path: ".local/tags-mobile-preview.png",
+			path: test.info().outputPath("tags-mobile-preview.png"),
 			animations: "disabled",
 			fullPage: true,
 		});
