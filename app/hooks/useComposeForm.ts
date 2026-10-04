@@ -1,3 +1,10 @@
+import { sendErrorMessage } from "~/lib/send-error";
+import { draftDelivery } from "~/lib/draft-delivery";
+import {
+	notifyDraftDelivery,
+	useDraftDelivery,
+	useDraftCleanup,
+} from "~/hooks/useDraftDelivery";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -16,7 +23,6 @@ import {
 	toEmailListValue,
 } from "~/lib/utils";
 import {
-	useDeleteEmail,
 	useForwardEmail,
 	useReplyToEmail,
 	useSaveDraft,
@@ -161,7 +167,7 @@ export function useComposeForm(
 	const saveDraftMutation = useSaveDraft();
 	const replyMutation = useReplyToEmail();
 	const forwardMutation = useForwardEmail();
-	const deleteEmailMutation = useDeleteEmail();
+	const draftCleanup = useDraftCleanup();
 
 	const [to, setTo] = useState("");
 	const [cc, setCc] = useState("");
@@ -176,6 +182,9 @@ export function useComposeForm(
 	const lastInitializedOptionsRef = useRef<typeof composeOptions | null>(null);
 	const [draftVersion, setDraftVersion] = useState<string | undefined>();
 	const [savedDraftId, setSavedDraftId] = useState<string>();
+	const deliveryId = savedDraftId || composeOptions.draftEmail?.id;
+	const deliveryState = useDraftDelivery(mailboxId, deliveryId);
+	const sendAttempted = useRef(false);
 	const isDraftEdit = !!composeOptions.draftEmail;
 
 	const formTitle = useMemo(() => {
@@ -215,6 +224,7 @@ export function useComposeForm(
 		)
 			return;
 		lastInitializedOptionsRef.current = composeOptions;
+		sendAttempted.current = false;
 		setSavedDraftId(composeOptions.draftEmail?.id);
 		const initialSenderId =
 			resolveSenderId(senderConfig, {
@@ -256,7 +266,14 @@ export function useComposeForm(
 	}, [composeOptions, currentMailbox, senderConfig, separateQuote]);
 
 	const handleSaveDraft = async () => {
-		if (!mailboxId || isSending || isSavingDraft) return;
+		if (
+			!mailboxId ||
+			isSending ||
+			isSavingDraft ||
+			sendAttempted.current ||
+			(deliveryId && draftDelivery.read(mailboxId, deliveryId))
+		)
+			return;
 		if (!senderIdentityId) {
 			setError("Choose a sender before saving.");
 			return;
@@ -300,7 +317,13 @@ export function useComposeForm(
 
 	const handleSend = async (e: FormEvent, onClose: () => void) => {
 		e.preventDefault();
-		if (isSending) return;
+		if (
+			isSending ||
+			isSavingDraft ||
+			sendAttempted.current ||
+			(mailboxId && deliveryId && draftDelivery.read(mailboxId, deliveryId))
+		)
+			return;
 		setError(null);
 		if (
 			!currentMailbox ||
@@ -334,40 +357,57 @@ export function useComposeForm(
 		const originalId =
 			composeOptions.originalEmail?.id ||
 			composeOptions.draftEmail?.in_reply_to;
+		sendAttempted.current = true;
 		setIsSending(true);
 		toastManager.add({ title: "Submitting message…" });
 		try {
-			if ((mode === "reply" || mode === "reply-all") && originalId)
-				await replyMutation.mutateAsync({
-					mailboxId,
-					emailId: originalId,
-					email: emailData,
-					sendScope,
-				});
-			else if (mode === "forward" && originalId)
-				await forwardMutation.mutateAsync({
-					mailboxId,
-					emailId: originalId,
-					email: emailData,
-					sendScope,
-				});
-			else
-				await sendEmailMutation.mutateAsync({
-					mailboxId,
-					email: emailData,
-					sendScope,
-				});
-			if (draftId)
-				await deleteEmailMutation.mutateAsync({ mailboxId, id: draftId });
-			toastManager.add({ title: "Message submitted" });
-			onClose();
+			const send = async () => {
+				if ((mode === "reply" || mode === "reply-all") && originalId)
+					await replyMutation.mutateAsync({
+						mailboxId,
+						emailId: originalId,
+						email: emailData,
+						sendScope,
+					});
+				else if (mode === "forward" && originalId)
+					await forwardMutation.mutateAsync({
+						mailboxId,
+						emailId: originalId,
+						email: emailData,
+						sendScope,
+					});
+				else
+					await sendEmailMutation.mutateAsync({
+						mailboxId,
+						email: emailData,
+						sendScope,
+					});
+			};
+			if (draftId) {
+				if (!(await draftDelivery.submit(mailboxId, draftId, send))) return;
+			} else await send();
 		} catch (err: unknown) {
-			const message =
-				(err instanceof Error ? err.message : null) || "Failed to send email.";
+			const message = sendErrorMessage(err);
+			sendAttempted.current = false;
 			setError(message);
 			toastManager.add({ title: message, variant: "error" });
+			return;
 		} finally {
+			notifyDraftDelivery();
 			setIsSending(false);
+		}
+		toastManager.add({ title: "Message submitted" });
+		// Cleanup must never turn accepted delivery into a send failure.
+		try {
+			if (draftId) await draftCleanup.cleanup(mailboxId, draftId);
+		} catch {
+			toastManager.add({
+				title:
+					"Message submitted. Draft cleanup failed; retry cleanup from the draft.",
+			});
+		} finally {
+			notifyDraftDelivery();
+			onClose();
 		}
 	};
 
@@ -375,6 +415,8 @@ export function useComposeForm(
 		senderConfig,
 		senderIdentityId,
 		changeSender,
+		deliveryId,
+		sendBlocked: !!deliveryState || sendAttempted.current,
 		to,
 		setTo,
 		cc,

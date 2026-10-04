@@ -1,3 +1,4 @@
+import { useDraftDelivery } from "~/hooks/useDraftDelivery";
 import { SendLabel } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
@@ -78,6 +79,10 @@ export default function ThreadMessage({
 	onViewSource,
 	onPreviewImage,
 }: ThreadMessageProps) {
+	const deliveryState = useDraftDelivery(
+		mailboxId,
+		isDraft ? email.id : undefined,
+	);
 	const isSelf = email.sender === mailboxEmail;
 	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${
 		isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""
@@ -195,7 +200,7 @@ export default function ThreadMessage({
 								icon={<PaperPlaneTiltIcon size={14} />}
 								onClick={onSendDraft}
 								loading={isSending}
-								disabled={isSending}
+								disabled={isSending || !!deliveryState}
 							>
 								<SendLabel sending={isSending} />
 							</Button>

@@ -1,3 +1,4 @@
+import DraftDeliveryNotice from "./DraftDeliveryNotice";
 import { Input as KumoInput } from "@cloudflare/kumo";
 import "./composer-fields.css";
 import ComposerAiAssist from "./ComposerAiAssist";
@@ -72,7 +73,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							recipients={form.to}
 							onApply={form.setBody}
 							onGeneratingChange={setGenerating}
-							disabled={busy}
+							disabled={busy || form.sendBlocked}
 							initialOpen={composeOptions.aiDraft}
 							initialQuick={composeOptions.quickDraft}
 						/>
@@ -221,6 +222,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 						</details>
 					)}
 				</div>
+				<DraftDeliveryNotice mailboxId={mailboxId} draftId={form.deliveryId} />
 				{form.error && (
 					<p role="alert" className="px-5 py-2 text-sm text-kumo-destructive">
 						{form.error}
@@ -232,7 +234,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							type="submit"
 							size="sm"
 							variant="primary"
-							disabled={busy}
+							disabled={busy || form.sendBlocked}
 							icon={<PaperPlaneTiltIcon size={16} />}
 						>
 							<SendLabel sending={form.isSending} />
@@ -257,7 +259,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							variant="secondary"
 							size="sm"
 							icon={<FloppyDiskIcon size={14} />}
-							disabled={busy}
+							disabled={busy || form.sendBlocked}
 							onClick={form.handleSaveDraft}
 						>
 							{form.isSavingDraft ? "Saving…" : "Save as Draft"}

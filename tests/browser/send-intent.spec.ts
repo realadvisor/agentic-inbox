@@ -101,7 +101,7 @@ for (const mode of ["new", "reply", "forward", "draft"] as const) {
 				.first();
 			await send.click();
 			await expect(
-				page.getByText("Failed to fetch", { exact: true }).first(),
+				page.getByText(/Delivery is unconfirmed.*Failed to fetch/).first(),
 			).toBeVisible();
 			if (mode === "new") {
 				await senders.setDefault("info@realadvisor.com");
