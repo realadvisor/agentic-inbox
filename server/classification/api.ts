@@ -89,7 +89,7 @@ export function classifierApi(
 			c.req.method !== "GET" &&
 			!c.req.path.includes("/results/") &&
 			!options.admin &&
-			!c.get("apiKey")?.permissions.includes("classifications:run")
+			!c.get("scope")?.permissions.includes("classifications:run")
 		)
 			return c.json(
 				{ error: "Only inbox administrators can configure or run classifiers" },
@@ -346,7 +346,7 @@ export function classifierApi(
 				classifierId,
 				data,
 				c.get("apiKey") ? `api-key:${c.get("apiKey")!.id}` : options.actor,
-				c.get("apiKey") ? "agent" : "human",
+				c.get("scope") ? "agent" : "human",
 			);
 		});
 		return c.body(null, 204);

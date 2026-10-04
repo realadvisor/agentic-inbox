@@ -22,7 +22,11 @@ export type ApiKey = {
 	mailbox_ids: string[];
 	permissions: string[];
 };
-export type KeyVariables = { apiKey?: ApiKey };
+export type KeyVariables = {
+	apiKey?: ApiKey;
+	scope?: import("./principals").Scope;
+	principal?: import("./principals").Principal;
+};
 export async function hashApiKey(token: string) {
 	return Buffer.from(
 		await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)),

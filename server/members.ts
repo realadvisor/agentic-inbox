@@ -8,10 +8,8 @@ export async function resolveAccessRole(
 	db: Database,
 	identity: AccessIdentity,
 	bootstrapAdmins: string[],
-	serviceClientIds: string[],
 ): Promise<MemberRole | null> {
-	if (identity.kind === "service")
-		return serviceClientIds.includes(identity.email) ? "user" : null;
+	if (identity.kind === "service") return null; // Service authorization never creates or inherits human membership.
 	return resolveMember(db, identity.email, bootstrapAdmins);
 }
 

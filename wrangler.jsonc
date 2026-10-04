@@ -26,6 +26,7 @@
 		"MAILBOX_ADMINS": "jonas@realadvisor.com",
 		"ACCESS_MEMBERSHIP_ENABLED": "true",
 		"ACCESS_SERVICE_CLIENT_IDS": "cbad515f2134f6b19ee8405fdd98e226.access,c748884d95de49bda14aa81bdd252060.access",
+		"ACCESS_SERVICE_GRANTS": "{\"c748884d95de49bda14aa81bdd252060.access\":{\"mailbox_ids\":[],\"permissions\":[\"health:read\"]}}",
 		"MAILBOX_CREATION_ENABLED": "true",
 		"INBOUND_ENABLED": "true",
 		"ACCESS_ISSUER": "https://realadvisor.cloudflareaccess.com",

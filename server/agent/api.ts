@@ -184,12 +184,12 @@ export function agentApi(db: Database, options: AgentOptions) {
 			actor: c.get("apiKey")
 				? `api-key:${c.get("apiKey")!.id}`
 				: (options.actor ?? "local-synthetic-user"),
-			permissions: c.get("apiKey")?.permissions,
-			mailboxIds: c.get("apiKey")?.mailbox_ids,
+			permissions: c.get("scope")?.permissions,
+			mailboxIds: c.get("scope")?.mailbox_ids,
 			classification: options.classification && {
 				...options.classification,
-				admin: c.get("apiKey")
-					? c.get("apiKey")!.permissions.includes("classifications:run")
+				admin: c.get("scope")
+					? c.get("scope")!.permissions.includes("classifications:run")
 					: options.classification.admin,
 			},
 		};

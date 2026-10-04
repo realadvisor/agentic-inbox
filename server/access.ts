@@ -2,11 +2,9 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-export interface AccessIdentity {
-	subject: string;
-	email: string;
-	kind: "user" | "service";
-}
+export type AccessIdentity =
+	| { kind: "user"; subject: string; email: string }
+	| { kind: "service"; subject: string; clientId: string };
 
 function accessActor(payload: JWTPayload): AccessIdentity {
 	if (payload.type !== "app") {
@@ -19,13 +17,15 @@ function accessActor(payload: JWTPayload): AccessIdentity {
 		typeof payload.common_name === "string" && payload.common_name
 			? payload.common_name
 			: null;
-	const identity = email ?? commonName;
+	const identity = commonName ?? email;
 	if (!identity) {
 		throw new Error("An authenticated Access user is required");
 	}
 	const subject =
 		typeof payload.sub === "string" && payload.sub ? payload.sub : identity;
-	return { subject, email: identity, kind: email ? "user" : "service" };
+	return commonName
+		? { subject, clientId: commonName, kind: "service" }
+		: { subject, email: email!, kind: "user" };
 }
 
 export async function verifyAccess(

@@ -230,7 +230,12 @@ test("Worker readiness requires signed allowed identity, rejects missing config 
 			PUBLIC_ORIGIN: "https://inbox.test",
 			MAIL_MODE: "live" as const,
 			ACCESS_MEMBERSHIP_ENABLED: "true",
-			ACCESS_SERVICE_CLIENT_IDS: "synthetic-health-client",
+			ACCESS_SERVICE_GRANTS: JSON.stringify({
+				"synthetic-health-client": {
+					mailbox_ids: [],
+					permissions: ["health:read"],
+				},
+			}),
 			ACCESS_ISSUER: issuer,
 			ACCESS_AUDIENCE: "inbox",
 			HYPERDRIVE: { connectionString: database.toString() },
@@ -258,7 +263,7 @@ test("Worker readiness requires signed allowed identity, rejects missing config 
 		assert.equal((await call()).status, 200);
 		assert.equal((await call("/api/health", {}, token + "forged")).status, 401);
 		assert.equal(
-			(await call("/api/health", { ACCESS_SERVICE_CLIENT_IDS: "" })).status,
+			(await call("/api/health", { ACCESS_SERVICE_GRANTS: "{}" })).status,
 			403,
 		);
 		assert.equal((await call("/api/health", { EMAIL: undefined })).status, 503);
