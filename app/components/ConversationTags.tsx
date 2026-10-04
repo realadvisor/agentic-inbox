@@ -48,7 +48,7 @@ export function TagChips({
 								? "Applied manually"
 								: undefined
 					}
-					className={`inline-flex min-w-0 max-w-full items-center rounded-md border text-xs font-medium text-kumo-default ${compact ? "gap-1 px-1.5 leading-4" : "gap-1.5 px-2 py-0.5"}`}
+					className={`inline-flex min-w-0 max-w-full items-center rounded-md border text-xs font-medium text-kumo-default ${compact ? "min-h-[22px] gap-1 px-1.5 leading-4" : "gap-1.5 px-2 py-0.5"}`}
 					style={{
 						backgroundColor: `${tag.color}20`,
 						color: `color-mix(in srgb, ${tag.color} 45%, currentColor)`,
@@ -339,6 +339,7 @@ export function TagActions({
 				<>
 					<TagChips
 						inline={compact}
+						compact={compact}
 						tags={tags?.filter(
 							(tag) =>
 								tag.group_selection !== "single" &&
