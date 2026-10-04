@@ -24,32 +24,9 @@ import {
 } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
 import { useSenders } from "~/queries/senders";
-import { resolveSenderId } from "shared/senders";
+import { resolveSenderId, type SenderIdentity } from "shared/senders";
 import { useUIStore } from "~/hooks/useUIStore";
-
-function isSelfAddress(address: string, self?: string) {
-	const publicAddress = self?.replace(
-		/@ingest\.realadvisor\.com$/,
-		"@realadvisor.com",
-	);
-	return address === self || address === publicAddress;
-}
-
-function appendUniqueAddress(
-	addresses: string[],
-	seen: Set<string>,
-	address: string,
-	exclude?: string,
-) {
-	const trimmed = address.trim();
-	if (!trimmed) return;
-
-	const normalized = trimmed.toLowerCase();
-	if (isSelfAddress(normalized, exclude) || seen.has(normalized)) return;
-
-	seen.add(normalized);
-	addresses.push(trimmed);
-}
+import { buildReplyAllFields, getReplyAddress } from "~/lib/replies";
 
 interface ComposeFormFields {
 	to: string;
@@ -96,51 +73,11 @@ function buildForwardBody(
 	)}<br><strong>Subject:</strong> ${safeSubject}<br><br>${safeBody}</div>`;
 }
 
-function buildReplyAllFields(
-	original: NonNullable<
-		ReturnType<typeof useUIStore.getState>["composeOptions"]["originalEmail"]
-	>,
-	selfAddress?: string,
-) {
-	const toRecipients: string[] = [];
-	const toSeen = new Set<string>();
-	appendUniqueAddress(
-		toRecipients,
-		toSeen,
-		original.reply_to || original.sender,
-		selfAddress,
-	);
-
-	for (const recipient of splitEmailList(original.recipient)) {
-		appendUniqueAddress(toRecipients, toSeen, recipient, selfAddress);
-	}
-
-	const ccRecipients: string[] = [];
-	const ccSeen = new Set<string>();
-	for (const recipient of splitEmailList(original.cc)) {
-		const normalized = recipient.toLowerCase();
-		if (
-			isSelfAddress(normalized, selfAddress) ||
-			toSeen.has(normalized) ||
-			ccSeen.has(normalized)
-		) {
-			continue;
-		}
-		ccSeen.add(normalized);
-		ccRecipients.push(recipient);
-	}
-
-	return {
-		to: toRecipients.join(", "),
-		cc: ccRecipients.join(", "),
-		showCcBcc: ccRecipients.length > 0,
-	};
-}
-
 function buildInitialComposeFields(
 	composeOptions: ReturnType<typeof useUIStore.getState>["composeOptions"],
 	mailboxEmail: string | undefined,
 	sigBlock: string,
+	senders: readonly SenderIdentity[],
 ): ComposeFormFields {
 	const { draftEmail: draft, originalEmail: original, mode } = composeOptions;
 
@@ -165,7 +102,7 @@ function buildInitialComposeFields(
 	if (mode === "reply") {
 		return {
 			...EMPTY_FIELDS,
-			to: original.reply_to || original.sender,
+			to: getReplyAddress(original),
 			subject: getPrefixedSubject(original.subject, "Re"),
 			body: `<p><br></p>${
 				sigBlock ? `${sigBlock}<br>` : ""
@@ -178,10 +115,7 @@ function buildInitialComposeFields(
 	}
 
 	if (mode === "reply-all") {
-		const recipients = buildReplyAllFields(
-			original,
-			mailboxEmail?.toLowerCase(),
-		);
+		const recipients = buildReplyAllFields(original, mailboxEmail, senders);
 		return {
 			...EMPTY_FIELDS,
 			...recipients,
@@ -300,6 +234,7 @@ export function useComposeForm(
 			composeOptions,
 			currentMailbox?.email,
 			sigBlock,
+			senderConfig.senders,
 		);
 		setError(null);
 		setTo(initialFields.to);

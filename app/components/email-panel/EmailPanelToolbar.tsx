@@ -30,7 +30,7 @@ interface EmailPanelToolbarProps {
 	isDraftFolder: boolean;
 	isSending: boolean;
 	moveToFolders: Folder[];
-	lastReceivedMessage?: Email;
+	canReply: boolean;
 	onBack: () => void;
 	onSendDraft: () => void;
 	onEditDraft: () => void;
@@ -50,6 +50,7 @@ export default function EmailPanelToolbar({
 	isDraftFolder,
 	isSending,
 	moveToFolders,
+	canReply,
 	onBack,
 	onSendDraft,
 	onEditDraft,
@@ -96,23 +97,33 @@ export default function EmailPanelToolbar({
 				</>
 			) : (
 				<>
-					<Tooltip content="Reply" side="bottom" asChild>
+					<Tooltip
+						content={canReply ? "Reply" : "No received message to reply to"}
+						side="bottom"
+						asChild
+					>
 						<Button
 							variant="ghost"
 							shape="square"
 							size="sm"
 							icon={<ArrowBendUpLeftIcon size={18} />}
 							onClick={onReply}
+							disabled={!canReply}
 							aria-label="Reply"
 						/>
 					</Tooltip>
-					<Tooltip content="Reply All" side="bottom" asChild>
+					<Tooltip
+						content={canReply ? "Reply All" : "No received message to reply to"}
+						side="bottom"
+						asChild
+					>
 						<Button
 							variant="ghost"
 							shape="square"
 							size="sm"
 							icon={<ChatCircleIcon size={18} />}
 							onClick={onReplyAll}
+							disabled={!canReply}
 							aria-label="Reply All"
 						/>
 					</Tooltip>
