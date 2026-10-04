@@ -10,6 +10,7 @@ export type ComposeMode = "new" | "reply" | "reply-all" | "forward";
 
 export interface ComposeOptions {
 	mode: ComposeMode;
+	sendScope?: string;
 	aiDraft?: boolean;
 	quickDraft?: boolean;
 	originalEmail?: Email | null;
@@ -75,7 +76,10 @@ export const useUIStore = create<UIState>((set, get) => ({
 				_previousEmailId: state.selectedEmailId,
 				// Keep selectedEmailId when replying/forwarding so the thread stays visible
 				selectedEmailId: isReplyOrForward ? state.selectedEmailId : null,
-				composeOptions: options || { mode: "new", originalEmail: null },
+				composeOptions: {
+					...(options || { mode: "new", originalEmail: null }),
+					sendScope: crypto.randomUUID(),
+				},
 				isSidebarOpen: false,
 			};
 		}),
@@ -102,7 +106,10 @@ export const useUIStore = create<UIState>((set, get) => ({
 
 	openComposeModal: (options) =>
 		set({
-			composeOptions: options || { mode: "new", originalEmail: null },
+			composeOptions: {
+				...(options || { mode: "new", originalEmail: null }),
+				sendScope: crypto.randomUUID(),
+			},
 			isComposeModalOpen: true,
 		}),
 
