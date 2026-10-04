@@ -314,6 +314,38 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 							mailboxId={mailboxId}
 							threadIds={[email.thread_id ?? email.id]}
 							tags={email.tags}
+							actions={
+								<>
+									{mode.data?.classifiersEnabled &&
+										mode.data?.canManageClassifiers && (
+											<ReclassifyConversation
+												compact
+												key={`rerun/${mailboxId}/${email.thread_id ?? email.id}`}
+												mailboxId={mailboxId}
+												threadId={email.thread_id ?? email.id}
+											/>
+										)}
+									{mode.data?.classifiersEnabled &&
+										mode.data?.canManageClassifiers && (
+											<ConversationExample
+												compact
+												tags={email.tags}
+												key={`example/${mailboxId}/${email.thread_id ?? email.id}`}
+												mailboxId={mailboxId}
+												threadId={email.thread_id ?? email.id}
+											/>
+										)}
+									{mode.data?.classifiersEnabled &&
+										mode.data?.canManageClassifiers && (
+											<ConversationClassifierDrawer
+												compact
+												key={`${mailboxId}/${email.thread_id ?? email.id}`}
+												mailboxId={mailboxId}
+												threadId={email.thread_id ?? email.id}
+											/>
+										)}{" "}
+								</>
+							}
 						>
 							{(mode.data?.classifierPreview ||
 								mode.data?.classifiersEnabled) &&
@@ -327,31 +359,6 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 							<ScoreChips scores={email.scores} />
 						</TagActions>
 					</div>
-					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
-						<ReclassifyConversation
-							compact
-							key={`rerun/${mailboxId}/${email.thread_id ?? email.id}`}
-							mailboxId={mailboxId}
-							threadId={email.thread_id ?? email.id}
-						/>
-					)}
-					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
-						<ConversationExample
-							compact
-							tags={email.tags}
-							key={`example/${mailboxId}/${email.thread_id ?? email.id}`}
-							mailboxId={mailboxId}
-							threadId={email.thread_id ?? email.id}
-						/>
-					)}
-					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
-						<ConversationClassifierDrawer
-							compact
-							key={`${mailboxId}/${email.thread_id ?? email.id}`}
-							mailboxId={mailboxId}
-							threadId={email.thread_id ?? email.id}
-						/>
-					)}
 				</div>
 			)}
 

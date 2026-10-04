@@ -67,6 +67,11 @@ export function ReclassifyConversation({
 				variant="ghost"
 				size="sm"
 				shape={compact ? "square" : undefined}
+				className={
+					compact
+						? "h-6 w-6 min-w-6 rounded-md p-0 text-kumo-subtle"
+						: undefined
+				}
 				aria-label={pending ? "Reclassifying…" : "Reclassify"}
 				disabled={pending}
 				onClick={() => run.mutate()}

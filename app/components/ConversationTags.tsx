@@ -100,6 +100,7 @@ export function TagPicker({
 	allowAll = false,
 	multiple = false,
 	compact = false,
+	iconOnly = false,
 	onRemove,
 	source,
 }: {
@@ -113,6 +114,7 @@ export function TagPicker({
 	allowAll?: boolean;
 	multiple?: boolean;
 	compact?: boolean;
+	iconOnly?: boolean;
 	onRemove?: () => void;
 	source?: ConversationTag["source"];
 }) {
@@ -151,13 +153,15 @@ export function TagPicker({
 						disabled={disabled}
 						aria-label={label}
 						title={
-							source === "classifier"
-								? "Applied automatically by Jev"
-								: source === "manual"
-									? "Applied manually"
-									: undefined
+							iconOnly
+								? label
+								: source === "classifier"
+									? "Applied automatically by Jev"
+									: source === "manual"
+										? "Applied manually"
+										: undefined
 						}
-						className={`inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected && !triggerLabel ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
+						className={`inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${iconOnly ? "h-6 w-6 justify-center rounded-md p-0" : compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected && !triggerLabel ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
 						style={
 							compact && selected && !triggerLabel
 								? {
@@ -193,19 +197,23 @@ export function TagPicker({
 				) : (
 					<PlusIcon size={14} />
 				)}
-				<span className="max-w-40 truncate">
-					{triggerLabel ??
-						(multiple && selectedIds.length > 1
-							? `${selectedIds.length} tags`
-							: selected
-								? selected.group_name
-									? `${selected.group_name}: ${selected.name}`
-									: selected.name
-								: allowAll && value
-									? "Deleted tag"
-									: placeholder)}
-				</span>
-				<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
+				{!iconOnly && (
+					<span className="max-w-40 truncate">
+						{triggerLabel ??
+							(multiple && selectedIds.length > 1
+								? `${selectedIds.length} tags`
+								: selected
+									? selected.group_name
+										? `${selected.group_name}: ${selected.name}`
+										: selected.name
+									: allowAll && value
+										? "Deleted tag"
+										: placeholder)}
+					</span>
+				)}
+				{!iconOnly && (
+					<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
+				)}
 			</Popover.Trigger>
 			<Popover.Content
 				align="start"
@@ -293,6 +301,7 @@ export function TagPicker({
 
 export function TagActions({
 	compact = false,
+	actions,
 	children,
 	mailboxId,
 	threadIds,
@@ -300,6 +309,7 @@ export function TagActions({
 	bulk = false,
 }: {
 	compact?: boolean;
+	actions?: ReactNode;
 	mailboxId: string;
 	threadIds: string[];
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
@@ -365,13 +375,15 @@ export function TagActions({
 			)}
 			<TagPicker
 				compact={!bulk}
+				iconOnly={compact}
 				tags={choices}
 				value={bulk ? validSelection : undefined}
-				label={bulk ? "Tag for selected conversations" : "+ Tag"}
+				label={bulk ? "Tag for selected conversations" : "Add tag"}
 				placeholder={bulk ? "Choose tag" : "Add tag"}
 				disabled={mutation.isPending || catalog.isPending || catalog.isError}
 				onChange={(id) => (bulk ? setSelected(id) : change(id, "add"))}
 			/>
+			{actions}
 			{bulk && (
 				<>
 					<Button

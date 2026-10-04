@@ -67,7 +67,7 @@ export function ConversationExample({
 						? "Remove this conversation from all example sets"
 						: "Confirm the current tags as example labels. Unassigned groups are skipped."
 				}
-				className={isSaved ? "text-kumo-brand" : undefined}
+				className={`${compact ? "h-6 w-6 min-w-6 rounded-md p-0" : ""} ${isSaved ? "text-kumo-brand" : "text-kumo-subtle"}`}
 				aria-pressed={isSaved}
 				aria-live="polite"
 				aria-busy={busy}

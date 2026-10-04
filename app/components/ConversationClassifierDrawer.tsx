@@ -64,7 +64,7 @@ export function ConversationClassifierDrawer({
 						title="Classification"
 						className={
 							compact
-								? "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-kumo-subtle hover:bg-kumo-tint focus-visible:outline-2 cursor-pointer"
+								? "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-kumo-subtle hover:bg-kumo-tint focus-visible:outline-2 cursor-pointer"
 								: "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-2.5 py-1.5 text-xs font-medium text-kumo-subtle hover:bg-kumo-tint cursor-pointer"
 						}
 					/>
