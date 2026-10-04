@@ -1,3 +1,9 @@
+import {
+	draftContentSchema,
+	draftVersionSchema,
+	type SaveDraftResult,
+} from "../shared/mail";
+export { draftContentSchema, draftVersionSchema } from "../shared/mail";
 import { SenderStore } from "./senders";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -31,17 +37,6 @@ export async function setThreadRead(
 		throw new HTTPException(404, { message: "Conversation not found" });
 	return { thread_id: thread, read, message_count: rows.length };
 }
-export const draftVersionSchema = z.string().regex(/^[a-f0-9]{32}$/);
-export const draftContentSchema = z.object({
-	draft_mode: z.enum(["new", "reply", "reply-all", "forward"]).optional(),
-	draft_source_id: z.string().uuid().nullable().optional(),
-	sender_identity_id: z.string().min(1).max(254).optional(),
-	to: z.string().max(4000).default(""),
-	cc: z.string().max(4000).default(""),
-	bcc: z.string().max(4000).default(""),
-	subject: z.string().max(1000).default(""),
-	body: z.string().max(100_000),
-});
 // Hash the exact editable fields in SQL, including intent, avoiding timestamp precision loss.
 export async function updateDraft(
 	db: Database,
@@ -50,7 +45,7 @@ export async function updateDraft(
 	content: Partial<z.infer<typeof draftContentSchema>>,
 	version?: string,
 	senderAccess: { mailboxIds?: string[] } = {},
-) {
+): Promise<SaveDraftResult> {
 	const input = draftContentSchema.partial().parse(content);
 	const [current] =
 		await db`SELECT draft_mode,draft_source_id FROM emails WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'`;
@@ -82,7 +77,9 @@ export async function updateDraft(
 			message: "Provide at least one draft field to change",
 		});
 	if (version !== undefined) draftVersionSchema.parse(version);
-	const [row] = await db`UPDATE emails SET ${db(changes)},date=clock_timestamp()
+	const [row] = await db<
+		(Omit<SaveDraftResult, "draft_id"> & { id: string })[]
+	>`UPDATE emails SET ${db(changes)},date=clock_timestamp()
  WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'
  AND (${version ?? null}::text IS NULL OR md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text)=${version ?? null})
  RETURNING id,sender,sender_identity_id,md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text) AS draft_version`;
@@ -96,12 +93,12 @@ export async function updateDraft(
 		});
 	}
 	return {
-		draft_id: row.id as string,
+		draft_id: row.id,
 		sender: String(row.sender),
 		sender_identity_id:
 			typeof row.sender_identity_id === "string"
 				? row.sender_identity_id
 				: null,
-		draft_version: row.draft_version as string,
+		draft_version: row.draft_version,
 	};
 }

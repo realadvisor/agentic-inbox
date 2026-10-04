@@ -1,3 +1,9 @@
+import {
+	sendEmailSchema as sendSchema,
+	saveDraftSchema as draftSchema,
+	saveDraftResultSchema,
+	type SendResult,
+} from "../shared/mail";
 import { operationsApi, readiness } from "./operations";
 import type { ObjectStore } from "./inbound";
 import {
@@ -9,8 +15,6 @@ import {
 import { membersApi, type MemberRole } from "./members";
 import { webhookApi } from "./webhooks/api";
 import {
-	draftContentSchema,
-	draftVersionSchema,
 	updateDraft,
 	updateMessageFlags,
 	messageFlagsSchema,
@@ -39,32 +43,7 @@ import { SenderStore } from "./senders";
 import { sendReal, type MailSender } from "./outbound";
 import { liveSender, mailboxConfig } from "./mailboxes";
 
-const text = z.string().max(100_000);
 const id = z.string().uuid();
-const recipients = z.union([
-	z.string().email(),
-	z.array(z.string().email()).min(1).max(50),
-]);
-const sendSchema = z
-	.object({
-		draft_mode: z.enum(["new", "reply", "reply-all", "forward"]).optional(),
-		sender_identity_id: z.string().min(1).max(254).optional(),
-		draft_id: id.optional(),
-		to: recipients,
-		cc: recipients.optional(),
-		bcc: recipients.optional(),
-		subject: z.string().max(1000).default(""),
-		html: text.optional(),
-		text: text.optional(),
-	})
-	.refine((value) => value.html || value.text, "Message body is required");
-const draftSchema = draftContentSchema.extend({
-	in_reply_to: id.optional(),
-	thread_id: id.optional(),
-	view: z.enum(["summary"]).optional(),
-	draft_id: id.optional(),
-	draft_version: draftVersionSchema.optional(),
-});
 const tagSchema = z
 	.object({
 		name: z.string().trim().min(1).max(80),
@@ -774,13 +753,13 @@ export function createApi(db: Database, options: ApiOptions) {
 			draft_source_id: parentId,
 		});
 		return c.json(
-			{
+			saveDraftResultSchema.parse({
 				draft_id: draft!.id,
 				sender_identity_id: sender.id,
 				sender: sender.email,
 				draft_version: (await store.message(mailbox.id, draft!.id))
 					.draft_version,
-			},
+			}),
 			201,
 		);
 	});
@@ -860,7 +839,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					status: "simulated",
 					sender_identity_id: sender.id,
 					sender: sender.email,
-				},
+				} satisfies SendResult,
 				201,
 			);
 		});

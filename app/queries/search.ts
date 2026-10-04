@@ -6,22 +6,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { parseSearchQuery } from "~/lib/search-parser";
 import api from "~/services/api";
-import type { Email } from "~/types";
+import type { ConversationSummary } from "shared/mail";
 import { queryKeys } from "./keys";
 
 export const SEARCH_PAGE_SIZE = 25;
-
-interface SearchResponse {
-	emails: Email[];
-	totalCount: number;
-}
 
 export function useSearchEmails(
 	mailboxId: string | undefined,
 	query: string,
 	page: number,
 ) {
-	return useQuery<{ results: Email[]; totalCount: number }>({
+	return useQuery<{ results: ConversationSummary[]; totalCount: number }>({
 		queryKey:
 			mailboxId && query
 				? queryKeys.search.results(mailboxId, query, page)
@@ -45,16 +40,8 @@ export function useSearchEmails(
 				params.is_starred = String(parsed.is_starred);
 			if (parsed.has_attachment) params.has_attachment = "true";
 
-			const data = (await api.searchEmails(mailboxId!, params, { signal })) as
-				SearchResponse | Email[];
-			if (data && typeof data === "object" && "emails" in data) {
-				return {
-					results: (data as SearchResponse).emails ?? [],
-					totalCount: (data as SearchResponse).totalCount ?? 0,
-				};
-			}
-			const arr = Array.isArray(data) ? data : [];
-			return { results: arr, totalCount: arr.length };
+			const data = await api.searchEmails(mailboxId!, params, { signal });
+			return { results: data.emails, totalCount: data.totalCount };
 		},
 		enabled: !!mailboxId && !!query,
 	});

@@ -1,20 +1,11 @@
+import type { ParsedSendEmail, AcceptedSendResult } from "../shared/mail";
 import { DraftIntentConflict, draftSendIntent } from "./draft-intent";
 import { HTTPException } from "hono/http-exception";
 import type { Database } from "./db";
 import { InboxStore } from "./store";
 import { mailboxConfig } from "./mailboxes";
 import { SenderStore } from "./senders";
-export interface OutgoingMail {
-	draft_mode?: "new" | "reply" | "reply-all" | "forward";
-	sender_identity_id?: string;
-	draft_id?: string;
-	to: string | string[];
-	cc?: string | string[];
-	bcc?: string | string[];
-	subject: string;
-	html?: string;
-	text?: string;
-}
+export type OutgoingMail = ParsedSendEmail;
 export interface MailSender {
 	send(
 		mail: OutgoingMail & {
@@ -34,7 +25,7 @@ export async function sendReal(
 	parentId?: string,
 	isReply = false,
 	mailboxIds?: string[],
-) {
+): Promise<AcceptedSendResult> {
 	if (!(await mailboxConfig(db, mailbox)))
 		throw new HTTPException(403, {
 			message: "Mailbox is not enabled for sending",

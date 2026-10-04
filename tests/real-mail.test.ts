@@ -1,3 +1,4 @@
+import { sendResultSchema } from "../shared/mail";
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { connect } from "../server/db";
@@ -114,6 +115,8 @@ test("send fixes sender identity and deduplicates requests", async () => {
 		input,
 		"jonas@realadvisor.com",
 	);
+	sendResultSchema.parse(first);
+	sendResultSchema.parse(second);
 	assert.equal(calls, 1);
 	assert.equal(first.id, second.id);
 	assert.equal(first.status, "sent");
