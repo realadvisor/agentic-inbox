@@ -57,7 +57,7 @@ export function TagGroups({
 		<section className="overflow-hidden rounded-xl border border-kumo-line bg-kumo-base">
 			<header className="flex items-center justify-between gap-4 p-5">
 				<div className="flex min-w-0 items-center gap-3">
-					<div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle sm:flex">
+					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
 						<TagIcon size={21} />
 					</div>
 					<div>
