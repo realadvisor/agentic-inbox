@@ -88,102 +88,48 @@
 				"operationId": "getCheckHealth",
 				"summary": "Check health",
 				"tags": ["System"],
-				"description": "",
+				"description": "Authenticated readiness: required migration versions, database access, Worker configuration and private object-store read reachability. Does not send mail or call paid providers. No secrets or dependency errors are returned.",
 				"parameters": [],
 				"responses": {
 					"200": {
-						"description": "Success",
+						"description": "Ready; status is ready",
 						"content": {
 							"application/json": {
 								"schema": {
 									"type": "object",
+									"required": ["status"],
 									"properties": {
 										"status": {
-											"type": "string"
-										},
-										"storage": {
-											"type": "string"
-										},
-										"mode": {
-											"type": "string"
+											"type": "string",
+											"enum": ["ready"]
 										}
 									}
 								}
 							}
 						}
 					},
-					"400": {
-						"description": "Invalid input",
+					"503": {
+						"description": "Unavailable; status is unavailable",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/Error"
+									"type": "object",
+									"required": ["status"],
+									"properties": {
+										"status": {
+											"type": "string",
+											"enum": ["unavailable"]
+										}
+									}
 								}
 							}
 						}
 					},
 					"401": {
-						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+						"description": "Authentication required"
 					},
 					"403": {
-						"description": "Operation denied",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
-					},
-					"413": {
-						"description": "Request exceeds 256,000 bytes",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
-					},
-					"415": {
-						"description": "Use application/json",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Internal error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/Error"
-								}
-							}
-						}
+						"description": "Inbox membership required"
 					}
 				}
 			}
@@ -7767,6 +7713,73 @@
 						}
 					}
 				]
+			}
+		},
+		"/api/v1/operations": {
+			"get": {
+				"tags": ["System"],
+				"summary": "List unresolved ingestion, stale sends and unpublished classifier jobs",
+				"description": "Administrators only; inbox API keys and service users are denied. Each list is oldest-first and limited to 100 records. No message bodies or storage keys. Sends are older than 15 minutes; jobs older than 30 minutes. Reporting never retries sends.",
+				"responses": {
+					"200": {
+						"description": "recoveries, sends and jobs arrays"
+					},
+					"403": {
+						"description": "Administrator required"
+					}
+				},
+				"operationId": "listOperations"
+			}
+		},
+		"/api/v1/operations/{id}/replay": {
+			"post": {
+				"tags": ["System"],
+				"summary": "Explicitly replay retained inbound MIME",
+				"description": "Administrators only. Uses the recorded mailbox and hash-verified original MIME; existing transactional Message-ID deduplication prevents duplicate mail and trigger effects. Never sends outgoing mail. Completed records are a no-op.",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Complete"
+					},
+					"400": {
+						"description": "Invalid recovery ID"
+					},
+					"403": {
+						"description": "Administrator required"
+					},
+					"404": {
+						"description": "Record not found"
+					},
+					"409": {
+						"description": "Missing or corrupt recovery object"
+					},
+					"503": {
+						"description": "Replay or storage unavailable; record retained"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false
+							},
+							"example": {}
+						}
+					}
+				},
+				"operationId": "replayInboundRecovery"
 			}
 		}
 	},

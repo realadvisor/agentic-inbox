@@ -42,6 +42,8 @@ test("Worker denies unconfigured deployments and anonymous UI/API/asset requests
 		"/",
 		"/assets/app.js",
 		"/api/health",
+		"/api/v1/operations",
+		"/api/v1/operations/00000000-0000-0000-0000-000000000000/replay",
 		"/api/docs",
 		"/api/openapi.json",
 		"/api/v1/tags",

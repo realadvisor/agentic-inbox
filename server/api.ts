@@ -1,3 +1,5 @@
+import { operationsApi, readiness } from "./operations";
+import type { ObjectStore } from "./inbound";
 import {
 	apiKeysApi,
 	authenticateApiKey,
@@ -91,6 +93,8 @@ const querySchema = z.object({
 });
 
 export interface ApiOptions {
+	readinessCheck?: () => Promise<boolean>;
+	recoveryObjects?: ObjectStore;
 	webhookSecretKey?: string;
 	actorRole?: MemberRole;
 	membershipEnabled?: boolean;
@@ -250,13 +254,20 @@ export function createApi(db: Database, options: ApiOptions) {
 	);
 
 	app.route("/", documentation());
+	app.route(
+		"/api/v1/operations",
+		operationsApi(db, {
+			admin: isAdmin,
+			actor: options.actor ?? "local-preview",
+			objects: options.recoveryObjects,
+		}),
+	);
 	app.get("/api/health", async (c) => {
-		await db`SELECT version FROM inbox_migrations WHERE version = 1`;
-		return c.json({
-			status: "ok",
-			storage: "postgres",
-			mode: options.mode ?? "synthetic",
-		});
+		const ready = await readiness(db, options.readinessCheck);
+		return c.json(
+			{ status: ready ? "ready" : "unavailable" },
+			ready ? 200 : 503,
+		);
 	});
 	app.get("/api/v1/config", (c) =>
 		c.json(
