@@ -1,3 +1,4 @@
+import { pruneInboundRecovery } from "./operations";
 import { getCookie } from "hono/cookie";
 import { resolveAccessRole } from "./members";
 import { deliverWebhook, publishWebhooks } from "./webhooks/delivery";
@@ -206,6 +207,26 @@ worker.all("/api/*", async (c) => {
 			);
 		const response = await createApi(db, {
 			membershipEnabled,
+			readinessCheck: async () => {
+				if (
+					c.env.MAIL_MODE === "live" &&
+					(!c.env.EMAIL ||
+						!c.env.ATTACHMENTS.put ||
+						!c.env.ACCESS_ISSUER ||
+						!c.env.ACCESS_AUDIENCE ||
+						(c.env.CLASSIFIERS_ENABLED === "true" && !queuesEnabled(c.env)))
+				)
+					return false;
+				await c.env.ATTACHMENTS.get("health/readiness-probe");
+				return true;
+			},
+			recoveryObjects:
+				c.env.INBOUND_ENABLED === "true" && c.env.ATTACHMENTS.put
+					? {
+							get: (key) => c.env.ATTACHMENTS.get(key),
+							put: (key, value) => c.env.ATTACHMENTS.put!(key, value),
+						}
+					: undefined,
 			actorRole: actorRole ?? undefined,
 			jevKey: c.env.TYPESAFE_API_KEY,
 			kickClassifiers: (tokens = []) => {
@@ -256,10 +277,16 @@ worker.all("/api/*", async (c) => {
 			},
 		}).fetch(c.req.raw);
 		if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
+			if (c.req.path.startsWith("/api/v1/operations/"))
+				c.executionCtx.waitUntil(dispatchAgentJobs(c.env));
 			c.executionCtx.waitUntil(dispatchClassifiers(c.env, 10));
 			c.executionCtx.waitUntil(dispatchWebhooks(c.env));
 		}
 		return response;
+	} catch (error) {
+		if (c.req.path === "/api/health")
+			return c.json({ status: "unavailable" }, 503);
+		throw error;
 	} finally {
 		c.executionCtx.waitUntil(
 			Promise.allSettled(agentTasks).then(() => db.end({ timeout: 5 })),
@@ -332,6 +359,9 @@ export default {
 		});
 		try {
 			await db`DELETE FROM webhook_events WHERE created_at<now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.event_id=webhook_events.id AND d.status='pending')`;
+			// Only completed journal metadata expires. Raw MIME remains under the existing
+			// private raw-mail retention policy; unresolved recovery artifacts never expire.
+			await pruneInboundRecovery(db);
 			await pruneProviderRuns(
 				db,
 				Number(env.CLASSIFIER_LOG_RETENTION_DAYS ?? 30),

@@ -259,19 +259,71 @@ The hosted inbox runs on Cloudflare Workers with Neon Postgres through Hyperdriv
 
 Merging a pull request into `main` releases the app through **Inbox CI and release**. Pull requests run lint/type checks, isolated Postgres tests, and a production build/deployment dry-run without production credentials. On `main`, the same checks must pass before the `production` job applies versioned database migrations and deploys the Worker, validated frontend artifact, queue bindings/consumers, and cron configuration. No seed or mailbox-setup commands run. Existing Worker secrets are retained.
 
-The GitHub `production` environment is restricted to `main` and requires two secrets: `DATABASE_URL` (the direct production Neon connection) and `CLOUDFLARE_API_TOKEN` (a dedicated deployment token scoped to the RealAdvisor account and inbox zone, with permissions for the resources in `wrangler.jsonc`; see [Cloudflare's GitHub Actions setup](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)). Main requires a PR and the `check` status. There is no manual dispatch or tag deployment trigger. Releases are serialized without interrupting an active migration/deployment; superseded commits are skipped. The frontend is built once per run and passed to deployment as an artifact tied to the commit.
+The GitHub `production` environment is restricted to `main` and requires deployment secrets: `DATABASE_URL` (the direct production Neon connection) and `CLOUDFLARE_API_TOKEN` (a dedicated deployment token scoped to the RealAdvisor account and inbox zone, with permissions for the resources in `wrangler.jsonc`; see [Cloudflare's GitHub Actions setup](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)). Main requires a PR and the `check` status. There is no manual dispatch or tag deployment trigger. Releases are serialized without interrupting an active migration/deployment; superseded commits are skipped. The frontend is built once per run and passed to deployment as an artifact tied to the commit.
 
 Migration 036 adds trigram indexes for literal substring search and an index for mailbox/date pagination. It builds indexes concurrently with a 16 MB maintenance-memory budget and parallel index workers disabled so inbound writes can continue; allow several minutes on a populated database. The migration runner uses the direct database connection, retries interrupted invalid index builds, and records completion only after both indexes are valid. List and search clients can request `view=summary` to omit message bodies and raw headers; message detail endpoints still return the full content.
 
 Migration 037 adds concurrent mailbox/time indexes for the runs list. Run history filters and bounds each source before merging and loading question summaries; email lists reuse one set of matches for page results and their total count.
 
-A migration failure prevents deployment. If publishing fails after migrations, the old Worker continues running against the upgraded schema: keep migrations backward compatible and rerun the failed job after fixing the cause. Reruns use versioned migrations and skip commits no longer at the head of `main`. The final HTTP probe checks reachability only; a Cloudflare Access login redirect is not an authenticated application health test. GitHub records the deployed commit under the production environment.
+A migration failure prevents deployment. If publishing fails after migrations, the old Worker continues running against the upgraded schema: keep migrations backward compatible and rerun the failed job after fixing the cause. Reruns use versioned migrations and skip commits no longer at the head of `main`. The final probe requires an authenticated JSON readiness response; login redirects, HTML and the old shallow health response fail verification. Configure `HEALTH_ACCESS_CLIENT_ID` and `HEALTH_ACCESS_CLIENT_SECRET` in the production environment before this release. Use an inbox-only Cloudflare Access Service Auth token permitted by the whole-host application and list its client ID in `ACCESS_SERVICE_CLIENT_IDS`; this grants readiness access as a User, not recovery administration. Missing probe credentials fail before migration/deployment. GitHub records the deployed commit under the production environment.
 
 For emergency manual recovery only, install locked dependencies, run `pnpm exec tsx --env-file=.env.cloud scripts/migrate.ts`, then `pnpm run deploy` from the intended release commit. Credentials belong in ignored `.env.cloud` (permissions 0600), never in git. Local `.env` stays pointed at the local database. `pnpm deploy:check` builds and bundles without publishing.
 
 The existing Neon project is `email-inbox` (`jolly-rain-30890362`) in the RealAdvisor organization, Frankfurt (`aws-eu-central-1`). Hyperdrive query caching is disabled. The Worker and private R2 bucket retain the infrastructure name `realadvisor-email-inbox-prototype` to preserve the existing resources and data. The public hostname is `inbox.realadvisor.com`; workers.dev and preview URLs are disabled.
 
 Hosted URL: <https://inbox.realadvisor.com>.
+
+## Operational readiness and inbound recovery
+
+`GET /api/health` remains behind Cloudflare Access and inbox membership. It returns
+only `{"status":"ready"}` (200) or `{"status":"unavailable"}` (503). It checks the
+complete required migration set, Postgres query access, live sending/storage/Access
+bindings, enabled classifier configuration and an R2 read. No email is sent and no
+paid provider is called. This tests R2 read reachability; it does not prove write
+permissions or external email/AI/Cloud Tasks provider availability. Anonymous callers
+receive 401 and unapproved service identities receive 403. API keys cannot use this
+endpoint. Local Node readiness checks the schema; it has no live Worker bindings.
+
+Migration 045 adds a private ingestion journal without changing existing messages or
+jobs. New deliveries store original MIME before parsing, then record mailbox, content
+hash, envelope sender, size and state. Parsing or transactional delivery failures are
+recorded as `failed` with a safe stage code; crashes can leave `pending`. No provider
+errors or message bodies are returned by the recovery API. MIME is bounded to 10 MiB
+including actual streamed bytes. Unknown mailboxes and oversized messages are rejected
+without recovery records. Attachment objects use deterministic mailbox/hash/index keys
+so retrying failed delivery does not accumulate a new set of orphan objects.
+
+An administrator can use the authenticated API documentation at `/api/docs`:
+
+1. `GET /api/v1/operations` lists the oldest 100 unresolved records, sends stuck in
+   `sending`/`unknown` for 15 minutes, and unpublished classifier jobs older than 30
+   minutes. These are bounded diagnostic lists, not full counts. Refresh after fixing
+   the oldest entries. Pending ingestion may still be active; investigate records older
+   than a few minutes. For stale jobs, check queue credentials/pause state and the cron.
+   For uncertain sends, reconcile provider acceptance; never automatically resend.
+2. Fix the reported parse/delivery cause first. Use the record ID with
+   `POST /api/v1/operations/{id}/replay` and `Content-Type: application/json`. The server
+   loads the recorded mailbox and original MIME, validates size and SHA-256, and applies
+   the existing mailbox lock, Message-ID uniqueness and database transaction. Concurrent
+   replay/redelivery cannot duplicate emails, trigger-created jobs or webhook events.
+   Completed records are a no-op. Ordinary downstream dispatch resumes after success;
+   replay never directly sends mail. Corrupt/missing objects return 409; another failure
+   returns 503 and retains the record. Replay records the last actor and attempt time.
+3. Refresh operations and inspect the received message. Inbox API keys, ordinary users
+   and service identities cannot list or replay recovery records; use an admin session.
+
+Unresolved records and their raw MIME/attachment objects have **no automatic expiry**;
+retain them until investigated. The cron removes only completed journal metadata after
+30 days. Raw MIME uses the existing private R2 retention policy (currently no automatic
+delete); never apply a bucket lifecycle rule or orphan cleanup to `raw/` or
+`inbound-attachments/` without excluding unresolved recovery references. There is no
+HTTP raw-MIME download route. Storage access remains restricted to the Worker and
+infrastructure operators. An initial R2 failure or database outage before journal
+creation cannot be made recoverable by that unavailable dependency: ingestion throws,
+and the delivery source must retry. Raw objects may remain without journal rows after
+a database outage; automatic discovery/import of those older objects is not included.
+This release does not replay historical failures automatically or alter provider retry
+policies. Keep storage quotas and unresolved-record monitoring in the operator routine.
 
 ## Upstream updates
 

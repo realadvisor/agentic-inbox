@@ -113,11 +113,14 @@ jobs:
       - name: Validate release credentials
         if: steps.release.outputs.current == 'true'
         env:
+          HEALTH_ACCESS_CLIENT_ID: ${{ secrets.HEALTH_ACCESS_CLIENT_ID }}
+          HEALTH_ACCESS_CLIENT_SECRET: ${{ secrets.HEALTH_ACCESS_CLIENT_SECRET }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           [[ -n "$DATABASE_URL" ]] || { echo '::error::Missing production DATABASE_URL secret'; exit 1; }
           [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo '::error::Missing production CLOUDFLARE_API_TOKEN secret'; exit 1; }
+          [[ -n "$HEALTH_ACCESS_CLIENT_ID" && -n "$HEALTH_ACCESS_CLIENT_SECRET" ]] || { echo '::error::Missing authenticated readiness credentials'; exit 1; }
           node scripts/deploy-preflight.mjs
           pnpm exec wrangler whoami
       - name: Apply database migrations
@@ -130,9 +133,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: pnpm exec wrangler deploy
-      - name: Verify protected site responds
+      - name: Verify authenticated application readiness
         if: steps.release.outputs.current == 'true'
+        env:
+          HEALTH_ACCESS_CLIENT_ID: ${{ secrets.HEALTH_ACCESS_CLIENT_ID }}
+          HEALTH_ACCESS_CLIENT_SECRET: ${{ secrets.HEALTH_ACCESS_CLIENT_SECRET }}
         run: |
-          status=$(curl --silent --show-error --retry 3 --retry-all-errors --max-time 30 --output /dev/null --write-out '%{http_code}' https://inbox.realadvisor.com/)
-          [[ "$status" == '200' || "$status" == '302' ]] || { echo "::error::Unexpected live response: $status"; exit 1; }
-          echo "Released $GITHUB_SHA to https://inbox.realadvisor.com. HTTP $status (302 is the Cloudflare Access login redirect)." >> "$GITHUB_STEP_SUMMARY"
+          node scripts/verify-deployment.mjs
+          echo "Released $GITHUB_SHA; authenticated schema/config/storage readiness passed." >> "$GITHUB_STEP_SUMMARY"
