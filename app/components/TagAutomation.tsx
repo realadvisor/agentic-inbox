@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog } from "@cloudflare/kumo";
 import { useMutation } from "@tanstack/react-query";
-import { useTagMutation } from "~/queries/tags";
+import { useTags, useTagMutation } from "~/queries/tags";
 import { useMailboxes } from "~/queries/mailboxes";
 import { useMailMode } from "./MailMode";
 import { classifierRequest, type Classifier } from "~/services/classifiers";
@@ -320,6 +320,8 @@ export function RunDialog({
 	const [from, setFrom] = useState("");
 	const [to, setTo] = useState("");
 	const [limit, setLimit] = useState("");
+	const tags = useTags();
+	const [filterTag, setFilterTag] = useState("");
 
 	const allowed = (mailboxes.data ?? []).filter((m) =>
 		classifiers.every(
@@ -344,6 +346,7 @@ export function RunDialog({
 		selection,
 		reset,
 		include_archived: true,
+		tag_id: filterTag || undefined,
 		received_from: start?.toISOString(),
 		received_before: end?.toISOString(),
 		limit: limit ? Number(limit) : undefined,
@@ -522,6 +525,25 @@ export function RunDialog({
 						{!mode.data?.classifierPreview && (
 							<>
 								<div>
+									<span className="block text-sm mb-1.5">
+										Only conversations with tag
+									</span>
+									<AppSelect
+										label="Only conversations with tag"
+										value={filterTag}
+										options={[
+											{ value: "", label: "Any tag" },
+											...(tags.data ?? []).map((tag) => ({
+												value: tag.id,
+												label: tag.name,
+											})),
+										]}
+										onChange={setFilterTag}
+									/>
+									<p className="text-xs text-kumo-subtle mt-2 mb-4">
+										Matching conversations are fixed when the run starts. Manual
+										corrections stay unless explicitly reset.
+									</p>
 									<span className="block text-sm mb-1.5">Received dates</span>
 									<DateRangeField
 										disabled={run.isPending || started.length > 0}

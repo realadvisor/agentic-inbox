@@ -8688,6 +8688,11 @@
 						"minimum": 1,
 						"maximum": 250000,
 						"description": "Omit to select all matching conversations."
+					},
+					"tag_id": {
+						"type": "string",
+						"format": "uuid",
+						"description": "Only conversations currently carrying this active tag. The matching set is frozen for all classifiers when the run starts; manual protections still apply."
 					}
 				}
 			},

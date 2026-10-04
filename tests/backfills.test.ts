@@ -346,3 +346,68 @@ test("already queued evaluations join progress without resetting the token or at
 	assert.equal(progress.pending, 0);
 	assert.equal(progress.status, "completed");
 });
+
+test("tag-filtered runs freeze one scope, exclude other tags, and preserve manual corrections", async () => {
+	await reset();
+	const [tag] =
+		await db`SELECT tag_id AS id FROM classifiers WHERE id=${classifier}`;
+	const [otherTag] =
+		await db`INSERT INTO tags(name,color) VALUES('Other topic','#123456') RETURNING id`;
+	const [other] =
+		await db`INSERT INTO classifiers(tag_id,question) VALUES(${otherTag.id},'Other topic?') RETURNING id`;
+	const automatic = await email("Automatic"),
+		manual = await email("Manual"),
+		unrelated = await email("Unrelated"),
+		removed = await email("Removed");
+	for (const thread of [automatic, manual, removed])
+		await db`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${mailbox},${thread},${tag.id},${thread === manual ? "manual" : "classifier"},'test',${thread === removed ? new Date() : null})`;
+	const input = {
+		classifier_ids: [classifier, other.id],
+		mailbox_ids: [mailbox],
+		tag_id: tag.id,
+		selection: "all",
+	};
+	const preview = await call("/backfills/preview", "POST", input);
+	assert.equal((await preview.json()).count, 2);
+	const response = await call("/backfills", "POST", input);
+	assert.equal(response.status, 202, await response.clone().text());
+	const runs = await response.json();
+	assert.ok(runs.every((r: { prepared: boolean }) => r.prepared));
+	assert.equal(
+		(await db`SELECT count(*)::int n FROM classifier_run_items`)[0].n,
+		4,
+	);
+	// Removal during processing must not shrink another classifier's scope.
+	await db`UPDATE conversation_tags SET removed_at=now() WHERE thread_id=${automatic}`;
+	await advanceBackfills(db);
+	await advanceBackfills(db);
+	assert.equal(
+		(
+			await db`SELECT count(*)::int n FROM conversation_classifications WHERE thread_id IN ${db([unrelated, removed])}`
+		)[0].n,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT count(*)::int n FROM conversation_classifications WHERE thread_id=${automatic}`
+		)[0].n,
+		2,
+	);
+	assert.equal(
+		(
+			await db`SELECT count(*)::int n FROM conversation_classifications WHERE thread_id=${manual} AND classifier_id=${classifier}`
+		)[0].n,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT count(*)::int n FROM classifier_run_items WHERE thread_id=${manual} AND skip_reason='manual'`
+		)[0].n,
+		1,
+	);
+	const invalid = await call("/backfills/preview", "POST", {
+		...input,
+		tag_id: crypto.randomUUID(),
+	});
+	assert.equal(invalid.status, 400);
+});
