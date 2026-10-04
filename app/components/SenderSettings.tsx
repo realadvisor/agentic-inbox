@@ -1,8 +1,33 @@
-import { Button, Loader } from "@cloudflare/kumo";
-import { EnvelopeSimpleIcon } from "@phosphor-icons/react";
-import { useSenders, useSetDefaultSender } from "~/queries/senders";
+import { Button, Input, Loader } from "@cloudflare/kumo";
+import { EnvelopeSimpleIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+	useSenders,
+	useSetDefaultSender,
+	useSaveSender,
+	useRemoveSender,
+} from "~/queries/senders";
 
-export default function SenderSettings() {
+import { useState } from "react";
+import { useMailboxes } from "~/queries/mailboxes";
+export default function SenderSettings({
+	canManage = true,
+	live = false,
+}: {
+	canManage?: boolean;
+	live?: boolean;
+}) {
+	const save = useSaveSender();
+	const remove = useRemoveSender();
+	const mailboxes = useMailboxes();
+	const [editor, setEditor] = useState<{
+		id?: string;
+		name: string;
+		email: string;
+		mailbox_id: string;
+	} | null>(null);
+	const [removing, setRemoving] = useState<string | null>(null);
+	const pending = save.isPending || remove.isPending;
+
 	const { data, error, isLoading, refetch } = useSenders();
 	const update = useSetDefaultSender();
 	const defaultSender = data?.senders.find(
@@ -17,7 +42,7 @@ export default function SenderSettings() {
 				<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
 					<EnvelopeSimpleIcon size={21} />
 				</div>
-				<div>
+				<div className="flex-1">
 					<h2 id="senders-heading" className="text-sm font-semibold">
 						Senders
 						{data && (
@@ -30,7 +55,108 @@ export default function SenderSettings() {
 						Choose the default sender for your inbox.
 					</p>
 				</div>
+
+				{canManage && (
+					<Button
+						size="sm"
+						variant="primary"
+						icon={PlusIcon}
+						onClick={() => {
+							save.reset();
+							setEditor({ name: "", email: "", mailbox_id: "" });
+						}}
+					>
+						Add sender
+					</Button>
+				)}
 			</div>
+			{editor && (
+				<form
+					className="space-y-4 border-t border-kumo-line p-5"
+					onSubmit={async (event) => {
+						event.preventDefault();
+						try {
+							await save.mutateAsync(editor);
+							setEditor(null);
+						} catch {
+							/* mutation renders error */
+						}
+					}}
+				>
+					<h3 className="text-sm font-semibold">
+						{editor.id ? "Edit sender" : "Add sender"}
+					</h3>
+					<Input
+						label="Sender name"
+						required
+						value={editor.name}
+						onChange={(event) =>
+							setEditor({ ...editor, name: event.target.value })
+						}
+					/>
+					<Input
+						label="Sender email"
+						type="email"
+						required
+						value={editor.email}
+						onChange={(event) =>
+							setEditor({ ...editor, email: event.target.value })
+						}
+					/>
+					<label className="block text-sm">
+						Sending mailbox
+						<select
+							aria-label="Sending mailbox"
+							required
+							className="mt-2 block w-full rounded-lg border border-kumo-line bg-kumo-base p-2 text-sm"
+							value={editor.mailbox_id}
+							onChange={(event) =>
+								setEditor({ ...editor, mailbox_id: event.target.value })
+							}
+						>
+							<option value="">Select a mailbox</option>
+							{mailboxes.data
+								?.filter((box) => box.email !== "all@ingest.realadvisor.com")
+								.map((box) => (
+									<option key={box.id} value={box.id}>
+										{box.name} — {box.email}
+									</option>
+								))}
+						</select>
+					</label>
+					{live && (
+						<p className="text-xs text-kumo-subtle">
+							Use the approved public address for the selected ingest mailbox.
+							For example, sales@realadvisor.com uses
+							sales@ingest.realadvisor.com.
+						</p>
+					)}
+					{save.error && (
+						<p role="alert" className="text-sm text-kumo-danger">
+							{save.error.message}
+						</p>
+					)}
+					<div className="flex justify-end gap-2">
+						<Button
+							type="button"
+							size="sm"
+							disabled={pending}
+							onClick={() => setEditor(null)}
+						>
+							Cancel
+						</Button>
+						<Button
+							type="submit"
+							size="sm"
+							variant="primary"
+							loading={save.isPending}
+							disabled={pending}
+						>
+							Save sender
+						</Button>
+					</div>
+				</form>
+			)}
 			{data && (
 				<div className="space-y-2 border-y border-kumo-line bg-kumo-tint px-5 py-3 text-xs text-kumo-subtle">
 					<p>
@@ -38,8 +164,8 @@ export default function SenderSettings() {
 						<strong>{defaultSender?.email ?? "Not set"}</strong>.
 					</p>
 					<p>
-						Replies use the matching receiving address. You can choose another
-						sender in the composer.
+						Replies use the matching receiving address, or the default when
+						there is no match. You can choose another sender in the composer.
 					</p>
 				</div>
 			)}
@@ -93,12 +219,49 @@ export default function SenderSettings() {
 									size="sm"
 									className="shrink-0"
 									variant={isDefault ? "primary" : "secondary"}
-									disabled={update.isPending || !available || isDefault}
+									disabled={
+										update.isPending ||
+										pending ||
+										!canManage ||
+										!available ||
+										isDefault
+									}
 									aria-label={`Set ${sender.email} as default`}
 									onClick={() => update.mutate(sender.id)}
 								>
 									{isDefault ? "Default" : "Set default"}
 								</Button>
+								{canManage && (
+									<>
+										<Button
+											size="sm"
+											disabled={pending}
+											aria-label={`Edit ${sender.email}`}
+											onClick={() => {
+												save.reset();
+												setEditor({
+													id: sender.id,
+													name: sender.name,
+													email: sender.email,
+													mailbox_id: sender.mailbox_id ?? "",
+												});
+											}}
+										>
+											Edit
+										</Button>
+										<Button
+											size="sm"
+											disabled={pending || isDefault}
+											aria-label={`Remove ${sender.email}`}
+											onClick={() => {
+												remove.reset();
+												setRemoving(sender.id);
+											}}
+										>
+											Remove
+										</Button>
+									</>
+								)}
 							</div>
 						);
 					})}
@@ -107,6 +270,46 @@ export default function SenderSettings() {
 							No senders available.
 						</p>
 					)}
+				</div>
+			)}
+			{removing && (
+				<div className="space-y-3 border-t border-kumo-line p-5">
+					<p className="text-sm">
+						Remove{" "}
+						{data?.senders.find((sender) => sender.id === removing)?.email}?
+						Existing messages are kept. Drafts using this sender will need
+						another sender.
+					</p>
+					{remove.error && (
+						<p role="alert" className="text-sm text-kumo-danger">
+							{remove.error.message}
+						</p>
+					)}
+					<div className="flex justify-end gap-2">
+						<Button
+							size="sm"
+							disabled={pending}
+							onClick={() => setRemoving(null)}
+						>
+							Cancel
+						</Button>
+						<Button
+							size="sm"
+							variant="primary"
+							disabled={pending}
+							loading={remove.isPending}
+							onClick={async () => {
+								try {
+									await remove.mutateAsync(removing);
+									setRemoving(null);
+								} catch {
+									/* mutation renders error */
+								}
+							}}
+						>
+							Remove sender
+						</Button>
+					</div>
 				</div>
 			)}
 			{update.error && (

@@ -7425,6 +7425,49 @@
 						}
 					}
 				}
+			},
+			"post": {
+				"operationId": "createSenderIdentity",
+				"summary": "Create sender",
+				"tags": ["Sending"],
+				"description": "Requires an administrator or senders:manage key scoped to both the current and selected mailbox. Live identities must match the approved public address of an existing ingest mailbox. Removal preserves history and is forbidden for the current default.",
+				"responses": {
+					"400": {
+						"description": "Invalid input"
+					},
+					"401": {
+						"description": "Authentication required"
+					},
+					"403": {
+						"description": "Forbidden"
+					},
+					"404": {
+						"description": "Sender not found"
+					},
+					"409": {
+						"description": "Duplicate email or current default"
+					},
+					"201": {
+						"description": "Saved sender",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SenderIdentity"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SenderInput"
+							}
+						}
+					}
+				}
 			}
 		},
 		"/api/v1/inbox-settings": {
@@ -7561,6 +7604,97 @@
 						}
 					}
 				}
+			}
+		},
+		"/api/v1/sender-identities/{senderId}": {
+			"put": {
+				"operationId": "updateSenderIdentity",
+				"summary": "Update sender",
+				"tags": ["Sending"],
+				"description": "Requires an administrator or senders:manage key scoped to both the current and selected mailbox. Live identities must match the approved public address of an existing ingest mailbox. Removal preserves history and is forbidden for the current default.",
+				"responses": {
+					"400": {
+						"description": "Invalid input"
+					},
+					"401": {
+						"description": "Authentication required"
+					},
+					"403": {
+						"description": "Forbidden"
+					},
+					"404": {
+						"description": "Sender not found"
+					},
+					"409": {
+						"description": "Duplicate email or current default"
+					},
+					"200": {
+						"description": "Saved sender",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SenderIdentity"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SenderInput"
+							}
+						}
+					}
+				},
+				"parameters": [
+					{
+						"name": "senderId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"delete": {
+				"operationId": "removeSenderIdentity",
+				"summary": "Remove sender",
+				"tags": ["Sending"],
+				"description": "Requires an administrator or senders:manage key scoped to both the current and selected mailbox. Live identities must match the approved public address of an existing ingest mailbox. Removal preserves history and is forbidden for the current default.",
+				"responses": {
+					"400": {
+						"description": "Invalid input"
+					},
+					"401": {
+						"description": "Authentication required"
+					},
+					"403": {
+						"description": "Forbidden"
+					},
+					"404": {
+						"description": "Sender not found"
+					},
+					"409": {
+						"description": "Duplicate email or current default"
+					},
+					"204": {
+						"description": "Sender removed"
+					}
+				},
+				"parameters": [
+					{
+						"name": "senderId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
 			}
 		}
 	},
@@ -8686,6 +8820,28 @@
 					"default_sender_identity_id": {
 						"type": "string",
 						"nullable": true
+					}
+				}
+			},
+			"SenderInput": {
+				"type": "object",
+				"required": ["email", "name", "mailbox_id"],
+				"additionalProperties": false,
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email",
+						"maxLength": 254
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"mailbox_id": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 254
 					}
 				}
 			}

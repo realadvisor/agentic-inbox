@@ -126,3 +126,51 @@ test("All inbox replies retain their sender across draft saves and default chang
 		await db.end();
 	}
 });
+
+test("settings can create, edit and remove a sender", async ({ page }) => {
+	const email = `support-${crypto.randomUUID()}@example.test`;
+	const db = connect();
+	try {
+		await page.goto("/mailbox/info@realadvisor.com/settings?tab=senders");
+		await page.getByRole("button", { name: "Add sender", exact: true }).click();
+		await page.getByLabel("Sender name", { exact: true }).fill("Support");
+		await page.getByLabel("Sender email", { exact: true }).fill(email);
+		await page
+			.getByLabel("Sending mailbox", { exact: true })
+			.selectOption("info@realadvisor.com");
+		await page
+			.getByRole("button", { name: "Save sender", exact: true })
+			.click();
+		await expect(page.getByText(email, { exact: true })).toBeVisible();
+		await page
+			.getByRole("button", { name: `Edit ${email}`, exact: true })
+			.click();
+		await page
+			.getByLabel("Sender name", { exact: true })
+			.fill("Customer support");
+		await page
+			.getByRole("button", { name: "Save sender", exact: true })
+			.click();
+		await expect(
+			page.getByText("Customer support", { exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", {
+				name: "Remove info@realadvisor.com",
+				exact: true,
+			}),
+		).toBeDisabled();
+		await page
+			.getByRole("button", { name: `Remove ${email}`, exact: true })
+			.click();
+		await page
+			.getByRole("button", { name: "Remove sender", exact: true })
+			.click();
+		await expect(page.getByText(email, { exact: true })).toHaveCount(0);
+		await page.reload();
+		await expect(page.getByText(email, { exact: true })).toHaveCount(0);
+	} finally {
+		await db`DELETE FROM sender_identities WHERE email=${email}`;
+		await db.end();
+	}
+});

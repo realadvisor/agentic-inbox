@@ -299,6 +299,56 @@ export function createApi(db: Database, options: ApiOptions) {
 		}
 		return c.json(config);
 	});
+	const senderInput = z
+		.object({
+			email: z
+				.string()
+				.trim()
+				.email()
+				.max(254)
+				.transform((s) => s.toLowerCase()),
+			name: z.string().trim().min(1).max(200),
+			mailbox_id: z.string().min(1).max(254),
+		})
+		.strict();
+	app.use("/api/v1/sender-identities/*", async (c, next) => {
+		if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+			const key = c.get("apiKey");
+			if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
+				throw new HTTPException(403, {
+					message: "Administrator access or senders:manage permission required",
+				});
+		}
+		await next();
+	});
+	app.post("/api/v1/sender-identities", async (c) => {
+		const key = c.get("apiKey");
+		if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
+			throw new HTTPException(403, {
+				message: "Administrator access or senders:manage permission required",
+			});
+		return c.json(
+			await senders.save(senderInput.parse(await c.req.json()), {
+				live: isLive,
+				mailboxIds: key?.mailbox_ids,
+			}),
+			201,
+		);
+	});
+	app.put("/api/v1/sender-identities/:senderId", async (c) =>
+		c.json(
+			await senders.save(
+				senderInput.parse(await c.req.json()),
+				{ live: isLive, mailboxIds: c.get("apiKey")?.mailbox_ids },
+				c.req.param("senderId"),
+			),
+		),
+	);
+	app.delete("/api/v1/sender-identities/:senderId", async (c) => {
+		await senders.remove(c.req.param("senderId"), c.get("apiKey")?.mailbox_ids);
+		return c.body(null, 204);
+	});
+
 	app.patch("/api/v1/inbox-settings", async (c) => {
 		const key = c.get("apiKey");
 		if (key ? !key.permissions.includes("senders:manage") : !isAdmin)

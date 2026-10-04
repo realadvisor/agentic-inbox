@@ -379,6 +379,12 @@ test("upgrade registers Info and Privacy, picks Info, and backfills existing dra
 				"utf8",
 			),
 		);
+		await legacy.unsafe(
+			await readFile(
+				new URL("../migrations/043_sender_management.sql", import.meta.url),
+				"utf8",
+			),
+		);
 		const config = await new SenderStore(legacy).configuration();
 		assert.equal(config.default_sender_identity_id, info);
 		assert.deepEqual(
@@ -399,4 +405,153 @@ test("upgrade registers Info and Privacy, picks Info, and backfills existing dra
 		await legacy.end();
 		await admin`DROP SCHEMA ${admin(upgradeSchema)} CASCADE`;
 	}
+});
+
+test("unmatched recipients use Info even inside the Privacy mailbox", async () => {
+	const config = await senders.configuration();
+	for (const mailboxId of [all, privacyBox])
+		assert.equal(
+			resolveSenderId(config, {
+				mailboxId,
+				reply: { recipient: "unknown@realadvisor.com" },
+			}),
+			info,
+		);
+	const incoming = await store.insert(privacyBox, {
+		sender: "customer@example.test",
+		recipient: "unknown@realadvisor.com",
+		subject: "Unmatched",
+		body: "Hello",
+	});
+	const response = await call(
+		`mailboxes/${privacyBox}/emails/${incoming!.id}/reply`,
+		"POST",
+		{ to: "customer@example.test", text: "Reply" },
+	);
+	assert.equal(response.status, 201, await response.clone().text());
+	assert.equal((await response.json()).sender_identity_id, info);
+});
+
+test("sender CRUD validates duplicates, permissions, live addresses, and preserves history", async () => {
+	const input = {
+		name: "Support",
+		email: "support@realadvisor.com",
+		mailbox_id: infoBox,
+	};
+	const created = await call("sender-identities", "POST", input);
+	assert.equal(created.status, 201, await created.clone().text());
+	const sender = await created.json();
+	assert.equal(
+		resolveSenderId(await senders.configuration(), {
+			mailboxId: all,
+			reply: { recipient: info },
+		}),
+		info,
+	);
+	assert.equal(
+		resolveSenderId(await senders.configuration(), {
+			mailboxId: all,
+			reply: { recipient: input.email },
+		}),
+		sender.id,
+	);
+	assert.equal(
+		(
+			await call("sender-identities", "POST", {
+				...input,
+				email: "SUPPORT@realadvisor.com",
+			})
+		).status,
+		409,
+	);
+	assert.equal(
+		(
+			await call(`sender-identities/${sender.id}`, "PUT", {
+				...input,
+				name: "Customer support",
+			})
+		).status,
+		200,
+	);
+	const draft = await call(`mailboxes/${all}/drafts`, "POST", {
+		body: "Draft",
+		sender_identity_id: sender.id,
+	});
+	assert.equal(draft.status, 201);
+	const draftId = (await draft.json()).draft_id;
+	const key = "inbox_" + "cd".repeat(32);
+	await db`INSERT INTO inbox_api_keys (name,prefix,token_hash,mailbox_ids,permissions,created_by) VALUES ('Sender management','inbox_cd',${await hashApiKey(key)},ARRAY[${privacyBox}],ARRAY['senders:manage'],'test')`;
+	assert.equal(
+		(
+			await call(
+				"sender-identities",
+				"POST",
+				{ ...input, email: "other@realadvisor.com" },
+				key,
+			)
+		).status,
+		403,
+	);
+	assert.equal(
+		(
+			await call(
+				`sender-identities/${sender.id}`,
+				"PUT",
+				{ ...input, mailbox_id: privacyBox },
+				key,
+			)
+		).status,
+		403,
+	);
+	assert.equal(
+		(await call(`sender-identities/${sender.id}`, "DELETE", undefined, key))
+			.status,
+		403,
+	);
+	assert.equal((await call(`sender-identities/${info}`, "DELETE")).status, 409);
+	const member = createApi(db, {
+		mode: "live",
+		membershipEnabled: true,
+		actorRole: "user",
+		actor: "member@realadvisor.com",
+		readAttachment: async () => null,
+	});
+	for (const [method, path, body] of [
+		["POST", "sender-identities", input],
+		["PUT", `sender-identities/${sender.id}`, input],
+		["DELETE", `sender-identities/${sender.id}`, undefined],
+	] as const) {
+		assert.equal(
+			(
+				await member.request(`http://127.0.0.1/api/v1/${path}`, {
+					method,
+					headers: { "Content-Type": "application/json" },
+					body: body ? JSON.stringify(body) : undefined,
+				})
+			).status,
+			403,
+		);
+	}
+	await assert.rejects(
+		senders.save({ ...input, email: "spoof@external.test" }, { live: true }),
+		/approved public address/,
+	);
+	assert.equal(
+		(await call(`sender-identities/${sender.id}`, "DELETE")).status,
+		204,
+	);
+	assert.ok(
+		!(await senders.configuration()).senders.some((s) => s.id === sender.id),
+	);
+	assert.equal(
+		(await store.message(all, draftId)).sender_identity_id,
+		sender.id,
+	);
+	await assert.rejects(
+		senders.resolve({ mailboxId: all, draft: sender.id }),
+		/unavailable/,
+	);
+	const recreated = await call("sender-identities", "POST", input);
+	assert.equal(recreated.status, 201);
+	await senders.remove((await recreated.json()).id);
 });

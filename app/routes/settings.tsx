@@ -100,7 +100,7 @@ export default function SettingsRoute() {
 				))}
 			</div>
 			{tab === "senders" && admin ? (
-				<SenderSettings />
+				<SenderSettings canManage={admin} live={mode.data?.mode === "live"} />
 			) : tab === "api-keys" && admin ? (
 				<ApiKeySettings mailboxId={mailboxId!} />
 			) : tab === "access" ? (

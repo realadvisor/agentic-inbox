@@ -14,3 +14,18 @@ export function useSetDefaultSender() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["sender-identities"] }),
 	});
 }
+
+export function useSaveSender() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: api.saveSender,
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["sender-identities"] }),
+	});
+}
+export function useRemoveSender() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: api.removeSender,
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["sender-identities"] }),
+	});
+}

@@ -35,17 +35,17 @@ export function resolveSenderId(
 			`${context.reply.recipient},${context.reply.cc ?? ""}`
 				.toLowerCase()
 				.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+/g) ?? [];
-		const matches = config.senders.filter(
-			(s) =>
-				recipients.includes(s.email.toLowerCase()) ||
-				(s.mailbox_id && recipients.includes(s.mailbox_id.toLowerCase())),
+		const directMatches = config.senders.filter((s) =>
+			recipients.includes(s.email.toLowerCase()),
 		);
+		const matches = directMatches.length
+			? directMatches
+			: config.senders.filter(
+					(s) =>
+						s.mailbox_id && recipients.includes(s.mailbox_id.toLowerCase()),
+				);
 		if (matches.length === 1) return matches[0].id;
 		if (matches.length > 1) return null;
-		const mailboxSender = config.senders.find(
-			(s) => s.mailbox_id === context.mailboxId,
-		);
-		if (mailboxSender) return mailboxSender.id;
 	}
 	return (
 		config.default_sender_identity_id ??

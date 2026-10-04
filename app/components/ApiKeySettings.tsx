@@ -19,9 +19,9 @@ type Key = {
 const permissions = [
 	{
 		id: "senders:manage",
-		name: "Manage default sender",
+		name: "Manage senders",
 		description:
-			"Change the workspace default sender to an identity in the selected mailboxes.",
+			"Create, edit, remove senders and change the default within the selected mailboxes.",
 	},
 	{
 		id: "mail:read",

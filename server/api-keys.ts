@@ -66,6 +66,12 @@ export function keyCanRequest(key: ApiKey, method: string, path: string) {
 		return key.permissions.some((p) =>
 			["mail:read", "mail:send", "drafts:manage", "senders:manage"].includes(p),
 		);
+	if (
+		resource === "sender-identities" &&
+		((method === "POST" && segments.length === 4) ||
+			(["PUT", "DELETE"].includes(method) && segments.length === 5))
+	)
+		return key.permissions.includes("senders:manage");
 	if (method === "PATCH" && path === "/api/v1/inbox-settings")
 		return key.permissions.includes("senders:manage");
 	if (
