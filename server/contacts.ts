@@ -1,7 +1,8 @@
+import type { DirectorySearch } from "./workspace-directory";
 import type { Database } from "./db";
 import type { RecipientSuggestion } from "../shared/contacts";
 
-export async function recipientSuggestions(
+async function mailboxSuggestions(
 	db: Database,
 	mailbox: string,
 	query: string,
@@ -39,4 +40,47 @@ export async function recipientSuggestions(
 		SELECT email, name FROM unique_contacts
 		ORDER BY local DESC, (email=${search}) DESC, sent_count DESC, last_used_at DESC, email
 		LIMIT 5`;
+}
+
+export async function recipientSuggestions(
+	db: Database,
+	mailbox: string,
+	query: string,
+	excluded: string[] = [],
+	directory?: DirectorySearch,
+): Promise<RecipientSuggestion[]> {
+	const search = query.trim().toLowerCase();
+	if (search.length < 2 || search.length > 100) return [];
+	const [contacts, people] = await Promise.all([
+		mailboxSuggestions(db, mailbox, query, excluded),
+		directory ? directory(search).catch(() => []) : Promise.resolve([]),
+	]);
+	if (!directory) return contacts;
+	const blocked = new Set(
+		[...excluded, mailbox, mailbox.replace("@ingest.", "@")].map((email) =>
+			email.toLowerCase(),
+		),
+	);
+	const directoryByEmail = new Map(
+		people.map((person) => [person.email.toLowerCase(), person]),
+	);
+	// Reserve room for directory matches while retaining familiar recipients first.
+	const ordered = [...contacts.slice(0, 3), ...people, ...contacts.slice(3)];
+	ordered.sort(
+		(a, b) =>
+			Number(b.email.toLowerCase() === search) -
+			Number(a.email.toLowerCase() === search),
+	);
+	const results: RecipientSuggestion[] = [];
+	for (const contact of ordered) {
+		const email = contact.email.toLowerCase();
+		if (blocked.has(email)) continue;
+		blocked.add(email);
+		results.push({
+			email,
+			name: contact.name || directoryByEmail.get(email)?.name || null,
+		});
+		if (results.length === 5) break;
+	}
+	return results;
 }

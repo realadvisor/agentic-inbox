@@ -6025,7 +6025,7 @@
 				],
 				"responses": {
 					"200": {
-						"description": "Up to five unique suggestions. Current-mailbox contacts rank before All contacts; within each source, exact email match, sent frequency and recency determine order.",
+						"description": "Up to five unique suggestions. API keys receive mailbox contacts only, ranked by current mailbox, exact email match, sent frequency and recency. Interactive sessions additionally include Google Workspace people when configured: exact emails first, then up to three contacts, directory matches, and remaining contacts. Selected addresses are excluded, duplicate emails removed, and directory failures fall back to mailbox contacts.",
 						"content": {
 							"application/json": {
 								"schema": {

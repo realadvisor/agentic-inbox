@@ -1,3 +1,4 @@
+import { workspaceDirectory } from "./workspace-directory";
 import { processJob } from "./classification/queue";
 import { agentProviders } from "./agent/providers";
 import { serve } from "@hono/node-server";
@@ -45,6 +46,7 @@ function rerunLocally(tokens: string[] = []) {
 		});
 }
 const app = createApi(db, {
+	directorySearch: workspaceDirectory(process.env),
 	webhookSecretKey: process.env.WEBHOOK_SECRET_KEY,
 	kickClassifiers: rerunLocally,
 	jevKey: process.env.TYPESAFE_API_KEY,

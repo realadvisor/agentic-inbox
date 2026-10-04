@@ -168,6 +168,40 @@ Already-selected recipients and automated senders are excluded. Access is curren
 application-wide; shared sources must follow the same permissions if mailbox-level
 access controls are introduced. No additional backfill is needed for shared lookup.
 
+### Google Workspace people directory
+
+Interactive To/Cc/Bcc autocomplete can also search Google Workspace people using
+[People API directory search](https://developers.google.com/people/api/rest/v1/people/searchDirectoryPeople).
+Groups and shared external contacts are not queried. The integration requests only
+names and email addresses and suggests each person's primary address. Exact email
+matches rank first, followed by up to three existing contacts, directory matches,
+and remaining contacts, with at most five unique results. Selected addresses and
+the current mailbox are excluded. Integration API keys and agent contact tools
+continue to use mailbox contacts only.
+
+Enable the People API in the service account's Google Cloud project. A Workspace
+administrator must authorize that service account's numeric OAuth client ID for
+[domain-wide delegation](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority)
+with only `https://www.googleapis.com/auth/directory.readonly`. Use a dedicated
+Workspace user with access to the directory as the delegated subject. Every inbox
+user sees the people visible to this account, so choose its directory visibility
+accordingly. Personal contacts and Google Groups are not requested.
+
+Set these Worker secrets (and optionally local `.env` values):
+
+- `GOOGLE_DIRECTORY_SERVICE_ACCOUNT`: service account email.
+- `GOOGLE_DIRECTORY_PRIVATE_KEY`: PEM private key; literal `\n` escapes are accepted.
+- `GOOGLE_DIRECTORY_USER`: delegated Workspace user's email.
+
+Use `pnpm exec wrangler secret put NAME` to enter each value securely. Never commit
+credentials. All three settings are needed to enable directory lookup. No database
+migration is required. Requests have a 1.5-second network budget; a failed lookup
+falls back to contacts with a 30-second backoff. Tokens are cached until shortly
+before expiry and up to 128 query results are cached in Worker memory for one
+minute. Names, queries, credentials, and tokens are never logged or stored in the
+contact index. Verify a colleague who has no mailbox history appears in To/Cc/Bcc
+before considering the integration activated.
+
 ## Conversation status
 
 Conversations have an Open or Done status, independent of tags and classification.
