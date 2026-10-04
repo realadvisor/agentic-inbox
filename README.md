@@ -201,11 +201,30 @@ closed control and open menu at narrow and desktop widths.
 pnpm check
 pnpm test
 pnpm build
-# Requires Google Chrome; starts the dev app if it isn't already running:
-pnpm test:browser
+pnpm exec playwright install chromium
+# Create this dedicated disposable database on your local Postgres first.
+DATABASE_URL="postgres://inbox:<test-password>@127.0.0.1:55439/inbox_browser_test" pnpm test:browser
+pnpm test:email-rendering
 ```
 
-Integration tests create and drop a uniquely named schema in the prototype database. They cover concurrent duplicate ingestion, mailbox isolation, attachment access, persisted replies, draft updates, search, folder protection and input/origin validation. The browser test creates and removes its own synthetic mailbox and exercises search → read → save draft twice → reopen → simulate reply. It leaves `.local/inbox-preview.png` for visual inspection.
+Node integration tests create and drop uniquely named schemas. The full application
+browser suite starts the built SPA/API on loopback port 4432 (`BROWSER_PORT` overrides
+it), refuses to reuse an existing server, and never loads `.env`. It requires the
+exact database name `inbox_browser_test` on `127.0.0.1`, without URL options. **Each
+application suite run resets that database's public schema**, applies migrations,
+and loads the synthetic seed. Use a disposable database, not your prototype data.
+Classifier UI is explicitly enabled, provider keys are cleared, and delivery is
+simulated. Provider behavior in individual tests uses synthetic adapters or route
+fixtures; no paid AI or live email is needed.
+
+CI installs Playwright Chromium and runs Node, lint/types, deployment dry-run, the
+full application suite, and email rendering. New `tests/browser/*.spec.ts` files
+are discovered automatically; only `email-rendering.spec.ts` runs in its separate
+fixture server. Screenshots, failure traces, and HTML reports are isolated under
+`test-results/{application,email-rendering}` and
+`playwright-report/{application,email-rendering}`, uploaded for seven days even
+when browser assertions fail. To inspect a local report, run
+`pnpm exec playwright show-report playwright-report/application`.
 
 To serve the built SPA through the API server, stop `pnpm dev` and run `pnpm start`; open <http://127.0.0.1:4311>.
 

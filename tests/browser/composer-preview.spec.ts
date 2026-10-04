@@ -64,7 +64,7 @@ test("inline composer keeps text across expansion, edits recipients, saves and s
 		expect(draft.body).toContain("Could you confirm");
 		expect(draft.cc).toContain("colleague@example.test");
 		await page.screenshot({
-			path: ".local/composer-desktop.png",
+			path: test.info().outputPath("composer-desktop.png"),
 			fullPage: true,
 		});
 		await page.setViewportSize({ width: 390, height: 844 });
@@ -85,7 +85,7 @@ test("inline composer keeps text across expansion, edits recipients, saves and s
 			composer.getByRole("button", { name: "Simulate send", exact: true }),
 		).toBeVisible();
 		await page.screenshot({
-			path: ".local/composer-mobile.png",
+			path: test.info().outputPath("composer-mobile.png"),
 			fullPage: true,
 		});
 		await composer

@@ -113,7 +113,7 @@ test("start a historical backfill and see durable, grouped progress after reload
 	await progress.getByText("Progress by tag", { exact: true }).click();
 	await expect(progress.getByText("Needs a reply · v1")).toBeVisible();
 	await page.screenshot({
-		path: ".local/backfill-progress.png",
+		path: test.info().outputPath("backfill-progress.png"),
 		fullPage: true,
 	});
 	expect(errors).toEqual([]);
@@ -147,7 +147,7 @@ test("credit pause banner survives reload and resume checks billing before clear
 			.getByRole("region", { name: "Reprocessing progress", exact: true })
 			.getByText("Paused", { exact: true }),
 	).toBeVisible();
-	await page.screenshot({ path: ".local/credit-pause-ui.png", fullPage: true });
+	await page.screenshot({ path: test.info().outputPath("credit-pause-ui.png"), fullPage: true });
 	await banner.getByRole("button", { name: "Resume processing" }).click();
 	await expect(
 		banner.getByText("Typesafe still reports insufficient credits.", {

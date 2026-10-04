@@ -23,7 +23,10 @@ test("Open and Done views, persistence, reopening and incoming reply reopening",
 		expect(email).toBeTruthy();
 		const thread = email!.thread_id!;
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
-		await page.getByText("Status prototype request", { exact: true }).click();
+		await page
+			.getByRole("button", { name: /^(Unread )?Select conversation / })
+			.getByText("Status prototype request", { exact: true })
+			.click();
 		const panel = page.getByRole("region", {
 			name: "Conversation status",
 			exact: true,
@@ -48,7 +51,10 @@ test("Open and Done views, persistence, reopening and incoming reply reopening",
 			.getByRole("button", { name: "Done conversations", exact: true })
 			.click();
 		await page.reload();
-		await page.getByText("Status prototype request", { exact: true }).click();
+		await page
+			.getByRole("button", { name: /^(Unread )?Select conversation / })
+			.getByText("Status prototype request", { exact: true })
+			.click();
 		await panel.getByRole("button", { name: "Status information" }).hover();
 		await expect(
 			page.getByRole("list", { name: "Status history" }),
@@ -65,7 +71,10 @@ test("Open and Done views, persistence, reopening and incoming reply reopening",
 			thread_id: thread,
 		});
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
-		await page.getByText("Status prototype request", { exact: true }).click();
+		await page
+			.getByRole("button", { name: /^(Unread )?Select conversation / })
+			.getByText("Status prototype request", { exact: true })
+			.click();
 		await expect(
 			panel.getByRole("button", { name: "Mark done", exact: true }),
 		).toBeVisible();
@@ -80,7 +89,7 @@ test("Open and Done views, persistence, reopening and incoming reply reopening",
 		expect((await getThreadWorkflow(db, mailbox, thread)).status).toBe("open");
 		expect(errors).toEqual([]);
 		await page.screenshot({
-			path: ".local/thread-status-desktop.png",
+			path: test.info().outputPath("thread-status-desktop.png"),
 			fullPage: true,
 			animations: "disabled",
 		});
@@ -97,7 +106,7 @@ test("Open and Done views, persistence, reopening and incoming reply reopening",
 			panel.getByRole("button", { name: "Wait", exact: true }),
 		).toHaveCount(0);
 		await page.screenshot({
-			path: ".local/thread-status-mobile.png",
+			path: test.info().outputPath("thread-status-mobile.png"),
 			fullPage: true,
 			animations: "disabled",
 		});

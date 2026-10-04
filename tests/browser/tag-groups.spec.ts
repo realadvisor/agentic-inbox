@@ -241,7 +241,7 @@ test("existing settings edit groups and conversation badges replace single selec
 			page.getByRole("button", { name: "Edit Response priority group" }),
 		).toBeVisible();
 		await page.screenshot({
-			path: ".local/groups-desktop.png",
+			path: test.info().outputPath("groups-desktop.png"),
 			fullPage: true,
 			animations: "disabled",
 		});
@@ -257,7 +257,7 @@ test("existing settings edit groups and conversation badges replace single selec
 			dialog.getByRole("button", { name: "Save group" }),
 		).toBeInViewport();
 		await page.screenshot({
-			path: ".local/groups-mobile.png",
+			path: test.info().outputPath("groups-mobile.png"),
 			fullPage: true,
 			animations: "disabled",
 		});

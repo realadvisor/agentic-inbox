@@ -36,7 +36,7 @@ test("webhook tag filters can be configured, edited and toggled without losing s
 		});
 		await page.getByRole("button", { name: "Save endpoint" }).click();
 		await expect(
-			page.getByText("Copy this signing secret now.", { exact: false }),
+			page.getByRole("button", { name: "Copy secret", exact: true }),
 		).toBeVisible();
 		const [saved] =
 			await db`SELECT * FROM webhook_endpoints WHERE mailbox_id=${mailbox}`;

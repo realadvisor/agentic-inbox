@@ -16,22 +16,22 @@ defaults:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_USER: inbox
           POSTGRES_PASSWORD: inbox_test
-          POSTGRES_DB: inbox_test
+          POSTGRES_DB: inbox_browser_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U inbox -d inbox_test"
+          --health-cmd "pg_isready -U inbox -d inbox_browser_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://inbox:inbox_test@127.0.0.1:5432/inbox_test
+      DATABASE_URL: postgres://inbox:inbox_test@127.0.0.1:5432/inbox_browser_test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,8 +45,20 @@ jobs:
       - run: pnpm check
       - run: node --import tsx --test tests/*.test.ts
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:email-rendering
       - run: pnpm deploy:check
+      - run: pnpm exec playwright test
+      - run: pnpm test:email-rendering
+        if: ${{ !cancelled() }}
+      - name: Save browser evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence-${{ github.sha }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: warn
       - name: Save validated frontend
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
