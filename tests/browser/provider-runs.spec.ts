@@ -1,3 +1,4 @@
+import { singleRequestByteLimit } from "../../shared/jev-budget";
 import { test, expect } from "@playwright/test";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -377,7 +378,7 @@ test("blocked attempts show a reason without fake request or response tabs", asy
 		sender: "customer@example.test",
 		recipient: mailbox,
 		subject: "Blocked before Jev",
-		body: "x".repeat(35000),
+		body: "x".repeat(singleRequestByteLimit),
 		date: new Date(),
 	});
 	const [job] =
@@ -404,9 +405,7 @@ test("blocked attempts show a reason without fake request or response tabs", asy
 		}),
 	).toBeVisible();
 	await expect(
-		page
-			.getByText("Conversation and instructions exceed Jev’s context limit.")
-			.first(),
+		page.getByText("Conversation is too large to process safely.").first(),
 	).toBeVisible();
 });
 
