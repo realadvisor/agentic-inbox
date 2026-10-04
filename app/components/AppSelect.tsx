@@ -10,14 +10,16 @@ export function AppSelect({
 	compact = false,
 	inline = false,
 	disabled = false,
+	triggerClassName = "",
 }: {
 	label: string;
 	value: string;
-	options: { value: string; label: string }[];
+	options: { value: string; label: string; disabled?: boolean }[];
 	onChange: (value: string) => void;
 	compact?: boolean;
 	inline?: boolean;
 	disabled?: boolean;
+	triggerClassName?: string;
 }) {
 	const [open, setOpen] = useState(false);
 	const [container, setContainer] = useState<HTMLDivElement | null>(null);
@@ -34,13 +36,17 @@ export function AppSelect({
 				items={options}
 				container={container}
 				size={compact ? "xs" : "base"}
-				className={compact ? "" : "w-full"}
+				className={`${compact ? "" : "w-full"} ${triggerClassName}`}
 				onValueChange={(value) => {
 					if (value !== null) onChange(value);
 				}}
 			>
 				{options.map((option) => (
-					<Select.Option key={option.value} value={option.value}>
+					<Select.Option
+						key={option.value}
+						value={option.value}
+						disabled={option.disabled}
+					>
 						{option.label}
 					</Select.Option>
 				))}

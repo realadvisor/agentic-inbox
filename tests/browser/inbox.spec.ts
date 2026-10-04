@@ -21,25 +21,25 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 		});
 		await page.goto("/");
 		await expect(
-			page.getByRole("heading", { name: "Mailboxes" })
+			page.getByRole("heading", { name: "Mailboxes", exact: true }),
 		).toBeVisible();
 		await page
 			.getByRole("link")
 			.filter({ hasText: "Browser test inbox" })
 			.click();
 		await expect(
-			page.getByText("Synthetic deletion request", { exact: true })
+			page.getByText("Synthetic deletion request", { exact: true }),
 		).toBeVisible();
 		await page
 			.getByRole("textbox", { name: "Search emails" })
 			.fill("from:alex deletion");
 		await page.getByRole("textbox", { name: "Search emails" }).press("Enter");
 		await expect(
-			page.getByText('1 result for "from:alex deletion"')
+			page.getByText('1 result for "from:alex deletion"'),
 		).toBeVisible();
 		await page.getByText("Synthetic deletion request", { exact: true }).click();
 		await expect(page.frameLocator("iframe").locator("body")).toContainText(
-			"Please delete my synthetic account."
+			"Please delete my synthetic account.",
 		);
 		await page
 			.getByRole("button", { name: "Reply", exact: true })
@@ -52,7 +52,7 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 			.getByRole("button", { name: "Save as Draft", exact: true })
 			.click();
 		await expect(
-			page.getByText("Draft saved!", { exact: true }).first()
+			page.getByText("Draft saved!", { exact: true }).first(),
 		).toBeVisible();
 		await page
 			.getByRole("button", { name: "Save as Draft", exact: true })
@@ -62,8 +62,8 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 				Number(
 					(
 						await db`SELECT count(*) AS n FROM emails WHERE mailbox_id = ${mailbox} AND folder_id = 'draft'`
-					)[0].n
-				)
+					)[0].n,
+				),
 			)
 			.toBe(1);
 		await page.goto(`/mailbox/${mailbox}/emails/draft`);
@@ -75,20 +75,18 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 			.first()
 			.click();
 		await expect(page.locator('[contenteditable="true"]')).toContainText(
-			"Synthetic acknowledgement"
+			"Synthetic acknowledgement",
 		);
 		await page
 			.getByRole("button", { name: "Simulate send", exact: true })
 			.first()
 			.click();
 		await expect(
-			page
-				.getByText("Message submitted", { exact: true })
-				.first()
+			page.getByText("Message submitted", { exact: true }).first(),
 		).toBeVisible();
 		await page.goto(`/mailbox/${mailbox}/emails/sent`);
 		await expect(
-			page.getByText("Re: Synthetic deletion request", { exact: true })
+			page.getByText("Re: Synthetic deletion request", { exact: true }),
 		).toBeVisible();
 		const [counts] =
 			await db`SELECT count(*) FILTER (WHERE delivery_status = 'simulated')::int AS sent, count(*) FILTER (WHERE delivery_status = 'draft')::int AS drafts, count(DISTINCT thread_id)::int AS threads FROM emails WHERE mailbox_id = ${mailbox}`;
@@ -96,7 +94,7 @@ test("browse, search, save and reopen a draft, and simulate a threaded reply", a
 		expect(errors).toEqual([]);
 		await page.goto("/mailbox/privacy@realadvisor.com/emails/inbox?status=all");
 		await expect(
-			page.getByText("Request to delete my account", { exact: true })
+			page.getByText("Request to delete my account", { exact: true }),
 		).toBeVisible();
 		await page.screenshot({ path: ".local/inbox-preview.png", fullPage: true });
 	} finally {

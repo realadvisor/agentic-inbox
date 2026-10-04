@@ -48,6 +48,7 @@ export interface ConversationScore {
 	needs_review: boolean;
 }
 export interface Email {
+	sender_identity_id?: string | null;
 	scores?: ConversationScore[];
 	thread_status?: import("shared/thread-status").ThreadStatus;
 	delivery_status?:

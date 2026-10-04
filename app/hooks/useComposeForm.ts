@@ -23,6 +23,8 @@ import {
 	useSendEmail,
 } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
+import { useSenders } from "~/queries/senders";
+import { resolveSenderId } from "shared/senders";
 import { useUIStore } from "~/hooks/useUIStore";
 
 function isSelfAddress(address: string, self?: string) {
@@ -216,6 +218,11 @@ export function useComposeForm(
 	const toastManager = useKumoToastManager();
 	const { composeOptions, closePanel, closeCompose } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
+	const { data: senderConfig, error: senderLoadError } = useSenders();
+	const [senderIdentityId, setSenderIdentityId] = useState("");
+	const selectedSender = senderConfig?.senders.find(
+		(s) => s.id === senderIdentityId,
+	);
 	const sendEmailMutation = useSendEmail();
 	const saveDraftMutation = useSaveDraft();
 	const replyMutation = useReplyToEmail();
@@ -251,15 +258,42 @@ export function useComposeForm(
 		}
 	}, [composeOptions.mode, isDraftEdit]);
 
-	const sigBlock = useMemo(
-		() => getSignatureBlock(currentMailbox?.settings),
-		[currentMailbox],
-	);
+	const changeSender = (id: string) => {
+		const previous = getSignatureBlock(selectedSender?.settings);
+		const next = getSignatureBlock(
+			senderConfig?.senders.find((s) => s.id === id)?.settings,
+		);
+		setBody((value) =>
+			previous && value.includes(previous)
+				? value.replace(previous, next)
+				: next
+					? `${value}${next}`
+					: value,
+		);
+		setSenderIdentityId(id);
+	};
 
 	useEffect(() => {
-		if (lastInitializedOptionsRef.current === composeOptions) return;
+		if (
+			!senderConfig ||
+			!currentMailbox ||
+			lastInitializedOptionsRef.current === composeOptions
+		)
+			return;
 		lastInitializedOptionsRef.current = composeOptions;
 		setSavedDraftId(composeOptions.draftEmail?.id);
+		const initialSenderId =
+			resolveSenderId(senderConfig, {
+				draft: composeOptions.draftEmail?.sender_identity_id,
+				reply: ["reply", "reply-all"].includes(composeOptions.mode)
+					? (composeOptions.originalEmail ?? undefined)
+					: undefined,
+				mailboxId: currentMailbox.id,
+			}) ?? "";
+		setSenderIdentityId(initialSenderId);
+		const sigBlock = getSignatureBlock(
+			senderConfig.senders.find((s) => s.id === initialSenderId)?.settings,
+		);
 		setDraftVersion(composeOptions.draftEmail?.draft_version ?? undefined);
 
 		const initialFields = buildInitialComposeFields(
@@ -284,16 +318,21 @@ export function useComposeForm(
 				: initialFields.body,
 		);
 		setQuotedBody(quoteIndex >= 0 ? initialFields.body.slice(quoteIndex) : "");
-	}, [composeOptions, currentMailbox?.email, sigBlock, separateQuote]);
+	}, [composeOptions, currentMailbox, senderConfig, separateQuote]);
 
 	const handleSaveDraft = async () => {
-		if (!mailboxId || isSending) return;
+		if (!mailboxId || isSending || isSavingDraft) return;
+		if (!senderIdentityId) {
+			setError("Choose a sender before saving.");
+			return;
+		}
 		setIsSavingDraft(true);
 		setError(null);
 		try {
 			const saved = await saveDraftMutation.mutateAsync({
 				mailboxId,
 				draft: {
+					sender_identity_id: senderIdentityId,
 					to,
 					cc: cc || undefined,
 					bcc: bcc || undefined,
@@ -328,8 +367,13 @@ export function useComposeForm(
 		e.preventDefault();
 		if (isSending) return;
 		setError(null);
-		if (!currentMailbox || !mailboxId) {
-			setError("No mailbox selected.");
+		if (
+			!currentMailbox ||
+			!mailboxId ||
+			!selectedSender?.active ||
+			!selectedSender.mailbox_id
+		) {
+			setError("Choose an available sender.");
 			return;
 		}
 		const toRecipients = splitEmailList(to);
@@ -339,16 +383,12 @@ export function useComposeForm(
 		}
 		const ccRecipients = splitEmailList(cc);
 		const bccRecipients = splitEmailList(bcc);
-		const fromName = currentMailbox.settings?.fromName || currentMailbox.name;
-		const from =
-			fromName && fromName !== currentMailbox.email
-				? { email: currentMailbox.email, name: fromName }
-				: currentMailbox.email;
 		const emailData = {
 			to: toEmailListValue(toRecipients),
 			cc: toEmailListValue(ccRecipients),
 			bcc: toEmailListValue(bccRecipients),
-			from,
+			sender_identity_id: senderIdentityId,
+			draft_id: savedDraftId,
 			subject,
 			html: body + quotedBody,
 			text: htmlToPlainText(body + quotedBody),
@@ -389,6 +429,9 @@ export function useComposeForm(
 	};
 
 	return {
+		senderConfig,
+		senderIdentityId,
+		changeSender,
 		to,
 		setTo,
 		cc,
@@ -403,7 +446,7 @@ export function useComposeForm(
 		setBody,
 		quotedBody,
 		quotedText: htmlToPlainText(quotedBody),
-		error,
+		error: error ?? senderLoadError?.message ?? null,
 		setError,
 		isSavingDraft,
 		isSending,

@@ -3,7 +3,7 @@
 	"info": {
 		"title": "RealAdvisor Inbox API",
 		"version": "1.0.0",
-		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings → API keys. Send Authorization: Bearer inbox_…; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read, drafts:manage, mail:send, conversations:manage webhooks:manage, classifications:read, classifications:review, classifications:run, folders:manage and agent:use permissions. Agent access also requires mail:read and each tool respects the granted scopes. Send email is opt-in. Keys cannot manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
+		"description": "Shared mailbox API backed by Neon Postgres.\n\n## Authentication\nHosted documentation uses Cloudflare Access browser login. API calls accept a verified browser session or an inbox API key. Requests from this page use your existing same-origin session. All allowed users can access registered live mailboxes. Only designated mailbox administrators may create them. Local development is synthetic and loopback-only.\n\n## Automation / n8n\nCreate a key in Settings \u2192 API keys. Send Authorization: Bearer inbox_\u2026; no Cloudflare service-token headers are needed after the API path is configured for application authentication. Keys are restricted to selected mailboxes and mail:read, drafts:manage, mail:send, conversations:manage webhooks:manage, classifications:read, classifications:review, classifications:run, folders:manage and agent:use permissions. Agent access also requires mail:read and each tool respects the granted scopes. Send email is opt-in. Keys cannot manage people, settings or other keys. Administrators manage keys using their browser session.\n\n## Mail identities\nEach registered name@ingest.realadvisor.com mailbox sends as name@realadvisor.com. Public-address forwarding from Google Workspace is configured separately.\n\n## Interactive requests\nRequests execute against the current origin. Sending, modifying and deleting affect real data on the hosted instance. No external request proxy is used."
 	},
 	"servers": [
 		{
@@ -434,7 +434,7 @@
 				"operationId": "postCreateMailbox",
 				"summary": "Create mailbox",
 				"tags": ["Mailboxes"],
-				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1–64 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
+				"description": "In live mode, only users listed in MAILBOX_ADMINS can create mailboxes, and creation must be enabled. The email must use ingest.realadvisor.com, with a 1\u201364 character lowercase local part containing letters, numbers, dots, underscores or hyphens, starting and ending with a letter or number; consecutive dots are forbidden. Case is normalized to lowercase. Registration and system folders are committed atomically. Existing addresses return 409. The shared routing rule immediately permits this registered inbox, and sending uses the matching @realadvisor.com identity. Google Workspace/Groups forwarding for the public address is a separate step. Local synthetic mode remains unrestricted.",
 				"parameters": [],
 				"responses": {
 					"201": {
@@ -1163,7 +1163,7 @@
 				"operationId": "postSendEmail",
 				"summary": "Send email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox. Sender precedence is explicit sender_identity_id, saved draft identity, reply recipient match, then workspace default. Ambiguous or unavailable senders return 409; unauthorized live senders return 403. API keys must have access to both the conversation and sender mailboxes. From and Reply-To use the selected public identity.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -2888,7 +2888,7 @@
 				"operationId": "postReplyToEmail",
 				"summary": "Reply to email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox. Sender precedence is explicit sender_identity_id, saved draft identity, reply recipient match, then workspace default. Ambiguous or unavailable senders return 409; unauthorized live senders return 403. API keys must have access to both the conversation and sender mailboxes. From and Reply-To use the selected public identity.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -3042,7 +3042,7 @@
 				"operationId": "postForwardEmail",
 				"summary": "Forward email",
 				"tags": ["Sending"],
-				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox.",
+				"description": "Sends real mail in live mode. Caller supplies recipient, subject and body, including quoted/forwarded content if desired. Replies retain the thread; forwards start a new one. Store one UUID per logical send and reuse it with identical content on retry. A reused key with different content or a pending/unknown delivery returns 409. A provider ambiguity returns 502: inspect delivery before attempting another send. sent means provider acceptance, not final delivery. Local mode returns simulated and sends nothing. API keys require mail:send and access to this mailbox. Sender precedence is explicit sender_identity_id, saved draft identity, reply recipient match, then workspace default. Ambiguous or unavailable senders return 409; unauthorized live senders return 403. API keys must have access to both the conversation and sender mailboxes. From and Reply-To use the selected public identity.",
 				"parameters": [
 					{
 						"$ref": "#/components/parameters/mailboxId"
@@ -6731,7 +6731,7 @@
 				"operationId": "startClassifierBackfill",
 				"tags": ["Classifiers"],
 				"summary": "Start classifier backfill",
-				"description": "Start a resumable classifier backfill.\n\nAdministrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run’s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
+				"description": "Start a resumable classifier backfill.\n\nAdministrator only. Returns immediately after saving all selected tag runs atomically. The server snapshots matching conversations and admits at most 500 outstanding evaluations per classifier, in pages of 100. Archived mail is included by default. Missing/outdated mode preserves current evaluation keys and human decisions. All forces a fresh evaluation at this run\u2019s timestamp while sharing identical inputs within the run. An active selected classifier returns 409; no partial runs are created. Does not enable automatic assignment. Cancel through the existing classifier cancel endpoint.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -7021,7 +7021,7 @@
 											"permissions": {
 												"type": "array",
 												"minItems": 1,
-												"maxItems": 10,
+												"maxItems": 11,
 												"items": {
 													"type": "string",
 													"enum": [
@@ -7034,7 +7034,8 @@
 														"classifications:review",
 														"classifications:run",
 														"folders:manage",
-														"agent:use"
+														"agent:use",
+														"senders:manage"
 													]
 												}
 											},
@@ -7109,7 +7110,7 @@
 									"permissions": {
 										"type": "array",
 										"minItems": 1,
-										"maxItems": 10,
+										"maxItems": 11,
 										"items": {
 											"type": "string",
 											"enum": [
@@ -7122,7 +7123,8 @@
 												"classifications:review",
 												"classifications:run",
 												"folders:manage",
-												"agent:use"
+												"agent:use",
+												"senders:manage"
 											]
 										}
 									},
@@ -7310,6 +7312,389 @@
 						"description": "Webhook encryption is not configured"
 					}
 				}
+			}
+		},
+		"/api/v1/sender-identities": {
+			"get": {
+				"operationId": "getSenderIdentities",
+				"summary": "List senders",
+				"tags": ["Sending"],
+				"description": "Available sender identities and workspace default. API keys see only identities in their mailbox scope. Requires mail:read, mail:send, drafts:manage or senders:manage. Inactive or disconnected identities cannot be selected for sending.",
+				"responses": {
+					"200": {
+						"description": "Success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SenderConfiguration"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Delivery not confirmed; do not blindly resend",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Sending is not configured",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "createSenderIdentity",
+				"summary": "Create sender",
+				"tags": ["Sending"],
+				"description": "Requires an administrator or senders:manage key scoped to both the current and selected mailbox. Live identities must match the approved public address of an existing ingest mailbox. Removal preserves history and is forbidden for the current default.",
+				"responses": {
+					"400": {
+						"description": "Invalid input"
+					},
+					"401": {
+						"description": "Authentication required"
+					},
+					"403": {
+						"description": "Forbidden"
+					},
+					"404": {
+						"description": "Sender not found"
+					},
+					"409": {
+						"description": "Duplicate email or current default"
+					},
+					"201": {
+						"description": "Saved sender",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SenderIdentity"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SenderInput"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/inbox-settings": {
+			"patch": {
+				"operationId": "patchInboxSettings",
+				"summary": "Set default sender",
+				"tags": ["Sending"],
+				"description": "Change the workspace default for new messages. Saved draft and reply identities take precedence. Requires administrator session or an API key with senders:manage and access to the selected sender mailbox.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": false,
+								"required": ["default_sender_identity_id"],
+								"properties": {
+									"default_sender_identity_id": {
+										"type": "string",
+										"maxLength": 254
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Updated default sender",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"default_sender_identity_id": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid input",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "Missing or invalid authentication; the Access edge may redirect anonymous browsers to login."
+					},
+					"403": {
+						"description": "Operation denied",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Request exceeds 256,000 bytes",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"415": {
+						"description": "Use application/json",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Internal error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"502": {
+						"description": "Delivery not confirmed; do not blindly resend",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"503": {
+						"description": "Sending is not configured",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/sender-identities/{senderId}": {
+			"put": {
+				"operationId": "updateSenderIdentity",
+				"summary": "Update sender",
+				"tags": ["Sending"],
+				"description": "Requires an administrator or senders:manage key scoped to both the current and selected mailbox. Live identities must match the approved public address of an existing ingest mailbox. Removal preserves history and is forbidden for the current default.",
+				"responses": {
+					"400": {
+						"description": "Invalid input"
+					},
+					"401": {
+						"description": "Authentication required"
+					},
+					"403": {
+						"description": "Forbidden"
+					},
+					"404": {
+						"description": "Sender not found"
+					},
+					"409": {
+						"description": "Duplicate email or current default"
+					},
+					"200": {
+						"description": "Saved sender",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SenderIdentity"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SenderInput"
+							}
+						}
+					}
+				},
+				"parameters": [
+					{
+						"name": "senderId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"delete": {
+				"operationId": "removeSenderIdentity",
+				"summary": "Remove sender",
+				"tags": ["Sending"],
+				"description": "Requires an administrator or senders:manage key scoped to both the current and selected mailbox. Live identities must match the approved public address of an existing ingest mailbox. Removal preserves history and is forbidden for the current default.",
+				"responses": {
+					"400": {
+						"description": "Invalid input"
+					},
+					"401": {
+						"description": "Authentication required"
+					},
+					"403": {
+						"description": "Forbidden"
+					},
+					"404": {
+						"description": "Sender not found"
+					},
+					"409": {
+						"description": "Duplicate email or current default"
+					},
+					"204": {
+						"description": "Sender removed"
+					}
+				},
+				"parameters": [
+					{
+						"name": "senderId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
 			}
 		}
 	},
@@ -7513,6 +7898,12 @@
 						"pattern": "^[a-f0-9]{32}$",
 						"description": "Opaque version of editable draft fields. Send the version read from the draft to reject stale edits with HTTP 409.",
 						"nullable": true
+					},
+					"sender_identity_id": {
+						"type": "string",
+						"maxLength": 254,
+						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default.",
+						"nullable": true
 					}
 				},
 				"required": [
@@ -7596,6 +7987,16 @@
 					"text": {
 						"type": "string",
 						"maxLength": 100000
+					},
+					"sender_identity_id": {
+						"type": "string",
+						"maxLength": 254,
+						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default."
+					},
+					"draft_id": {
+						"type": "string",
+						"format": "uuid",
+						"description": "Use the saved draft sender when sender_identity_id is omitted. Draft must belong to this mailbox. Sending does not delete the draft."
 					}
 				},
 				"required": ["to"],
@@ -7619,6 +8020,16 @@
 					"status": {
 						"type": "string",
 						"enum": ["sent", "simulated"]
+					},
+					"sender_identity_id": {
+						"type": "string",
+						"maxLength": 254,
+						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default.",
+						"nullable": true
+					},
+					"sender": {
+						"type": "string",
+						"format": "email"
 					}
 				},
 				"required": ["id", "status"]
@@ -7666,6 +8077,11 @@
 						"type": "string",
 						"pattern": "^[a-f0-9]{32}$",
 						"description": "Opaque version of editable draft fields. Send the version read from the draft to reject stale edits with HTTP 409."
+					},
+					"sender_identity_id": {
+						"type": "string",
+						"maxLength": 254,
+						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default."
 					}
 				},
 				"required": ["body"]
@@ -7681,6 +8097,16 @@
 						"type": "string",
 						"pattern": "^[a-f0-9]{32}$",
 						"description": "Opaque version of editable draft fields. Send the version read from the draft to reject stale edits with HTTP 409."
+					},
+					"sender_identity_id": {
+						"type": "string",
+						"maxLength": 254,
+						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default.",
+						"nullable": true
+					},
+					"sender": {
+						"type": "string",
+						"format": "email"
 					}
 				},
 				"required": ["draft_id"]
@@ -8353,6 +8779,71 @@
 						"nullable": true
 					}
 				}
+			},
+			"SenderIdentity": {
+				"type": "object",
+				"required": ["id", "email", "mailbox_id", "name", "active"],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"mailbox_id": {
+						"type": "string",
+						"nullable": true
+					},
+					"name": {
+						"type": "string"
+					},
+					"active": {
+						"type": "boolean"
+					},
+					"settings": {
+						"type": "object",
+						"additionalProperties": true
+					}
+				}
+			},
+			"SenderConfiguration": {
+				"type": "object",
+				"required": ["senders", "default_sender_identity_id"],
+				"properties": {
+					"senders": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/SenderIdentity"
+						}
+					},
+					"default_sender_identity_id": {
+						"type": "string",
+						"nullable": true
+					}
+				}
+			},
+			"SenderInput": {
+				"type": "object",
+				"required": ["email", "name", "mailbox_id"],
+				"additionalProperties": false,
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email",
+						"maxLength": 254
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"mailbox_id": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 254
+					}
+				}
 			}
 		},
 		"parameters": {
@@ -8405,7 +8896,7 @@
 				"type": "http",
 				"scheme": "bearer",
 				"bearerFormat": "inbox_<64 hex characters>",
-				"description": "Created by an administrator in Settings → API keys. Scope and mailbox restrictions apply; revoked or expired keys return 401."
+				"description": "Created by an administrator in Settings \u2192 API keys. Scope and mailbox restrictions apply; revoked or expired keys return 401."
 			}
 		}
 	}

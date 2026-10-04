@@ -17,6 +17,19 @@ module.exports = {
 	],
 	overrides: [
 		{
+			files: ["app/components/**/*.tsx"],
+			rules: {
+				"no-restricted-syntax": [
+					"error",
+					{
+						selector: "JSXOpeningElement[name.name='select']",
+						message:
+							"Use AppSelect (or Kumo Select) instead of native select menus to preserve the app's dropdown styling and focus behavior.",
+					},
+				],
+			},
+		},
+		{
 			files: ["**/*.ts", "**/*.tsx"],
 			rules: { "no-undef": "off", "no-unused-vars": "off" },
 		},

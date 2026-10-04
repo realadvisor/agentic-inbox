@@ -18,6 +18,12 @@ type Key = {
 };
 const permissions = [
 	{
+		id: "senders:manage",
+		name: "Manage senders",
+		description:
+			"Create, edit, remove senders and change the default within the selected mailboxes.",
+	},
+	{
 		id: "mail:read",
 		name: "Read mail",
 		description: "Read conversations, emails, attachments and tags.",

@@ -15,6 +15,7 @@ try {
 		const existing = await db`SELECT id FROM mailboxes WHERE id = ${email}`;
 		if (!existing.length) await store.createMailbox(email, name);
 	}
+	await db`UPDATE inbox_settings SET default_sender_identity_id='info@realadvisor.com' WHERE id AND default_sender_identity_id IS NULL AND EXISTS (SELECT 1 FROM sender_identities WHERE id='info@realadvisor.com')`;
 	const samples = [
 		{
 			mailbox: privacy,
@@ -95,10 +96,10 @@ try {
 	await writeFile(resolve(".local/attachments", attachmentId), contents);
 	await db`INSERT INTO attachments (id, mailbox_id, email_id, filename, mimetype, size, storage_key)
 		VALUES (${attachmentId}, ${privacy}, '10000000-0000-4000-8000-000000000002', 'sample-reference.txt', 'text/plain', ${Buffer.byteLength(
-		contents
-	)}, ${attachmentId}) ON CONFLICT DO NOTHING`;
+			contents,
+		)}, ${attachmentId}) ON CONFLICT DO NOTHING`;
 	console.log(
-		"Seeded Privacy and Info with synthetic messages. Existing messages were preserved; nothing was sent."
+		"Seeded Privacy and Info with synthetic messages. Existing messages were preserved; nothing was sent.",
 	);
 } finally {
 	await db.end();

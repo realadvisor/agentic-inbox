@@ -32,6 +32,7 @@ import { z } from "zod";
 import type { Database } from "./db";
 import { InboxStore, type MessageRow } from "./store";
 
+import { SenderStore } from "./senders";
 import { sendReal, type MailSender } from "./outbound";
 import { liveSender, mailboxConfig } from "./mailboxes";
 
@@ -43,6 +44,8 @@ const recipients = z.union([
 ]);
 const sendSchema = z
 	.object({
+		sender_identity_id: z.string().min(1).max(254).optional(),
+		draft_id: id.optional(),
 		to: recipients,
 		cc: recipients.optional(),
 		bcc: recipients.optional(),
@@ -111,6 +114,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		classifierPreview: options.classifierPreview,
 	});
 	const isLive = options.mode === "live";
+	const senders = new SenderStore(db);
 	const isAdmin =
 		!isLive ||
 		(options.actorRole
@@ -275,6 +279,92 @@ export function createApi(db: Database, options: ApiOptions) {
 					},
 		),
 	);
+	app.get("/api/v1/sender-identities", async (c) => {
+		const config = await senders.configuration();
+		if (isLive)
+			config.senders = config.senders.map((s) => ({
+				...s,
+				active:
+					s.active && !!s.mailbox_id && liveSender(s.mailbox_id) === s.email,
+			}));
+		const key = c.get("apiKey");
+		if (key) {
+			config.senders = config.senders.filter(
+				(s) => s.mailbox_id && key.mailbox_ids.includes(s.mailbox_id),
+			);
+			if (
+				!config.senders.some((s) => s.id === config.default_sender_identity_id)
+			)
+				config.default_sender_identity_id = null;
+		}
+		return c.json(config);
+	});
+	const senderInput = z
+		.object({
+			email: z
+				.string()
+				.trim()
+				.email()
+				.max(254)
+				.transform((s) => s.toLowerCase()),
+			name: z.string().trim().min(1).max(200),
+			mailbox_id: z.string().min(1).max(254),
+		})
+		.strict();
+	app.use("/api/v1/sender-identities/*", async (c, next) => {
+		if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+			const key = c.get("apiKey");
+			if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
+				throw new HTTPException(403, {
+					message: "Administrator access or senders:manage permission required",
+				});
+		}
+		await next();
+	});
+	app.post("/api/v1/sender-identities", async (c) => {
+		const key = c.get("apiKey");
+		if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
+			throw new HTTPException(403, {
+				message: "Administrator access or senders:manage permission required",
+			});
+		return c.json(
+			await senders.save(senderInput.parse(await c.req.json()), {
+				live: isLive,
+				mailboxIds: key?.mailbox_ids,
+			}),
+			201,
+		);
+	});
+	app.put("/api/v1/sender-identities/:senderId", async (c) =>
+		c.json(
+			await senders.save(
+				senderInput.parse(await c.req.json()),
+				{ live: isLive, mailboxIds: c.get("apiKey")?.mailbox_ids },
+				c.req.param("senderId"),
+			),
+		),
+	);
+	app.delete("/api/v1/sender-identities/:senderId", async (c) => {
+		await senders.remove(c.req.param("senderId"), c.get("apiKey")?.mailbox_ids);
+		return c.body(null, 204);
+	});
+
+	app.patch("/api/v1/inbox-settings", async (c) => {
+		const key = c.get("apiKey");
+		if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
+			throw new HTTPException(403, {
+				message: "Administrator access or senders:manage permission required",
+			});
+		const input = z
+			.object({ default_sender_identity_id: z.string().min(1).max(254) })
+			.strict()
+			.parse(await c.req.json());
+		await senders.setDefault(input.default_sender_identity_id, {
+			live: isLive,
+			mailboxIds: key?.mailbox_ids,
+		});
+		return c.json(input);
+	});
 	app.route("/api/v1/tag-groups", tagGroupsApi(db, isAdmin));
 	app.get("/api/v1/tags", async (c) =>
 		c.json(
@@ -586,6 +676,24 @@ export function createApi(db: Database, options: ApiOptions) {
 	app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c) => {
 		const input = draftSchema.parse(await c.req.json());
 		const mailbox = await store.mailbox(c.req.param("mailboxId"));
+		const existing = input.draft_id
+			? await store.message(mailbox.id, input.draft_id)
+			: undefined;
+		if (existing && existing.delivery_status !== "draft")
+			throw new HTTPException(404);
+		const parentId = input.in_reply_to ?? existing?.in_reply_to;
+		const parent = parentId
+			? await store.message(mailbox.id, parentId)
+			: undefined;
+		const sender = await senders.resolve(
+			{
+				explicit: input.sender_identity_id,
+				draft: existing?.sender_identity_id,
+				reply: parent,
+				mailboxId: mailbox.id,
+			},
+			{ live: isLive, mailboxIds: c.get("apiKey")?.mailbox_ids },
+		);
 		let threadId = input.thread_id;
 		if (input.in_reply_to) {
 			const parent = await store.message(mailbox.id, input.in_reply_to);
@@ -598,13 +706,14 @@ export function createApi(db: Database, options: ApiOptions) {
 					db,
 					mailbox.id,
 					input.draft_id,
-					input,
+					{ ...input, sender_identity_id: sender.id },
 					input.draft_version,
 				),
 			);
 		}
 		const draft = await store.insert(mailbox.id, {
-			sender: mailbox.email,
+			sender: sender.email,
+			sender_identity_id: sender.id,
 			recipient: input.to,
 			subject: input.subject,
 			body: input.body,
@@ -619,6 +728,8 @@ export function createApi(db: Database, options: ApiOptions) {
 		return c.json(
 			{
 				draft_id: draft!.id,
+				sender_identity_id: sender.id,
+				sender: sender.email,
 				draft_version: (await store.message(mailbox.id, draft!.id))
 					.draft_version,
 			},
@@ -647,6 +758,7 @@ export function createApi(db: Database, options: ApiOptions) {
 						actor,
 						action ? c.req.param("id") : undefined,
 						action.endsWith("reply"),
+						c.get("apiKey")?.mailbox_ids,
 					),
 					201,
 				);
@@ -656,8 +768,23 @@ export function createApi(db: Database, options: ApiOptions) {
 				? await store.message(mailbox.id, id.parse(c.req.param("id")))
 				: undefined;
 			const reply = action.endsWith("reply");
+			const draft = input.draft_id
+				? await store.message(mailbox.id, input.draft_id)
+				: undefined;
+			if (draft && draft.delivery_status !== "draft")
+				throw new HTTPException(404);
+			const sender = await senders.resolve(
+				{
+					explicit: input.sender_identity_id,
+					draft: draft?.sender_identity_id,
+					reply: reply ? parent : undefined,
+					mailboxId: mailbox.id,
+				},
+				{ mailboxIds: c.get("apiKey")?.mailbox_ids },
+			);
 			const message = await store.insert(mailbox.id, {
-				sender: mailbox.email,
+				sender: sender.email,
+				sender_identity_id: sender.id,
 				recipient: joinRecipients(input.to),
 				cc: joinRecipients(input.cc),
 				bcc: joinRecipients(input.bcc),
@@ -674,7 +801,15 @@ export function createApi(db: Database, options: ApiOptions) {
 							.join(" ")
 					: undefined,
 			});
-			return c.json({ id: message?.id, status: "simulated" }, 201);
+			return c.json(
+				{
+					id: message?.id,
+					status: "simulated",
+					sender_identity_id: sender.id,
+					sender: sender.email,
+				},
+				201,
+			);
 		});
 	}
 	app.get(

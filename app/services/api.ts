@@ -110,6 +110,30 @@ interface EmailListResponse {
 // ---------- API client ----------
 
 const api = {
+	saveSender: ({
+		id,
+		...input
+	}: {
+		id?: string;
+		email: string;
+		name: string;
+		mailbox_id: string;
+	}) =>
+		request<import("shared/senders").SenderIdentity>(
+			`/api/v1/sender-identities${id ? `/${encodeURIComponent(id)}` : ""}`,
+			{ method: id ? "PUT" : "POST", body: JSON.stringify(input) },
+		),
+	removeSender: (id: string) =>
+		del<void>(`/api/v1/sender-identities/${encodeURIComponent(id)}`),
+	listSenders: () =>
+		get<import("shared/senders").SenderConfiguration>(
+			"/api/v1/sender-identities",
+		),
+	setDefaultSender: (id: string) =>
+		request<{ default_sender_identity_id: string }>("/api/v1/inbox-settings", {
+			method: "PATCH",
+			body: JSON.stringify({ default_sender_identity_id: id }),
+		}),
 	recipientSuggestions: (
 		mailbox: string,
 		q: string,
@@ -270,6 +294,7 @@ const api = {
 			in_reply_to?: string;
 			thread_id?: string;
 			draft_id?: string;
+			sender_identity_id?: string;
 			draft_version?: string;
 		},
 	) =>

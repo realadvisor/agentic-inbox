@@ -230,11 +230,6 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				});
 				return;
 			}
-			const fromName = currentMailbox.settings?.fromName || currentMailbox.name;
-			const from =
-				fromName && fromName !== currentMailbox.email
-					? { email: currentMailbox.email, name: fromName }
-					: currentMailbox.email;
 			const originalEmail = target.in_reply_to
 				? allMessages.find((msg) => msg.id === target.in_reply_to)
 				: undefined;
@@ -242,7 +237,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				to: toEmailListValue(toRecipients),
 				cc: toEmailListValue(splitEmailList(target.cc)),
 				bcc: toEmailListValue(splitEmailList(target.bcc)),
-				from,
+				draft_id: target.id,
 				subject: target.subject || "(no subject)",
 				html: target.body || "",
 				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",

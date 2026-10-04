@@ -261,6 +261,7 @@ export function useSaveDraft() {
 				in_reply_to?: string;
 				thread_id?: string;
 				draft_id?: string;
+				sender_identity_id?: string;
 				draft_version?: string;
 			};
 		}) => api.saveDraft(mailboxId, draft),

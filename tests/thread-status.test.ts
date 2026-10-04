@@ -64,7 +64,10 @@ test("backfills existing threads as open without inferring status from folders o
 			await old`INSERT INTO inbox_migrations VALUES (${Number(filename.slice(0, 3))})`;
 		}
 		const oldStore = new InboxStore(old);
-		await oldStore.createMailbox(mailbox, "Old inbox");
+		// Build a pre-sender-schema fixture without invoking the current mailbox writer.
+		await old`INSERT INTO mailboxes (id,email,name) VALUES (${mailbox},${mailbox},'Old inbox')`;
+		for (const folder of ["inbox", "archive", "draft", "sent"])
+			await old`INSERT INTO folders (mailbox_id,id,name) VALUES (${mailbox},${folder},${folder})`;
 		const email = await oldStore.insert(mailbox, {
 			sender: mailbox,
 			recipient: mailbox,
@@ -234,7 +237,10 @@ test("retiring Waiting reopens existing threads once and preserves history", asy
 			await legacy`INSERT INTO inbox_migrations VALUES (${Number(filename.slice(0, 3))})`;
 		}
 		const legacyStore = new InboxStore(legacy);
-		await legacyStore.createMailbox(mailbox, "Legacy waiting");
+		// Build a pre-sender-schema fixture without invoking the current mailbox writer.
+		await legacy`INSERT INTO mailboxes (id,email,name) VALUES (${mailbox},${mailbox},'Legacy waiting')`;
+		for (const folder of ["inbox", "archive", "draft", "sent"])
+			await legacy`INSERT INTO folders (mailbox_id,id,name) VALUES (${mailbox},${folder},${folder})`;
 		const email = await legacyStore.insert(mailbox, {
 			sender: mailbox,
 			recipient: mailbox,

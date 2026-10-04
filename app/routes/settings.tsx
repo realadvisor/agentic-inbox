@@ -1,3 +1,5 @@
+import { UserCircleIcon } from "@phosphor-icons/react";
+import SenderSettings from "~/components/SenderSettings";
 import ApiKeySettings from "~/components/ApiKeySettings";
 import AccessSettings from "~/components/AccessSettings";
 import WebhookSettings from "~/components/WebhookSettings";
@@ -79,7 +81,9 @@ export default function SettingsRoute() {
 
 			<div className="flex flex-wrap gap-2 mb-6" aria-label="Settings sections">
 				{[
-					...(admin ? ["account", "tags", "models", "api-keys"] : []),
+					...(admin
+						? ["account", "senders", "tags", "models", "api-keys"]
+						: []),
 					"access",
 					...(mode.data?.canManageWebhooks ? ["webhooks"] : []),
 					...(hasClassifiers && mode.data?.canManageClassifiers
@@ -95,7 +99,9 @@ export default function SettingsRoute() {
 					</Button>
 				))}
 			</div>
-			{tab === "api-keys" && admin ? (
+			{tab === "senders" && admin ? (
+				<SenderSettings canManage={admin} live={mode.data?.mode === "live"} />
+			) : tab === "api-keys" && admin ? (
 				<ApiKeySettings mailboxId={mailboxId!} />
 			) : tab === "access" ? (
 				<AccessSettings />
@@ -108,34 +114,47 @@ export default function SettingsRoute() {
 			) : tab === "tags" ? (
 				<TagSettings />
 			) : (
-				<div className="space-y-6">
-					{/* Account */}
-					<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-						<div className="text-sm font-medium text-kumo-default mb-4">
-							Account
+				<form
+					className="overflow-hidden rounded-xl border border-kumo-line bg-kumo-base text-kumo-default"
+					aria-labelledby="account-heading"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void handleSave();
+					}}
+				>
+					<div className="flex items-center gap-3 border-b border-kumo-line p-5">
+						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kumo-tint text-kumo-subtle">
+							<UserCircleIcon size={21} />
 						</div>
-						<div className="space-y-3">
-							<Input
-								label="Display Name"
-								value={displayName}
-								onChange={(e) => setDisplayName(e.target.value)}
-							/>
-							<Input
-								label="Email"
-								type="email"
-								value={mailbox.email}
-								disabled
-							/>
+						<div>
+							<h2 id="account-heading" className="text-sm font-semibold">
+								Account
+							</h2>
+							<p className="mt-0.5 text-xs text-kumo-subtle">
+								Manage the display name for this mailbox.
+							</p>
 						</div>
 					</div>
-
-					{/* Save */}
-					<div className="flex justify-end">
-						<Button variant="primary" onClick={handleSave} loading={isSaving}>
-							Save Changes
+					<div className="space-y-4 p-5">
+						<Input
+							label="Display name"
+							value={displayName}
+							onChange={(event) => setDisplayName(event.target.value)}
+						/>
+						<Input label="Email" type="email" value={mailbox.email} disabled />
+					</div>
+					<div className="flex justify-end border-t border-kumo-line bg-kumo-tint/30 px-5 py-3">
+						<Button
+							type="submit"
+							variant="primary"
+							size="sm"
+							loading={isSaving}
+							disabled={isSaving}
+						>
+							Save changes
 						</Button>
 					</div>
-				</div>
+				</form>
 			)}
 		</div>
 	);
