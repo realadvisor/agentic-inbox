@@ -4,8 +4,8 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import EmailAttachmentList from "~/components/EmailAttachmentList";
-import EmailIframe from "~/components/EmailIframe";
-import { formatDetailDate, rewriteInlineImages } from "~/lib/utils";
+import MessageBody from "./MessageBody";
+import { formatDetailDate } from "~/lib/utils";
 import type { Email } from "~/types";
 
 interface SingleMessageViewProps {
@@ -43,15 +43,7 @@ export default function SingleMessageView({
 			</div>
 
 			<div className="px-5 py-4">
-				<EmailIframe
-					autoSize
-					body={rewriteInlineImages(
-						email.body || "",
-						mailboxId || "",
-						email.id,
-						email.attachments,
-					)}
-				/>
+				<MessageBody email={email} mailboxId={mailboxId} />
 			</div>
 
 			<EmailAttachmentList

@@ -1,3 +1,7 @@
+import type {
+	TranslationLanguage,
+	TranslationResult,
+} from "shared/translation";
 import { SendIntents } from "./send-intent";
 import type { RecipientSuggestion } from "shared/contacts";
 import type { AgentSettings, AgentCatalog } from "shared/agent";
@@ -227,6 +231,16 @@ const api = {
 			canManageWebhooks?: boolean;
 		}>("/api/v1/config"),
 
+	translateEmail: (
+		mailboxId: string,
+		emailId: string,
+		targetLanguage: TranslationLanguage,
+		signal?: AbortSignal,
+	) =>
+		request<TranslationResult>(
+			`/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/emails/${encodeURIComponent(emailId)}/translation`,
+			{ method: "POST", body: JSON.stringify({ targetLanguage }), signal },
+		),
 	getComposerAiConfig: (mailboxId: string) =>
 		get<{ settings: AgentSettings; catalog: AgentCatalog }>(
 			`/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/agent/compose`,

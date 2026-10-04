@@ -1,4 +1,5 @@
 import type { KeyVariables } from "../api-keys";
+import { translateEmail } from "./translation";
 import { composeWithAi } from "./composer";
 import { agentErrorMessage } from "./errors";
 import {
@@ -59,6 +60,20 @@ export function agentApi(db: Database, options: AgentOptions) {
 				c.req.raw.signal,
 			),
 		),
+	);
+	app.post(
+		"/api/v1/mailboxes/:mailboxId/emails/:emailId/translation",
+		async (c) =>
+			c.json(
+				await translateEmail(
+					db,
+					options,
+					c.req.param("mailboxId"),
+					z.string().uuid().parse(c.req.param("emailId")),
+					await c.req.json(),
+					c.req.raw.signal,
+				),
+			),
 	);
 	const sources =
 		options.sources ?? (options.model ? ["workers" as const] : []);
