@@ -9,10 +9,12 @@ export function ConversationExample({
 	mailboxId,
 	threadId,
 	tags = [],
+	compact = false,
 }: {
 	mailboxId: string;
 	threadId: string;
 	tags?: Tag[];
+	compact?: boolean;
 }) {
 	const client = useQueryClient();
 	const mutations = useIsMutating();
@@ -56,6 +58,8 @@ export function ConversationExample({
 			<Button
 				type="button"
 				size="sm"
+				shape={compact ? "square" : undefined}
+				aria-label={isSaved ? "Remove saved example" : "Save as example"}
 				variant="ghost"
 				disabled={busy || mutations > 0 || !status.isSuccess}
 				title={
@@ -63,9 +67,7 @@ export function ConversationExample({
 						? "Remove this conversation from all example sets"
 						: "Confirm the current tags as example labels. Unassigned groups are skipped."
 				}
-				className={
-					isSaved ? "text-emerald-700 dark:text-emerald-400" : undefined
-				}
+				className={isSaved ? "text-kumo-brand" : undefined}
 				aria-pressed={isSaved}
 				aria-live="polite"
 				aria-busy={busy}
@@ -84,13 +86,14 @@ export function ConversationExample({
 						aria-hidden="true"
 					/>
 				)}
-				{busy
-					? isSaved
-						? "Removing…"
-						: "Saving…"
-					: isSaved
-						? "Saved as example"
-						: "Save as example"}
+				{!compact &&
+					(busy
+						? isSaved
+							? "Removing…"
+							: "Saving…"
+						: isSaved
+							? "Saved as example"
+							: "Save as example")}
 			</Button>
 
 			{(error || status.isError) && (

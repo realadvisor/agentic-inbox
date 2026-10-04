@@ -13,9 +13,11 @@ type Status = {
 export function ReclassifyConversation({
 	mailboxId,
 	threadId,
+	compact = false,
 }: {
 	mailboxId: string;
 	threadId: string;
+	compact?: boolean;
 }) {
 	const client = useQueryClient();
 	const [attempt, setAttempt] = useState(0);
@@ -64,12 +66,19 @@ export function ReclassifyConversation({
 				type="button"
 				variant="ghost"
 				size="sm"
+				shape={compact ? "square" : undefined}
+				aria-label={pending ? "Reclassifying…" : "Reclassify"}
 				disabled={pending}
 				onClick={() => run.mutate()}
 				title="Run all configured Jev questions, including those with automatic assignment off. Manual tag choices are preserved."
 			>
-				<ArrowClockwiseIcon size={15} />
-				{pending ? "Reclassifying…" : "Reclassify"}
+				<ArrowClockwiseIcon
+					size={16}
+					className={
+						pending ? "animate-spin motion-reduce:animate-none" : undefined
+					}
+				/>
+				{!compact && (pending ? "Reclassifying…" : "Reclassify")}
 			</Button>
 			{run.data && (
 				<span role="status" className="basis-full text-xs text-kumo-subtle">

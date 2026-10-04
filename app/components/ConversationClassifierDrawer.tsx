@@ -9,9 +9,11 @@ import { RunDetail } from "./ClassifierRunDetail";
 export function ConversationClassifierDrawer({
 	mailboxId,
 	threadId,
+	compact = false,
 }: {
 	mailboxId: string;
 	threadId: string;
+	compact?: boolean;
 }) {
 	const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(
 		null,
@@ -59,13 +61,18 @@ export function ConversationClassifierDrawer({
 					<button
 						type="button"
 						aria-label="View classifier runs"
-						className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-2.5 py-1.5 text-xs font-medium text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default focus-visible:outline-2 focus-visible:outline-kumo-brand cursor-pointer"
+						title="Classification"
+						className={
+							compact
+								? "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-kumo-subtle hover:bg-kumo-tint focus-visible:outline-2 cursor-pointer"
+								: "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-2.5 py-1.5 text-xs font-medium text-kumo-subtle hover:bg-kumo-tint cursor-pointer"
+						}
 					/>
 				}
 			>
 				<SparkleIcon size={15} aria-hidden="true" />
-				<span>Classification</span>
-				<CaretRightIcon size={12} aria-hidden="true" />
+				{!compact && <span>Classification</span>}
+				{!compact && <CaretRightIcon size={12} aria-hidden="true" />}
 			</Dialog.Trigger>
 			<Dialog
 				className="flex flex-col"

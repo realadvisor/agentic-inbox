@@ -7,7 +7,6 @@ import {
 import ComposePanel from "./ComposePanel";
 import { ThreadClassifierReview } from "./ClassifierReview";
 import { ScoreChips } from "./ScoreChips";
-import ThreadStatus from "./ThreadStatus";
 import { ReclassifyConversation } from "./ReclassifyConversation";
 import { ConversationExample } from "./ConversationExample";
 import { ConversationClassifierDrawer } from "./ConversationClassifierDrawer";
@@ -308,24 +307,28 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			/>
 
 			{mailboxId && (
-				<div className="px-5 py-3 border-b border-kumo-line flex flex-wrap items-center gap-2">
-					<TagActions
-						mailboxId={mailboxId}
-						threadIds={[email.thread_id ?? email.id]}
-						tags={email.tags}
-					>
-						{(mode.data?.classifierPreview || mode.data?.classifiersEnabled) &&
-							mode.data?.canManageClassifiers && (
-								<ThreadClassifierReview
-									key={`review/${mailboxId}/${email.thread_id ?? email.id}`}
-									mailboxId={mailboxId}
-									threadId={email.thread_id ?? email.id}
-								/>
-							)}
-						<ScoreChips scores={email.scores} />
-					</TagActions>
+				<div className="px-4 py-2 border-b border-kumo-line flex flex-wrap items-center gap-2">
+					<div className="min-w-0 flex-1">
+						<TagActions
+							mailboxId={mailboxId}
+							threadIds={[email.thread_id ?? email.id]}
+							tags={email.tags}
+						>
+							{(mode.data?.classifierPreview ||
+								mode.data?.classifiersEnabled) &&
+								mode.data?.canManageClassifiers && (
+									<ThreadClassifierReview
+										key={`review/${mailboxId}/${email.thread_id ?? email.id}`}
+										mailboxId={mailboxId}
+										threadId={email.thread_id ?? email.id}
+									/>
+								)}
+							<ScoreChips scores={email.scores} />
+						</TagActions>
+					</div>
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
 						<ReclassifyConversation
+							compact
 							key={`rerun/${mailboxId}/${email.thread_id ?? email.id}`}
 							mailboxId={mailboxId}
 							threadId={email.thread_id ?? email.id}
@@ -333,6 +336,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					)}
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
 						<ConversationExample
+							compact
 							tags={email.tags}
 							key={`example/${mailboxId}/${email.thread_id ?? email.id}`}
 							mailboxId={mailboxId}
@@ -341,6 +345,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					)}
 					{mode.data?.classifiersEnabled && mode.data?.canManageClassifiers && (
 						<ConversationClassifierDrawer
+							compact
 							key={`${mailboxId}/${email.thread_id ?? email.id}`}
 							mailboxId={mailboxId}
 							threadId={email.thread_id ?? email.id}
@@ -349,13 +354,6 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				</div>
 			)}
 
-			{mailboxId && email.thread_id && !isDraftFolder && (
-				<ThreadStatus
-					key={`${mailboxId}/${email.thread_id}`}
-					mailboxId={mailboxId}
-					threadId={email.thread_id}
-				/>
-			)}
 			<EmailPanelHeader
 				subject={email.subject}
 				messageCount={allMessages.length}

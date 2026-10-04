@@ -14,12 +14,14 @@ import api from "~/services/api";
 import type { ConversationTag, Tag } from "~/types";
 
 export function TagChips({
+	compact = false,
 	tags = [],
 	onRemove,
 	removeLabel = "Remove tag",
 	disabled,
 	details,
 }: {
+	compact?: boolean;
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	onRemove?: (id: string) => void;
 	removeLabel?: string;
@@ -27,7 +29,9 @@ export function TagChips({
 	details?: Record<string, string>;
 }) {
 	return (
-		<span className="inline-flex max-w-full flex-wrap gap-1.5">
+		<span
+			className={`inline-flex max-w-full flex-wrap ${compact ? "gap-1" : "gap-1.5"}`}
+		>
 			{tags.map((tag) => (
 				<span
 					key={tag.id}
@@ -38,7 +42,7 @@ export function TagChips({
 								? "Applied manually"
 								: undefined
 					}
-					className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium text-kumo-default"
+					className={`inline-flex min-w-0 max-w-full items-center rounded-md border text-xs font-medium text-kumo-default ${compact ? "gap-1 px-1.5 leading-4" : "gap-1.5 px-2 py-0.5"}`}
 					style={{
 						backgroundColor: `${tag.color}20`,
 						color: `color-mix(in srgb, ${tag.color} 45%, currentColor)`,

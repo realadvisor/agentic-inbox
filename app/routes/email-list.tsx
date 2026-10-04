@@ -593,10 +593,20 @@ export default function EmailListRoute() {
 											handleRowClick(email);
 										}
 									}}
-									className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-2.5 md:px-6 md:py-3 ${
-										isPanelOpen ? "md:px-4 md:py-2.5" : ""
+									className={`group flex items-center w-full text-left cursor-pointer transition-colors border-b border-kumo-line py-2.5 ${
+										isPanelOpen ? "px-2 gap-2" : "px-4 md:px-6 md:py-3 gap-3"
 									} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
 								>
+									{/* Unread dot */}
+									<div className="w-2.5 shrink-0 flex justify-center">
+										{hasUnread(email) && (
+											<span
+												role="img"
+												aria-label="Unread"
+												className="h-2 w-2 rounded-full bg-kumo-brand"
+											/>
+										)}
+									</div>
 									<KumoCheckbox
 										aria-label={`Select conversation ${email.subject}`}
 										checked={selectedThreads.includes(
@@ -612,16 +622,15 @@ export default function EmailListRoute() {
 											);
 										}}
 									/>
-									{/* Unread dot */}
-									<div className="w-2.5 shrink-0 flex justify-center">
-										{hasUnread(email) && (
-											<div className="h-2 w-2 rounded-full bg-kumo-brand" />
-										)}
-									</div>
 
 									{/* Star */}
 									<button
 										type="button"
+										aria-label={
+											email.starred
+												? "Unstar conversation"
+												: "Star conversation"
+										}
 										className="shrink-0 p-0.5 bg-transparent border-0 cursor-pointer"
 										onClick={(e) => {
 											e.stopPropagation();
@@ -701,15 +710,21 @@ export default function EmailListRoute() {
 											/>
 										)}
 										{(!!email.tags?.length || !!email.scores?.length) && (
-											<div className="mt-1.5 flex">
-												<TagChips tags={email.tags} />
+											<div className="mt-1 flex flex-wrap gap-1">
+												<TagChips tags={email.tags} compact={isPanelOpen} />
 												<ScoreChips scores={email.scores} />
 											</div>
 										)}
 									</div>
 
 									{/* Hover actions */}
-									<div className="hidden group-hover:flex items-center shrink-0">
+									<div
+										className={
+											isPanelOpen
+												? "hidden"
+												: "hidden group-hover:flex items-center shrink-0"
+										}
+									>
 										<Tooltip
 											content={email.read ? "Mark unread" : "Mark read"}
 											asChild
