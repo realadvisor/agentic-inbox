@@ -734,3 +734,46 @@ test("ordered scales persist order, batch one Score, and protect manual selectio
 		[tags[0].id],
 	);
 });
+
+test("editing group instructions preserves historical automatic tags and reviewed answers", async () => {
+	const create = await call("/tag-groups", "POST", {
+		name: "Preserve history",
+		selection: "single",
+		enabled: true,
+		instructions: "Original instruction",
+		tags: [
+			{ id: crypto.randomUUID(), name: "Original choice", color: "#123456" },
+			{ id: crypto.randomUUID(), name: "Other choice", color: "#123456" },
+		],
+	});
+	assert.equal(create.status, 201);
+	const g: TagGroup = await create.json();
+	const thread = await message();
+	const [c] =
+		await db`SELECT id,revision FROM classifiers WHERE tag_id=${g.tags[0].id}`;
+	await db`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor) VALUES(${mailbox},${thread},${g.tags[0].id},'classifier','test')`;
+	await db`UPDATE conversation_classifications SET status='complete',source='human',answer=true WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND classifier_id=${c.id}`;
+	const before =
+		await db`SELECT token,source FROM conversation_classifications WHERE thread_id=${thread} AND classifier_id=${c.id}`;
+	assert.equal(before.length, 1);
+	const saved = await call("/tag-groups/" + g.id, "PUT", {
+		...input(g),
+		instructions: "Updated definition; reprocess separately",
+	});
+	assert.equal(saved.status, 200, await saved.clone().text());
+	assert.equal(
+		(
+			await db`SELECT count(*)::int n FROM conversation_tags WHERE thread_id=${thread} AND tag_id=${g.tags[0].id} AND removed_at IS NULL`
+		)[0].n,
+		1,
+	);
+	const [after] =
+		await db`SELECT token,source,revision FROM conversation_classifications WHERE thread_id=${thread} AND classifier_id=${c.id}`;
+	assert.equal(after.token, before[0].token);
+	assert.equal(after.source, "human");
+	assert.equal(after.revision, c.revision);
+	assert.equal(
+		(await db`SELECT revision FROM classifiers WHERE id=${c.id}`)[0].revision,
+		c.revision + 1,
+	);
+});

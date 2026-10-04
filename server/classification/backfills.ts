@@ -10,6 +10,7 @@ export const backfillInput = z
 	.object({
 		classifier_ids: z.array(z.string().uuid()).min(1).max(50),
 		mailbox_ids: z.array(z.string().email()).min(1).max(50),
+		tag_id: z.string().uuid().optional(),
 		selection: z.enum(["unprocessed", "all"]).default("unprocessed"),
 		reset: z.boolean().default(false),
 		include_archived: z.boolean().default(true),
@@ -39,6 +40,7 @@ function targets(sql: Sql, data: Input, cutoff?: string) {
 	return sql`SELECT c.mailbox_id,c.thread_id,c.generation,max(e.date) AS received_at
  FROM conversations c JOIN emails e ON e.mailbox_id=c.mailbox_id AND e.thread_id=c.thread_id
  WHERE c.mailbox_id IN ${sql(data.mailbox_ids)} AND e.delivery_status='received' AND e.folder_id NOT IN ('spam','trash')
+ ${data.tag_id ? sql`AND EXISTS(SELECT 1 FROM conversation_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.mailbox_id=c.mailbox_id AND ct.thread_id=c.thread_id AND ct.tag_id=${data.tag_id} AND ct.removed_at IS NULL AND t.archived_at IS NULL)` : sql``}
  ${data.include_archived ? sql`` : sql`AND e.folder_id<>'archive'`}
  ${cutoff ? sql`AND c.created_at<=(SELECT created_at FROM classifier_runs WHERE id=${cutoff})` : sql``}
  GROUP BY c.mailbox_id,c.thread_id,c.generation
@@ -47,6 +49,14 @@ function targets(sql: Sql, data: Input, cutoff?: string) {
  ORDER BY max(e.date) DESC,c.mailbox_id,c.thread_id ${data.limit ? sql`LIMIT ${data.limit}` : sql``}`;
 }
 async function validateScope(sql: Sql, input: Input, lock = false) {
+	if (input.tag_id) {
+		const [tag] =
+			await sql`SELECT id FROM tags WHERE id=${input.tag_id} AND archived_at IS NULL`;
+		if (!tag)
+			throw new HTTPException(400, {
+				message: "Unknown or archived filter tag",
+			});
+	}
 	const ids = [...new Set(input.classifier_ids)].sort();
 	const classifiers =
 		await sql`SELECT c.*,to_json(c.mailbox_ids) AS mailbox_ids FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE c.id IN ${sql(ids)} AND t.archived_at IS NULL ORDER BY c.id ${lock ? sql`FOR UPDATE OF c` : sql``}`;
@@ -97,7 +107,13 @@ export function backfillsApi(
 						"A selected classifier already has a run. View its progress or cancel it first.",
 				});
 			const batch = crypto.randomUUID();
-			return tx`INSERT INTO classifier_runs ${tx(classifiers.map((c) => ({ classifier_id: c.id, revision: c.revision, actor, prepared: false, batch_id: batch, request: tx.json(input) })))} RETURNING id,batch_id,status,prepared`;
+			const created =
+				await tx`INSERT INTO classifier_runs ${tx(classifiers.map((c) => ({ classifier_id: c.id, revision: c.revision, actor, prepared: !!input.tag_id, batch_id: batch, request: tx.json(input) })))} RETURNING id,batch_id,status,prepared`;
+			// Freeze a common scope before any classifier can remove the filter tag.
+			if (input.tag_id)
+				await tx`INSERT INTO classifier_run_items(run_id,mailbox_id,thread_id,enqueued)
+				SELECT r.id,t.mailbox_id,t.thread_id,false FROM (${targets(tx, input)}) t CROSS JOIN classifier_runs r WHERE r.batch_id=${batch}`;
+			return created;
 		});
 		kick?.();
 		return c.json(runs, 202);
