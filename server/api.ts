@@ -1,3 +1,8 @@
+import {
+	serviceCanRequest,
+	principalActor,
+	type Principal,
+} from "./principals";
 import { operationsApi, readiness } from "./operations";
 import type { ObjectStore } from "./inbound";
 import {
@@ -93,6 +98,7 @@ const querySchema = z.object({
 });
 
 export interface ApiOptions {
+	principal?: Principal;
 	readinessCheck?: () => Promise<boolean>;
 	recoveryObjects?: ObjectStore;
 	webhookSecretKey?: string;
@@ -120,25 +126,36 @@ export function createApi(db: Database, options: ApiOptions) {
 		classifierPreview: options.classifierPreview,
 	});
 	const isLive = options.mode === "live";
+	const actor = options.principal
+		? principalActor(options.principal)
+		: options.actor;
 	const senders = new SenderStore(db);
 	const isAdmin =
-		!isLive ||
-		(options.actorRole
-			? options.actorRole === "admin"
-			: (options.mailboxAdmins ?? []).includes(
-					options.actor?.toLowerCase() ?? "",
-				));
+		options.principal?.kind !== "service" &&
+		(!isLive ||
+			(options.actorRole
+				? options.actorRole === "admin"
+				: (options.mailboxAdmins ?? []).includes(actor?.toLowerCase() ?? "")));
 	const canCreate =
-		!isLive ||
-		(options.mailboxCreationEnabled === true && !!options.actor && isAdmin);
+		!isLive || (options.mailboxCreationEnabled === true && !!actor && isAdmin);
 	const app = new Hono<{ Variables: KeyVariables }>();
 	app.use("*", bodyLimit({ maxSize: 256_000 }));
 	app.use("*", async (c, next) => {
 		c.header("Cache-Control", "no-store");
 		const authorization = c.req.header("authorization");
+		if (options.principal) c.set("principal", options.principal);
+		if (options.principal?.kind === "service") {
+			if (!serviceCanRequest(options.principal, c.req.method, c.req.path))
+				throw new HTTPException(403, {
+					message: "Service grant does not permit this operation or mailbox",
+				});
+			c.set("scope", options.principal.grant);
+		}
 		if (authorization && /^Bearer\s/i.test(authorization)) {
 			const key = await authenticateApiKey(db, authorization);
 			c.set("apiKey", key);
+			c.set("scope", key);
+			c.set("principal", { kind: "api-key", ...key });
 			if (!keyCanRequest(key, c.req.method, c.req.path))
 				throw new HTTPException(403, {
 					message: "API key does not permit this operation or mailbox",
@@ -148,6 +165,7 @@ export function createApi(db: Database, options: ApiOptions) {
 			isLive &&
 			options.membershipEnabled &&
 			!options.actorRole &&
+			options.principal?.kind !== "service" &&
 			!c.get("apiKey")
 		)
 			throw new HTTPException(403, { message: "Inbox membership required" });
@@ -202,7 +220,7 @@ export function createApi(db: Database, options: ApiOptions) {
 	});
 	app.route(
 		"/api/v1/api-keys",
-		apiKeysApi(db, { admin: isAdmin, actor: options.actor ?? "local-preview" }),
+		apiKeysApi(db, { admin: isAdmin, actor: actor ?? "local-preview" }),
 	);
 	app.route(
 		"/api/v1/webhooks",
@@ -248,7 +266,7 @@ export function createApi(db: Database, options: ApiOptions) {
 	app.route(
 		"/api/v1/access/members",
 		membersApi(db, {
-			actor: options.actor?.toLowerCase() ?? "local-preview",
+			actor: actor?.toLowerCase() ?? "local-preview",
 			admin: isAdmin,
 		}),
 	);
@@ -258,7 +276,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		"/api/v1/operations",
 		operationsApi(db, {
 			admin: isAdmin,
-			actor: options.actor ?? "local-preview",
+			actor: actor ?? "local-preview",
 			objects: options.recoveryObjects,
 		}),
 	);
@@ -271,13 +289,13 @@ export function createApi(db: Database, options: ApiOptions) {
 	});
 	app.get("/api/v1/config", (c) =>
 		c.json(
-			c.get("apiKey")
+			c.get("scope")
 				? {
 						access: { role: "integration", managed: true },
-						mailbox_ids: c.get("apiKey")!.mailbox_ids,
-						permissions: c.get("apiKey")!.permissions,
+						mailbox_ids: c.get("scope")!.mailbox_ids,
+						permissions: c.get("scope")!.permissions,
 						canManageWebhooks: c
-							.get("apiKey")!
+							.get("scope")!
 							.permissions.includes("webhooks:manage"),
 					}
 				: {
@@ -309,7 +327,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				active:
 					s.active && !!s.mailbox_id && liveSender(s.mailbox_id) === s.email,
 			}));
-		const key = c.get("apiKey");
+		const key = c.get("scope");
 		if (key) {
 			config.senders = config.senders.filter(
 				(s) => s.mailbox_id && key.mailbox_ids.includes(s.mailbox_id),
@@ -335,7 +353,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		.strict();
 	app.use("/api/v1/sender-identities/*", async (c, next) => {
 		if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-			const key = c.get("apiKey");
+			const key = c.get("scope");
 			if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
 				throw new HTTPException(403, {
 					message: "Administrator access or senders:manage permission required",
@@ -344,7 +362,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		await next();
 	});
 	app.post("/api/v1/sender-identities", async (c) => {
-		const key = c.get("apiKey");
+		const key = c.get("scope");
 		if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
 			throw new HTTPException(403, {
 				message: "Administrator access or senders:manage permission required",
@@ -361,18 +379,18 @@ export function createApi(db: Database, options: ApiOptions) {
 		c.json(
 			await senders.save(
 				senderInput.parse(await c.req.json()),
-				{ live: isLive, mailboxIds: c.get("apiKey")?.mailbox_ids },
+				{ live: isLive, mailboxIds: c.get("scope")?.mailbox_ids },
 				c.req.param("senderId"),
 			),
 		),
 	);
 	app.delete("/api/v1/sender-identities/:senderId", async (c) => {
-		await senders.remove(c.req.param("senderId"), c.get("apiKey")?.mailbox_ids);
+		await senders.remove(c.req.param("senderId"), c.get("scope")?.mailbox_ids);
 		return c.body(null, 204);
 	});
 
 	app.patch("/api/v1/inbox-settings", async (c) => {
-		const key = c.get("apiKey");
+		const key = c.get("scope");
 		if (key ? !key.permissions.includes("senders:manage") : !isAdmin)
 			throw new HTTPException(403, {
 				message: "Administrator access or senders:manage permission required",
@@ -432,7 +450,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		c.json(
 			(await store.listMailboxes()).filter(
 				(m) =>
-					(!c.get("apiKey") || c.get("apiKey")!.mailbox_ids.includes(m.id)) &&
+					(!c.get("scope") || c.get("scope")!.mailbox_ids.includes(m.id)) &&
 					(options.mode !== "live" || liveSender(m.id)),
 			),
 		),
@@ -454,10 +472,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				message:
 					"Use a valid address on ingest.realadvisor.com (letters, numbers, dots, hyphens or underscores; maximum 64 characters before @)",
 			});
-		return c.json(
-			await store.createMailbox(address, input.name, options.actor),
-			201,
-		);
+		return c.json(await store.createMailbox(address, input.name, actor), 201);
 	});
 	app.use("/api/v1/mailboxes/:mailboxId", async (c, next) => {
 		if (
@@ -480,7 +495,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		"/",
 		agentApi(db, {
 			...options.agent,
-			actor: options.actor,
+			actor: actor,
 			classification: {
 				enabled: options.classifiersEnabled === true,
 				admin: isAdmin,
@@ -490,8 +505,8 @@ export function createApi(db: Database, options: ApiOptions) {
 	);
 	const tagActor = (key?: KeyVariables["apiKey"]) => {
 		if (key) return `api-key:${key.id}`;
-		if (isLive && !options.actor) throw new HTTPException(403);
-		return options.actor ?? "local-synthetic-user";
+		if (isLive && !actor) throw new HTTPException(403);
+		return actor ?? "local-synthetic-user";
 	};
 	for (const method of ["put", "delete"] as const) {
 		app[method](
@@ -535,6 +550,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				c.req.param("mailboxId"),
 				c.req.query("q") ?? "",
 				(c.req.query("exclude") ?? "").split(",").slice(0, 50),
+				c.get("scope")?.mailbox_ids,
 			),
 		),
 	);
@@ -581,7 +597,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		return c.json(await store.message(c.req.param("mailboxId"), messageId));
 	});
 	app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c) => {
-		if (c.get("apiKey")) {
+		if (c.get("scope")) {
 			const rows =
 				await db`DELETE FROM emails WHERE mailbox_id=${c.req.param("mailboxId")} AND id=${id.parse(c.req.param("id"))} AND delivery_status='draft' AND NOT EXISTS (SELECT 1 FROM outbound_requests WHERE email_id=emails.id) RETURNING id`;
 			if (!rows.length)
@@ -740,7 +756,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				reply: mode === "reply" || mode === "reply-all" ? parent : undefined,
 				mailboxId: mailbox.id,
 			},
-			{ live: isLive, mailboxIds: c.get("apiKey")?.mailbox_ids },
+			{ live: isLive, mailboxIds: c.get("scope")?.mailbox_ids },
 		);
 		let threadId = input.thread_id;
 		if (parent) {
@@ -788,10 +804,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		app.post(`/api/v1/mailboxes/:mailboxId/emails${action}`, async (c) => {
 			const input = sendSchema.parse(await c.req.json());
 			if (options.mode === "live") {
-				const actor = c.get("apiKey")
+				const sendActor = c.get("apiKey")
 					? `api-key:${c.get("apiKey")!.id}`
-					: options.actor;
-				if (!options.sender || !actor)
+					: actor;
+				if (!options.sender || !sendActor)
 					throw new HTTPException(503, {
 						message: "Email sending is not configured",
 					});
@@ -803,10 +819,10 @@ export function createApi(db: Database, options: ApiOptions) {
 						c.req.param("mailboxId"),
 						key,
 						input,
-						actor,
+						sendActor,
 						action ? c.req.param("id") : undefined,
 						action.endsWith("reply"),
-						c.get("apiKey")?.mailbox_ids,
+						c.get("scope")?.mailbox_ids,
 					),
 					201,
 				);
@@ -833,7 +849,7 @@ export function createApi(db: Database, options: ApiOptions) {
 					reply: reply ? parent : undefined,
 					mailboxId: mailbox.id,
 				},
-				{ mailboxIds: c.get("apiKey")?.mailbox_ids },
+				{ mailboxIds: c.get("scope")?.mailbox_ids },
 			);
 			const message = await store.insert(mailbox.id, {
 				sender: sender.email,
@@ -894,7 +910,7 @@ export function createApi(db: Database, options: ApiOptions) {
 		classifierApi(db, {
 			enabled: options.classifiersEnabled === true,
 			admin: isAdmin,
-			actor: options.actor ?? "local",
+			actor: actor ?? "local",
 			kick: options.kickClassifiers,
 			key: options.jevKey,
 			transport: options.jevTransport,

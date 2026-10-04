@@ -155,9 +155,9 @@ supplies display names (older stored messages contain addresses only).
 Suggestions use indexed name/address prefixes. Current-mailbox contacts rank first,
 followed by contacts from the registered All mailbox, with duplicates removed.
 Within each source, exact addresses, sent frequency and recency determine order.
-Already-selected recipients and automated senders are excluded. Access is currently
-application-wide; shared sources must follow the same permissions if mailbox-level
-access controls are introduced. No additional backfill is needed for shared lookup.
+Already-selected recipients and automated senders are excluded. Human access is application-wide. API-key and service-principal suggestions include
+the All source only when that mailbox is explicitly granted. No additional backfill
+is needed for shared lookup.
 
 ## Conversation status
 
@@ -283,7 +283,7 @@ Migration 036 adds trigram indexes for literal substring search and an index for
 
 Migration 037 adds concurrent mailbox/time indexes for the runs list. Run history filters and bounds each source before merging and loading question summaries; email lists reuse one set of matches for page results and their total count.
 
-A migration failure prevents deployment. If publishing fails after migrations, the old Worker continues running against the upgraded schema: keep migrations backward compatible and rerun the failed job after fixing the cause. Reruns use versioned migrations and skip commits no longer at the head of `main`. The final probe requires an authenticated JSON readiness response; login redirects, HTML and the old shallow health response fail verification. Configure `HEALTH_ACCESS_CLIENT_ID` and `HEALTH_ACCESS_CLIENT_SECRET` in the production environment before this release. Use an inbox-only Cloudflare Access Service Auth token permitted by the whole-host application and list its client ID in `ACCESS_SERVICE_CLIENT_IDS`; this grants readiness access as a User, not recovery administration. Missing probe credentials fail before migration/deployment. GitHub records the deployed commit under the production environment.
+A migration failure prevents deployment. If publishing fails after migrations, the old Worker continues running against the upgraded schema: keep migrations backward compatible and rerun the failed job after fixing the cause. Reruns use versioned migrations and skip commits no longer at the head of `main`. The final probe requires an authenticated JSON readiness response; login redirects, HTML and the old shallow health response fail verification. Configure `HEALTH_ACCESS_CLIENT_ID` and `HEALTH_ACCESS_CLIENT_SECRET` in the production environment before this release. Use an inbox-only Cloudflare Access Service Auth token permitted by the whole-host application and grant only `health:read` with an empty mailbox list in `ACCESS_SERVICE_GRANTS`. The dedicated client `c748884d95de49bda14aa81bdd252060.access` can perform only `GET /api/health`; it cannot load pages, read/send mail, translate, use the agent or administer recovery. Keep the existing health GitHub secrets and whole-host Service Auth policy unchanged. Missing probe credentials fail before migration/deployment. GitHub records the deployed commit under the production environment.
 
 For emergency manual recovery only, install locked dependencies, run `pnpm exec tsx --env-file=.env.cloud scripts/migrate.ts`, then `pnpm run deploy` from the intended release commit. Credentials belong in ignored `.env.cloud` (permissions 0600), never in git. Local `.env` stays pointed at the local database. `pnpm deploy:check` builds and bundles without publishing.
 
@@ -397,7 +397,7 @@ message outside that session. Local simulated sends do not implement the live
 server's idempotency ledger; lost-response integration tests use a fake mail sender
 with the real live handler and isolated Postgres.
 
-Sent messages retain their outbound audit/idempotency record and can be moved to Trash but not permanently deleted through the API. Object retention cleanup, mailbox-level permissions, classification and Probo integration are not implemented.
+Sent messages retain their outbound audit/idempotency record and can be moved to Trash but not permanently deleted through the API. Object retention cleanup and Probo integration are not implemented. Human access remains application-wide; machine principals have explicit mailbox grants.
 
 ## API reference
 
@@ -405,7 +405,9 @@ Sent messages retain their outbound audit/idempotency record and can be moved to
 
 Run `pnpm dev` and open <http://127.0.0.1:4311/api/docs> for synthetic local requests. Hosted interactive requests use your browser session and affect real mail. Send/reply retries must retain the same UUID `Idempotency-Key` and identical request body; do not blindly retry an ambiguous send.
 
-**n8n status:** service identities and mailbox/action permissions are not implemented. A Cloudflare service token alone is insufficient with the current human-identity validator. Do not export browser cookies into workflows. Future automation should use dedicated expiring service credentials stored in n8n's credential manager, with permissions enforced by the API.
+**n8n:** use a scoped inbox API key (see below), stored in n8n's credential manager.
+Do not export browser cookies into workflows. Access service tokens require an
+explicit server-side mailbox/action grant in addition to verified authentication.
 
 ## Creating live mailboxes
 
@@ -771,11 +773,37 @@ mailbox access: an explicit database membership is also required. Until that
 rollout, adding a name in a development preview does not grant production access.
 The local preview uses a synthetic administrator and its separate database.
 
-For machine integrations, keep the inbox-specific Cloudflare service-token policy
-and explicitly list its approved client IDs in `ACCESS_SERVICE_CLIENT_IDS` before
-enabling membership. Only cryptographically verified service identities on that
-list receive User access; they cannot manage members or configuration. Service
-credentials stay separate from the human member list and are revoked in Cloudflare.
+For machine integrations, authentication and authorization are separate. Verified
+Access JWTs with `common_name` identify a service principal, never a human member.
+`ACCESS_SERVICE_GRANTS` is a JSON object keyed by exact client ID, with explicit
+`mailbox_ids` and `permissions` arrays. Missing, malformed or unknown grants fail
+closed, even when `ACCESS_MEMBERSHIP_ENABLED` is disabled. The old
+`ACCESS_SERVICE_CLIENT_IDS` list grants no access in new code.
+
+`health:read` authorizes exactly `GET /api/health`, with no mailbox grant required.
+Other services require nonempty mailbox and action lists. Supported actions are
+`mail:read`, `drafts:manage`, `mail:send`, `conversations:manage`,
+`classifications:read`, `classifications:review`, `classifications:run`,
+`folders:manage` and `agent:use`; agent use also needs mail reading, and nested
+tools check each action separately. New routes are denied until explicitly mapped.
+Mailbox discovery, sender selection, shared contacts and agent tools use the same
+scope. Services cannot load static UI/docs, translate mail, administer members,
+keys, shared settings or recovery. Webhook ownership and sender administration
+remain available through appropriately scoped API keys, not Access services.
+Service audit actors use `service:<clientId>`; API-key UUID ownership is unchanged.
+Human membership is checked before both pages and API requests when enabled.
+
+**Rollout gate:** the checked-in grant map contains only the dedicated health
+client. The required actions and mailboxes for the existing
+`cbad515f2134f6b19ee8405fdd98e226.access` integration are not documented and must be
+confirmed with its owner and added explicitly **before merging/releasing** this
+change. Its previous application-wide User access is not evidence of required
+permissions. Do not deploy an omitted grant as an accidental revocation or guess a
+replacement. This PR must remain draft until that decision is recorded. Add the
+confirmed grant alongside the health grant; deploy code and configuration together.
+No database migration, secret retrieval/rotation or Access-policy change is needed.
+The old ID list is retained only for old-Worker rollback compatibility; rolling
+back code also restores that version's broader service access.
 
 ## API keys for agents and n8n
 

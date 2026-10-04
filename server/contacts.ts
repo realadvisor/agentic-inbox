@@ -6,19 +6,19 @@ export async function recipientSuggestions(
 	mailbox: string,
 	query: string,
 	excluded: string[] = [],
+	mailboxIds?: string[],
 ): Promise<RecipientSuggestion[]> {
 	const search = query.trim().toLowerCase();
 	if (search.length < 2 || search.length > 100) return [];
 	const prefix = search.replace(/[\\%_]/g, "\\$&") + "%";
-	// Access is currently application-wide: authenticated users can read every
-	// registered live mailbox. Only All is shared; other mailbox indexes stay scoped.
-	// If per-mailbox ACLs are introduced, this source list must use those same ACLs.
+	// Shared contact suggestions follow the same mailbox grants as mail reads.
 	return db<RecipientSuggestion[]>`
 		WITH sources AS (
 			SELECT ${mailbox}::text AS mailbox_id, true AS local
 			UNION ALL
 			SELECT id, false FROM mailboxes
 			WHERE id='all@ingest.realadvisor.com' AND email=id AND id<>${mailbox}
+ AND (${mailboxIds ?? null}::text[] IS NULL OR id=ANY(${mailboxIds ?? []}::text[]))
 		), candidates AS (
 			SELECT contact.*, sources.local FROM sources
 			CROSS JOIN LATERAL (

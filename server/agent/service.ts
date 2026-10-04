@@ -406,7 +406,14 @@ export function createTools(
 			description:
 				"Look up up to five recipient suggestions by name or email prefix from this mailbox's contact history. A suggestion is not confirmation of the intended recipient.",
 			inputSchema: z.object({ query: z.string().trim().min(2).max(100) }),
-			execute: ({ query }) => recipientSuggestions(db, run.mailbox, query),
+			execute: ({ query }) =>
+				recipientSuggestions(
+					db,
+					run.mailbox,
+					query,
+					[],
+					run.mailboxIds ?? (run.permissions ? [run.mailbox] : undefined),
+				),
 		}),
 	};
 	const reply = {

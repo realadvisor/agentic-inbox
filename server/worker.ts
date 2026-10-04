@@ -1,3 +1,9 @@
+import {
+	servicePrincipal,
+	serviceCanRequest,
+	principalActor,
+	type Principal,
+} from "./principals";
 import { pruneInboundRecovery } from "./operations";
 import { getCookie } from "hono/cookie";
 import { resolveAccessRole } from "./members";
@@ -44,7 +50,7 @@ export interface WorkerEnv extends CloudTasksEnv {
 	INBOUND_ENABLED?: string;
 	MAILBOX_ADMINS?: string;
 	ACCESS_MEMBERSHIP_ENABLED?: string;
-	ACCESS_SERVICE_CLIENT_IDS?: string;
+	ACCESS_SERVICE_GRANTS?: string;
 	MAILBOX_CREATION_ENABLED?: string;
 	EMAIL?: MailSender;
 	HYPERDRIVE: { connectionString: string };
@@ -57,7 +63,10 @@ export interface WorkerEnv extends CloudTasksEnv {
 
 const worker = new Hono<{
 	Bindings: WorkerEnv;
-	Variables: { actor: string; accessIdentity: AccessIdentity };
+	Variables: {
+		actor: string;
+		principal: Principal;
+	};
 }>();
 // Machine endpoint authenticates Google OIDC independently of interactive Access.
 worker.post(taskPath, async (c) => {
@@ -148,16 +157,60 @@ worker.use("*", async (c, next) => {
 				? getCookie(c, "CF_Authorization")
 				: undefined);
 		if (!token) return c.text("Cloudflare Access login required", 401);
+		let identity: AccessIdentity;
 		try {
-			const identity = await verifyAccess(
+			identity = await verifyAccess(
 				token,
 				c.env.ACCESS_ISSUER,
 				c.env.ACCESS_AUDIENCE,
 			);
-			c.set("actor", identity.email);
-			c.set("accessIdentity", identity);
 		} catch {
 			return c.text("Invalid Access token", 401);
+		}
+		if (identity.kind === "service") {
+			const principal = servicePrincipal(
+				identity.clientId,
+				c.env.ACCESS_SERVICE_GRANTS,
+			);
+			if (
+				!principal ||
+				principal.kind !== "service" ||
+				!serviceCanRequest(principal, c.req.method, c.req.path)
+			)
+				return c.text(
+					"Service grant does not permit this operation or mailbox",
+					403,
+				);
+			c.set("principal", principal);
+			c.set("actor", principalActor(principal));
+		} else {
+			let role;
+			if (c.env.ACCESS_MEMBERSHIP_ENABLED === "true") {
+				const db = postgres(c.env.HYPERDRIVE.connectionString, {
+					max: 2,
+					fetch_types: false,
+				});
+				try {
+					role = await resolveAccessRole(
+						db,
+						identity,
+						(c.env.MAILBOX_ADMINS ?? "")
+							.split(",")
+							.map((v) => v.trim())
+							.filter(Boolean),
+					);
+				} finally {
+					await db.end({ timeout: 5 });
+				}
+				if (!role) return c.text("Inbox membership required", 403);
+			}
+			c.set("principal", {
+				kind: "human",
+				subject: identity.subject,
+				email: identity.email,
+				role: role ?? undefined,
+			});
+			c.set("actor", identity.email);
 		}
 		c.header("Cache-Control", "no-store");
 		return next();
@@ -180,32 +233,10 @@ worker.all("/api/*", async (c) => {
 	const agentTasks: Promise<unknown>[] = [];
 	try {
 		const membershipEnabled = c.env.ACCESS_MEMBERSHIP_ENABLED === "true";
-		const actorRole =
-			membershipEnabled &&
-			c.env.MAIL_MODE === "live" &&
-			!/^Bearer\s/i.test(c.req.header("authorization") ?? "")
-				? await resolveAccessRole(
-						db,
-						c.get("accessIdentity"),
-						(c.env.MAILBOX_ADMINS ?? "")
-							.split(",")
-							.map((v) => v.trim())
-							.filter(Boolean),
-						(c.env.ACCESS_SERVICE_CLIENT_IDS ?? "")
-							.split(",")
-							.map((v) => v.trim())
-							.filter(Boolean),
-					)
-				: undefined;
-		if (actorRole === null)
-			return c.json(
-				{
-					error:
-						"You do not have inbox access. Ask an administrator to add your @realadvisor.com email.",
-				},
-				403,
-			);
+		const principal = c.get("principal");
+		const actorRole = principal?.kind === "human" ? principal.role : undefined;
 		const response = await createApi(db, {
+			principal,
 			membershipEnabled,
 			readinessCheck: async () => {
 				if (

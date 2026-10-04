@@ -216,23 +216,21 @@ test("disabled membership preserves existing configuration permissions", async (
 	assert.equal(response.status, 201);
 });
 
-test("only explicitly approved verified service identities receive user access", async () => {
+test("service identities never inherit human membership or bootstrap administration", async () => {
 	const identity = {
 		subject: "integration.access",
-		email: "integration.access",
+		clientId: "integration.access",
 		kind: "service" as const,
 	};
-	assert.equal(await resolveAccessRole(db, identity, [], []), null);
 	assert.equal(
-		await resolveAccessRole(db, identity, [], [identity.email]),
-		"user",
+		await resolveAccessRole(db, identity, [identity.clientId]),
+		null,
 	);
 	assert.equal(
 		await resolveAccessRole(
 			db,
-			{ ...identity, kind: "user" },
+			{ kind: "user", subject: identity.subject, email: identity.clientId },
 			[],
-			[identity.email],
 		),
 		null,
 	);

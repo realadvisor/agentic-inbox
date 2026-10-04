@@ -14,7 +14,7 @@ export function rerunApi(
 		if (
 			!admin &&
 			!c
-				.get("apiKey")
+				.get("scope")
 				?.permissions.includes(
 					c.req.method === "GET"
 						? "classifications:read"
