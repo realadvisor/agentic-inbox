@@ -33,6 +33,8 @@ export async function setThreadRead(
 }
 export const draftVersionSchema = z.string().regex(/^[a-f0-9]{32}$/);
 export const draftContentSchema = z.object({
+	draft_mode: z.enum(["new", "reply", "reply-all", "forward"]).optional(),
+	draft_source_id: z.string().uuid().nullable().optional(),
 	sender_identity_id: z.string().min(1).max(254).optional(),
 	to: z.string().max(4000).default(""),
 	cc: z.string().max(4000).default(""),
@@ -40,7 +42,7 @@ export const draftContentSchema = z.object({
 	subject: z.string().max(1000).default(""),
 	body: z.string().max(100_000),
 });
-// Hash the exact editable fields in SQL, avoiding timestamp precision loss and migrations.
+// Hash the exact editable fields in SQL, including intent, avoiding timestamp precision loss.
 export async function updateDraft(
 	db: Database,
 	mailbox: string,
@@ -50,6 +52,19 @@ export async function updateDraft(
 	senderAccess: { mailboxIds?: string[] } = {},
 ) {
 	const input = draftContentSchema.partial().parse(content);
+	const [current] =
+		await db`SELECT draft_mode,draft_source_id FROM emails WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'`;
+	if (!current) throw new HTTPException(404, { message: "Draft not found" });
+	if (
+		(input.draft_mode !== undefined &&
+			input.draft_mode !== (current.draft_mode ?? "new")) ||
+		(input.draft_source_id !== undefined &&
+			input.draft_source_id !== current.draft_source_id)
+	)
+		throw new HTTPException(409, {
+			message:
+				"Draft intent changed. Create a new draft to change its mode or source.",
+		});
 	const sender = input.sender_identity_id
 		? await new SenderStore(db).resolve(
 				{ explicit: input.sender_identity_id, mailboxId: mailbox },
@@ -69,8 +84,8 @@ export async function updateDraft(
 	if (version !== undefined) draftVersionSchema.parse(version);
 	const [row] = await db`UPDATE emails SET ${db(changes)},date=clock_timestamp()
  WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'
- AND (${version ?? null}::text IS NULL OR md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text)=${version ?? null})
- RETURNING id,sender,sender_identity_id,md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) AS draft_version`;
+ AND (${version ?? null}::text IS NULL OR md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text)=${version ?? null})
+ RETURNING id,sender,sender_identity_id,md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text) AS draft_version`;
 	if (!row) {
 		const [exists] =
 			await db`SELECT id FROM emails WHERE mailbox_id=${mailbox} AND id=${id} AND delivery_status='draft'`;

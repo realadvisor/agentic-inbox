@@ -203,7 +203,9 @@ test("reply drafts preserve the original thread and Reply-To; HTML is escaped an
 		);
 		const [draft] =
 			await db`SELECT * FROM emails WHERE mailbox_id=${a} AND thread_id=${email.thread_id!} AND delivery_status='draft'`;
-		assert.equal(draft.in_reply_to, email.id);
+		assert.equal(draft.in_reply_to, null);
+		assert.equal(draft.draft_source_id, email.id);
+		assert.equal(draft.draft_mode, "reply");
 		assert.equal(draft.recipient, "reply@example.test");
 		assert.match(draft.body, /&lt;script&gt;/);
 		assert.equal(draft.folder_id, "draft");

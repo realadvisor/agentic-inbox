@@ -510,7 +510,7 @@ function AgentChat({
 			const email = await api.getEmail(mailboxId, id);
 			if (email.delivery_status !== "draft")
 				throw new Error("This draft has already been sent or removed");
-			openComposeModal({ mode: "new", draftEmail: email });
+			openComposeModal({ mode: email.draft_mode ?? "new", draftEmail: email });
 		} catch (err) {
 			setDraftError(
 				err instanceof Error ? err.message : "Could not open draft",

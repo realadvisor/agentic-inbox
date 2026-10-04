@@ -458,7 +458,8 @@ export function createTools(
 							delivery_status: "draft",
 							read: true,
 							thread_id: original.thread_id ?? original.id,
-							in_reply_to: original.id,
+							draft_mode: "reply",
+							draft_source_id: original.id,
 						});
 						return {
 							draft_id: draft!.id,
@@ -513,6 +514,7 @@ export function createTools(
 						const draft = await new InboxStore(tx).insert(run.mailbox, {
 							sender: sender.email,
 							sender_identity_id: sender.id,
+							draft_mode: "new",
 							recipient: to,
 							cc: cc ?? "",
 							bcc: bcc ?? "",

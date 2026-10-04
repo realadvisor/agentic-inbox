@@ -77,6 +77,8 @@ export function createActionTools(
 				return {
 					draft_id: draft.id,
 					draft_version: draft.draft_version,
+					draft_mode: draft.draft_mode,
+					draft_source_id: draft.draft_source_id,
 					sender_identity_id: draft.sender_identity_id,
 					to: draft.recipient,
 					cc: draft.cc,
