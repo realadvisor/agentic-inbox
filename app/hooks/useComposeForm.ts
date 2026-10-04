@@ -1,10 +1,10 @@
-import { sendErrorMessage } from "~/lib/send-error";
-import { draftDelivery } from "~/lib/draft-delivery";
 import {
-	notifyDraftDelivery,
-	useDraftDelivery,
-	useDraftCleanup,
-} from "~/hooks/useDraftDelivery";
+	buildInitialComposeFields,
+	resolveComposeSender,
+} from "~/lib/compose-fields";
+import { useComposerSend } from "./useComposerSend";
+import { draftDelivery } from "~/lib/draft-delivery";
+import { useDraftDelivery } from "~/hooks/useDraftDelivery";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
@@ -12,143 +12,11 @@ import {
 
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import {
-	buildQuotedReplyBlock,
-	escapeHtml,
-	formatComposeDate,
-	getSignatureBlock,
-	htmlToPlainText,
-	splitEmailList,
-	stripHtml,
-	toEmailListValue,
-} from "~/lib/utils";
-import {
-	useForwardEmail,
-	useReplyToEmail,
-	useSaveDraft,
-	useSendEmail,
-} from "~/queries/emails";
+import { getSignatureBlock, htmlToPlainText } from "~/lib/utils";
+import { useSaveDraft } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
 import { useSenders } from "~/queries/senders";
-import { resolveSenderId, type SenderIdentity } from "shared/senders";
 import { useUIStore } from "~/hooks/useUIStore";
-import { buildReplyAllFields, getReplyAddress } from "~/lib/replies";
-
-interface ComposeFormFields {
-	to: string;
-	cc: string;
-	bcc: string;
-	showCcBcc: boolean;
-	subject: string;
-	body: string;
-}
-
-const EMPTY_FIELDS: ComposeFormFields = {
-	to: "",
-	cc: "",
-	bcc: "",
-	showCcBcc: false,
-	subject: "",
-	body: "",
-};
-
-function getPrefixedSubject(subject: string, prefix: "Re" | "Fwd") {
-	const expectedPrefix = `${prefix}: `;
-	return subject.startsWith(expectedPrefix)
-		? subject
-		: `${expectedPrefix}${subject}`;
-}
-
-function buildForwardBody(
-	original: NonNullable<
-		ReturnType<typeof useUIStore.getState>["composeOptions"]["originalEmail"]
-	>,
-	sigBlock: string,
-) {
-	const safeSender = escapeHtml(original.sender);
-	const safeSubject = escapeHtml(original.subject);
-	const safeBody = escapeHtml(stripHtml(original.body || "")).replace(
-		/\n/g,
-		"<br>",
-	);
-
-	return `<p><br></p>${
-		sigBlock ? `${sigBlock}<br>` : ""
-	}<div style="border: 1px solid #ddd; padding: 1em; background-color: #f9f9f9; margin: 1em 0;"><strong>Forwarded message:</strong><br><strong>From:</strong> ${safeSender}<br><strong>Date:</strong> ${formatComposeDate(
-		original.date,
-	)}<br><strong>Subject:</strong> ${safeSubject}<br><br>${safeBody}</div>`;
-}
-
-function buildInitialComposeFields(
-	composeOptions: ReturnType<typeof useUIStore.getState>["composeOptions"],
-	mailboxEmail: string | undefined,
-	sigBlock: string,
-	senders: readonly SenderIdentity[],
-): ComposeFormFields {
-	const { draftEmail: draft, originalEmail: original, mode } = composeOptions;
-
-	if (draft) {
-		return {
-			to: draft.recipient || "",
-			cc: draft.cc || "",
-			bcc: draft.bcc || "",
-			showCcBcc: Boolean(draft.cc || draft.bcc),
-			subject: draft.subject || "",
-			body: draft.body || "",
-		};
-	}
-
-	if (!original) {
-		return {
-			...EMPTY_FIELDS,
-			body: sigBlock ? `<p><br></p>${sigBlock}` : "",
-		};
-	}
-
-	if (mode === "reply") {
-		return {
-			...EMPTY_FIELDS,
-			to: getReplyAddress(original),
-			subject: getPrefixedSubject(original.subject, "Re"),
-			body: `<p><br></p>${
-				sigBlock ? `${sigBlock}<br>` : ""
-			}${buildQuotedReplyBlock(
-				original.date,
-				original.sender,
-				original.body || "",
-			)}`,
-		};
-	}
-
-	if (mode === "reply-all") {
-		const recipients = buildReplyAllFields(original, mailboxEmail, senders);
-		return {
-			...EMPTY_FIELDS,
-			...recipients,
-			subject: getPrefixedSubject(original.subject, "Re"),
-			body: `<p><br></p>${
-				sigBlock ? `${sigBlock}<br>` : ""
-			}${buildQuotedReplyBlock(
-				original.date,
-				original.sender,
-				original.body || "",
-			)}`,
-		};
-	}
-
-	if (mode === "forward") {
-		return {
-			...EMPTY_FIELDS,
-			subject: getPrefixedSubject(original.subject, "Fwd"),
-			body: buildForwardBody(original, sigBlock),
-		};
-	}
-
-	return {
-		...EMPTY_FIELDS,
-		body: sigBlock ? `<p><br></p>${sigBlock}` : "",
-	};
-}
 
 export function useComposeForm(
 	mailboxId?: string,
@@ -163,11 +31,8 @@ export function useComposeForm(
 	const selectedSender = senderConfig?.senders.find(
 		(s) => s.id === senderIdentityId,
 	);
-	const sendEmailMutation = useSendEmail();
 	const saveDraftMutation = useSaveDraft();
-	const replyMutation = useReplyToEmail();
-	const forwardMutation = useForwardEmail();
-	const draftCleanup = useDraftCleanup();
+	const composerSend = useComposerSend();
 
 	const [to, setTo] = useState("");
 	const [cc, setCc] = useState("");
@@ -227,13 +92,8 @@ export function useComposeForm(
 		sendAttempted.current = false;
 		setSavedDraftId(composeOptions.draftEmail?.id);
 		const initialSenderId =
-			resolveSenderId(senderConfig, {
-				draft: composeOptions.draftEmail?.sender_identity_id,
-				reply: ["reply", "reply-all"].includes(composeOptions.mode)
-					? (composeOptions.originalEmail ?? undefined)
-					: undefined,
-				mailboxId: currentMailbox.id,
-			}) ?? "";
+			resolveComposeSender(senderConfig, composeOptions, currentMailbox.id) ??
+			"";
 		setSenderIdentityId(initialSenderId);
 		const sigBlock = getSignatureBlock(
 			senderConfig.senders.find((s) => s.id === initialSenderId)?.settings,
@@ -326,91 +186,31 @@ export function useComposeForm(
 		)
 			return;
 		setError(null);
-		if (
-			!currentMailbox ||
-			!mailboxId ||
-			!selectedSender?.active ||
-			!selectedSender.mailbox_id
-		) {
+		if (!currentMailbox || !mailboxId) {
 			setError("Choose an available sender.");
 			return;
 		}
-		const toRecipients = splitEmailList(to);
-		const toValue = toEmailListValue(toRecipients);
-		if (!toValue) {
-			setError("Add at least one recipient.");
-			return;
-		}
-		const ccRecipients = splitEmailList(cc);
-		const bccRecipients = splitEmailList(bcc);
-		const emailData = {
-			to: toValue,
-			cc: toEmailListValue(ccRecipients),
-			bcc: toEmailListValue(bccRecipients),
-			sender_identity_id: senderIdentityId,
-			draft_id: savedDraftId,
-			draft_mode: composeOptions.mode,
-			subject,
-			html: body + quotedBody,
-			text: htmlToPlainText(body + quotedBody),
-		};
-		const draftId = savedDraftId;
-		const sendScope = draftId || composeOptions.sendScope!;
-		const mode = composeOptions.mode;
-		const originalId =
-			composeOptions.originalEmail?.id ||
-			composeOptions.draftEmail?.draft_source_id;
 		sendAttempted.current = true;
 		setIsSending(true);
-		toastManager.add({ title: "Submitting message…" });
 		try {
-			const send = async () => {
-				if ((mode === "reply" || mode === "reply-all") && originalId)
-					await replyMutation.mutateAsync({
-						mailboxId,
-						emailId: originalId,
-						email: emailData,
-						sendScope,
-					});
-				else if (mode === "forward" && originalId)
-					await forwardMutation.mutateAsync({
-						mailboxId,
-						emailId: originalId,
-						email: emailData,
-						sendScope,
-					});
-				else
-					await sendEmailMutation.mutateAsync({
-						mailboxId,
-						email: emailData,
-						sendScope,
-					});
-			};
-			if (draftId) {
-				if (!(await draftDelivery.submit(mailboxId, draftId, send))) return;
-			} else await send();
-		} catch (err: unknown) {
-			const message = sendErrorMessage(err);
-			sendAttempted.current = false;
-			setError(message);
-			toastManager.add({ title: message, variant: "error" });
-			return;
-		} finally {
-			notifyDraftDelivery();
-			setIsSending(false);
-		}
-		toastManager.add({ title: "Message submitted" });
-		// Cleanup must never turn accepted delivery into a send failure.
-		try {
-			if (draftId) await draftCleanup.cleanup(mailboxId, draftId);
-		} catch {
-			toastManager.add({
-				title:
-					"Message submitted. Draft cleanup failed; retry cleanup from the draft.",
+			const outcome = await composerSend.submit({
+				mailboxId,
+				sendScope: savedDraftId || composeOptions.sendScope!,
+				draftId: savedDraftId,
+				mode: composeOptions.mode,
+				sourceId:
+					composeOptions.originalEmail?.id ||
+					composeOptions.draftEmail?.draft_source_id ||
+					undefined,
+				sender: selectedSender,
+				fields: { to, cc, bcc, subject, body: body + quotedBody },
 			});
+			if (outcome.status === "accepted") onClose();
+		} catch (err) {
+			sendAttempted.current = false;
+			setError(err instanceof Error ? err.message : "Failed to send message.");
 		} finally {
-			notifyDraftDelivery();
-			onClose();
+			setIsSending(false);
 		}
 	};
 

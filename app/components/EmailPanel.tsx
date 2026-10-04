@@ -1,11 +1,12 @@
-import { sendErrorMessage } from "~/lib/send-error";
+import { useComposerSend } from "~/hooks/useComposerSend";
+import {
+	buildInitialComposeFields,
+	resolveComposeSender,
+} from "~/lib/compose-fields";
+import { useSenders } from "~/queries/senders";
 import DraftDeliveryNotice from "./DraftDeliveryNotice";
 import { draftDelivery } from "~/lib/draft-delivery";
-import {
-	notifyDraftDelivery,
-	useDraftDelivery,
-	useDraftCleanup,
-} from "~/hooks/useDraftDelivery";
+import { useDraftDelivery } from "~/hooks/useDraftDelivery";
 import "./composer-ai.css";
 import {
 	ArrowBendUpLeftIcon,
@@ -34,16 +35,12 @@ import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
 import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
-import { htmlToPlainText, splitEmailList, toEmailListValue } from "~/lib/utils";
 import { getLastReceivedMessage } from "~/lib/replies";
 import api from "~/services/api";
 import {
 	useDeleteEmail,
 	useEmail,
 	useMoveEmail,
-	useReplyToEmail,
-	useForwardEmail,
-	useSendEmail,
 	useThreadReplies,
 	useUpdateEmail,
 } from "~/queries/emails";
@@ -88,11 +85,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 	const updateEmail = useUpdateEmail();
 	const deleteEmailMut = useDeleteEmail();
-	const draftCleanup = useDraftCleanup();
 	const moveEmailMut = useMoveEmail();
-	const sendEmailMut = useSendEmail();
-	const replyMut = useReplyToEmail();
-	const forwardMut = useForwardEmail();
+	const composerSend = useComposerSend();
+	const { data: senderConfig } = useSenders();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
@@ -223,79 +218,44 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					// Keep the currently loaded draft if refreshing it fails.
 				}
 			}
-			if (!target.recipient) {
+			if (!senderConfig) {
 				toastManager.add({
-					title: "Cannot send: no recipient set on this draft.",
+					title: "Sender configuration is still loading. Try again.",
 					variant: "error",
 				});
 				return;
 			}
-			const toRecipients = splitEmailList(target.recipient);
-			const toValue = toEmailListValue(toRecipients);
-			if (!toValue) {
-				toastManager.add({
-					title: "Cannot send: no valid recipient set on this draft.",
-					variant: "error",
-				});
-				return;
-			}
-			const originalId = target.draft_source_id;
-			const isReply =
-				target.draft_mode === "reply" || target.draft_mode === "reply-all";
-			const emailData = {
-				to: toValue,
-				cc: toEmailListValue(splitEmailList(target.cc)),
-				bcc: toEmailListValue(splitEmailList(target.bcc)),
-				sender_identity_id: target.sender_identity_id ?? undefined,
-				draft_id: target.id,
-				draft_mode: target.draft_mode ?? "new",
-				subject: target.subject || "",
-				html: target.body || "",
-				text: htmlToPlainText(target.body || ""),
+			const options = {
+				mode: target.draft_mode ?? ("new" as const),
+				draftEmail: target,
+				originalEmail: allMessages.find(
+					(message) => message.id === target.draft_source_id,
+				),
 			};
-			const accepted = await draftDelivery.submit(
+			const senderId = resolveComposeSender(senderConfig, options, mailboxId);
+			const result = await composerSend.submit({
 				mailboxId,
-				target.id,
-				async () => {
-					if (isReply && originalId)
-						await replyMut.mutateAsync({
-							mailboxId,
-							emailId: originalId,
-							email: emailData,
-							sendScope: target.id,
-						});
-					else if (target.draft_mode === "forward" && originalId)
-						await forwardMut.mutateAsync({
-							mailboxId,
-							emailId: originalId,
-							email: emailData,
-							sendScope: target.id,
-						});
-					else
-						await sendEmailMut.mutateAsync({
-							mailboxId,
-							email: emailData,
-							sendScope: target.id,
-						});
-				},
-			);
-			if (!accepted) return;
-			notifyDraftDelivery();
-			toastManager.add({ title: "Message submitted" });
-			try {
-				await draftCleanup.cleanup(mailboxId, target.id);
-				if (isDraftFolder) closePanel();
-			} catch {
-				toastManager.add({
-					title:
-						"Message submitted. Draft cleanup failed; retry cleanup from the draft.",
-				});
-			}
-		} catch (err) {
-			const message = sendErrorMessage(err);
-			toastManager.add({ title: message, variant: "error" });
+				sendScope: target.id,
+				draftId: target.id,
+				mode: target.draft_mode ?? "new",
+				sourceId: target.draft_source_id ?? undefined,
+				sender: senderConfig.senders.find((sender) => sender.id === senderId),
+				fields: buildInitialComposeFields(
+					options,
+					currentMailbox.email,
+					"",
+					senderConfig.senders,
+				),
+			});
+			if (
+				result.status === "accepted" &&
+				!result.cleanupFailed &&
+				isDraftFolder
+			)
+				closePanel();
+		} catch {
+			// The shared controller reports delivery errors; keep the draft open.
 		} finally {
-			notifyDraftDelivery();
 			setIsSending(false);
 		}
 	};
