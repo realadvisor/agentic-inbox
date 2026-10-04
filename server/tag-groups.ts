@@ -80,9 +80,17 @@ export function tagGroupsApi(db: Database, admin: boolean) {
 				const ids = classifiers.map((c) => c.id);
 				await tx`UPDATE classifier_runs SET status='cancelled' WHERE classifier_id IN ${tx(ids)} AND status='running'`;
 				await tx`UPDATE classifier_run_items i SET status='skipped' FROM classifier_runs r WHERE r.id=i.run_id AND r.classifier_id IN ${tx(ids)} AND i.status='pending'`;
-				await tx`DELETE FROM conversation_classifications WHERE classifier_id IN ${tx(ids)}`;
+				// Wording/rule updates must not erase tags outside an explicit backfill.
+				// Keep reviewed answers so the backfill can preserve human decisions.
+				const sameOptions =
+					old?.selection === input.selection &&
+					previousTags.length === tagIds.length &&
+					previousTags.every((t) => tagIds.includes(t.id));
+				if (!sameOptions) {
+					await tx`DELETE FROM conversation_classifications WHERE classifier_id IN ${tx(ids)}`;
+					await tx`DELETE FROM conversation_tags ct USING tags t WHERE ct.tag_id=t.id AND t.group_id=${groupId} AND ct.source='classifier'`;
+				}
 				await tx`DELETE FROM classifier_examples WHERE classifier_id IN ${tx(ids)}`;
-				await tx`DELETE FROM conversation_tags ct USING tags t WHERE ct.tag_id=t.id AND t.group_id=${groupId} AND ct.source='classifier'`;
 			}
 			const removed =
 				await tx`SELECT id FROM tags WHERE group_id=${groupId} AND archived_at IS NULL AND id NOT IN ${tx(tagIds)}`;
