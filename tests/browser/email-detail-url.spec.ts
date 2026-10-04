@@ -144,6 +144,24 @@ test("compact detail controls remain accessible on desktop and mobile", async ({
 	const tags = page.getByLabel("Conversation tags", { exact: true });
 	const rerun = page.getByRole("button", { name: "Reclassify", exact: true });
 	await expect(rerun).toBeVisible();
+	for (const [button, tooltip] of [
+		["Add tag", "Add tag"],
+		["Reclassify", "Reclassify"],
+		["Save as example", "Save as example"],
+		["View classifier runs", "Classification"],
+	]) {
+		const action = page.getByRole("button", { name: button, exact: true });
+		await action.hover();
+		await expect(page.getByText(tooltip, { exact: true })).toHaveCount(
+			button === "Add tag" ? 2 : 1,
+		);
+		await expect(page.getByText(tooltip, { exact: true }).last()).toBeVisible();
+		await page.mouse.move(0, 0);
+	}
+	await page.getByRole("button", { name: "Add tag", exact: true }).click();
+	await expect(page.getByText("Choose a tag", { exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
+
 	expect((await status.boundingBox())!.y).toBeLessThan(
 		(await tags.boundingBox())!.y,
 	);
