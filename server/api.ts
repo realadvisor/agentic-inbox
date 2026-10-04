@@ -14,6 +14,7 @@ import {
 	messageFlagsSchema,
 	setThreadRead,
 } from "./email-actions";
+import { draftSendIntent } from "./draft-intent";
 import { recipientSuggestions } from "./contacts";
 import {
 	statusChangeSchema,
@@ -681,22 +682,41 @@ export function createApi(db: Database, options: ApiOptions) {
 			: undefined;
 		if (existing && existing.delivery_status !== "draft")
 			throw new HTTPException(404);
-		const parentId = input.in_reply_to ?? existing?.in_reply_to;
+		if (
+			input.in_reply_to &&
+			input.draft_source_id &&
+			input.in_reply_to !== input.draft_source_id
+		)
+			throw new HTTPException(400, { message: "Conflicting draft source IDs" });
+		if (
+			existing &&
+			input.in_reply_to &&
+			input.in_reply_to !== existing.draft_source_id
+		)
+			throw new HTTPException(409, { message: "Draft source cannot change" });
+		const mode = input.draft_mode ?? existing?.draft_mode ?? "new";
+		const parentId =
+			input.draft_source_id ?? input.in_reply_to ?? existing?.draft_source_id;
+		if (mode !== "new" && !parentId)
+			throw new HTTPException(400, { message: "Draft source is required" });
 		const parent = parentId
 			? await store.message(mailbox.id, parentId)
 			: undefined;
+		if (parent?.delivery_status === "draft")
+			throw new HTTPException(400, {
+				message: "Draft source must be a delivered message",
+			});
 		const sender = await senders.resolve(
 			{
 				explicit: input.sender_identity_id,
 				draft: existing?.sender_identity_id,
-				reply: parent,
+				reply: mode === "reply" || mode === "reply-all" ? parent : undefined,
 				mailboxId: mailbox.id,
 			},
 			{ live: isLive, mailboxIds: c.get("apiKey")?.mailbox_ids },
 		);
 		let threadId = input.thread_id;
-		if (input.in_reply_to) {
-			const parent = await store.message(mailbox.id, input.in_reply_to);
+		if (parent) {
 			threadId = parent.thread_id ?? parent.id;
 		} else if (threadId && !(await store.thread(mailbox.id, threadId)).length)
 			throw new HTTPException(404);
@@ -723,7 +743,8 @@ export function createApi(db: Database, options: ApiOptions) {
 			delivery_status: "draft",
 			read: true,
 			thread_id: threadId,
-			in_reply_to: input.in_reply_to,
+			draft_mode: mode,
+			draft_source_id: parentId,
 		});
 		return c.json(
 			{
@@ -764,15 +785,19 @@ export function createApi(db: Database, options: ApiOptions) {
 				);
 			}
 			const mailbox = await store.mailbox(c.req.param("mailboxId"));
-			const parent = action
-				? await store.message(mailbox.id, id.parse(c.req.param("id")))
-				: undefined;
-			const reply = action.endsWith("reply");
+
 			const draft = input.draft_id
 				? await store.message(mailbox.id, input.draft_id)
 				: undefined;
 			if (draft && draft.delivery_status !== "draft")
 				throw new HTTPException(404);
+			const { parent, isReply: reply } = await draftSendIntent(
+				store,
+				mailbox.id,
+				draft,
+				action ? id.parse(c.req.param("id")) : undefined,
+				action.endsWith("reply"),
+			);
 			const sender = await senders.resolve(
 				{
 					explicit: input.sender_identity_id,

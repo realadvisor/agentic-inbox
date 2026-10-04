@@ -7904,6 +7904,18 @@
 						"maxLength": 254,
 						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default.",
 						"nullable": true
+					},
+					"draft_mode": {
+						"type": "string",
+						"enum": ["new", "reply", "reply-all", "forward"],
+						"description": "Saved draft intent; null for legacy drafts with unknown intent. Legacy drafts send as new messages without reply headers.",
+						"nullable": true
+					},
+					"draft_source_id": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true,
+						"description": "Internal source email ID in the same mailbox, separate from RFC In-Reply-To. Retained when source is deleted; sending then fails until a new draft is composed."
 					}
 				},
 				"required": [
@@ -8071,7 +8083,9 @@
 					},
 					"in_reply_to": {
 						"type": "string",
-						"format": "uuid"
+						"format": "uuid",
+						"deprecated": true,
+						"description": "Legacy internal source alias. Does not infer reply intent; supply draft_mode and draft_source_id."
 					},
 					"draft_version": {
 						"type": "string",
@@ -8082,6 +8096,17 @@
 						"type": "string",
 						"maxLength": 254,
 						"description": "ID returned by GET /api/v1/sender-identities. Explicit choice overrides the saved draft, reply recipient match, and workspace default."
+					},
+					"draft_mode": {
+						"type": "string",
+						"enum": ["new", "reply", "reply-all", "forward"],
+						"description": "Explicit intent. New drafts default to new; saved intent is immutable. Replies and forwards require draft_source_id."
+					},
+					"draft_source_id": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true,
+						"description": "Internal source email ID in the same mailbox, separate from RFC In-Reply-To. Retained when source is deleted; sending then fails until a new draft is composed."
 					}
 				},
 				"required": ["body"]

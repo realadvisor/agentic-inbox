@@ -34,7 +34,7 @@ import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
 import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
-import { splitEmailList, toEmailListValue } from "~/lib/utils";
+import { htmlToPlainText, splitEmailList, toEmailListValue } from "~/lib/utils";
 import { getLastReceivedMessage } from "~/lib/replies";
 import api from "~/services/api";
 import {
@@ -42,6 +42,7 @@ import {
 	useEmail,
 	useMoveEmail,
 	useReplyToEmail,
+	useForwardEmail,
 	useSendEmail,
 	useThreadReplies,
 	useUpdateEmail,
@@ -91,6 +92,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const moveEmailMut = useMoveEmail();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
+	const forwardMut = useForwardEmail();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
@@ -184,19 +186,13 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
-		if (target.in_reply_to) {
-			startCompose({
-				mode: "reply",
-				originalEmail: allMessages.find((msg) => msg.id === target.in_reply_to),
-				draftEmail: target,
-			});
-		} else {
-			startCompose({
-				mode: "new",
-				originalEmail: undefined,
-				draftEmail: target,
-			});
-		}
+		startCompose({
+			mode: target.draft_mode ?? "new",
+			originalEmail: allMessages.find(
+				(msg) => msg.id === target.draft_source_id,
+			),
+			draftEmail: target,
+		});
 	};
 
 	const handleDeleteDraft = async (draftMsg?: Email) => {
@@ -242,27 +238,34 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				});
 				return;
 			}
-			const originalEmail = target.in_reply_to
-				? allMessages.find((msg) => msg.id === target.in_reply_to)
-				: undefined;
+			const originalId = target.draft_source_id;
+			const isReply =
+				target.draft_mode === "reply" || target.draft_mode === "reply-all";
 			const emailData = {
 				to: toEmailListValue(toRecipients),
 				cc: toEmailListValue(splitEmailList(target.cc)),
 				bcc: toEmailListValue(splitEmailList(target.bcc)),
-				draft_id: target.id,
 				sender_identity_id: target.sender_identity_id ?? undefined,
-				subject: target.subject || "(no subject)",
+				draft_id: target.id,
+				subject: target.subject || "",
 				html: target.body || "",
-				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",
+				text: htmlToPlainText(target.body || ""),
 			};
 			const accepted = await draftDelivery.submit(
 				mailboxId,
 				target.id,
 				async () => {
-					if (originalEmail)
+					if (isReply && originalId)
 						await replyMut.mutateAsync({
 							mailboxId,
-							emailId: originalEmail.id,
+							emailId: originalId,
+							email: emailData,
+							sendScope: target.id,
+						});
+					else if (target.draft_mode === "forward" && originalId)
+						await forwardMut.mutateAsync({
+							mailboxId,
+							emailId: originalId,
 							email: emailData,
 							sendScope: target.id,
 						});

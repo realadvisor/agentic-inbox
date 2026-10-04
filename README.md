@@ -48,6 +48,25 @@ registered ingest mailbox and its public address; arbitrary From addresses are
 not accepted. A send retry retains the identity of the original accepted request,
 even if the default changes. Local sending remains simulated.
 
+## Draft intent
+
+Migration 044 adds `draft_mode` (`new`, `reply`, `reply-all`, `forward`) and
+`draft_source_id`, an internal source email ID distinct from RFC `in_reply_to`.
+The inbox and agent save this intent; editing, reopening and direct sending retain
+it and the selected sender. Replies use the source's RFC Message-ID and references;
+forwards start a new conversation without reply headers. Saved intent is immutable;
+compose a new draft to change its mode or source. A deleted source prevents sending
+an explicit reply/forward rather than silently changing its intent.
+
+Existing drafts have unknown mode: historical replies and forwards cannot be
+reliably distinguished. Migration preserves any matching same-mailbox UUID source
+as context without guessing from the subject or changing old headers. These drafts
+reopen/send as new messages without reply headers; compose a fresh reply if threading
+is needed. Older clients may still submit the deprecated `in_reply_to` source alias,
+but must provide explicit `draft_mode` to request reply/forward behavior. Nullable
+columns keep older application writes compatible during rollout. Existing version
+tokens become stale once after upgrade; reload a draft before editing it.
+
 ## Composer AI assistance
 
 The composer offers Quick Draft, an Advanced prompt/model dialog, and Improve / Shorten / Formal actions through

@@ -65,7 +65,7 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							mailboxId={mailboxId}
 							emailId={
 								composeOptions.originalEmail?.id ??
-								composeOptions.draftEmail?.in_reply_to ??
+								composeOptions.draftEmail?.draft_source_id ??
 								undefined
 							}
 							body={form.body}

@@ -74,6 +74,8 @@ export interface Email {
 	starred: boolean;
 	body?: string | null;
 	in_reply_to?: string | null;
+	draft_mode?: "new" | "reply" | "reply-all" | "forward" | null;
+	draft_source_id?: string | null;
 	email_references?: string | null;
 	message_id?: string | null;
 	raw_headers?: string | null;

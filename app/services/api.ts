@@ -312,6 +312,8 @@ const api = {
 			subject?: string;
 			body: string;
 			in_reply_to?: string;
+			draft_mode?: "new" | "reply" | "reply-all" | "forward";
+			draft_source_id?: string;
 			thread_id?: string;
 			draft_id?: string;
 			sender_identity_id?: string;

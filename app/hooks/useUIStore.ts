@@ -68,7 +68,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 
 	startCompose: (options) =>
 		set((state) => {
-			const mode = options?.mode || "new";
+			const mode = options?.draftEmail
+				? (options.draftEmail.draft_mode ?? "new")
+				: options?.mode || "new";
 			const isReplyOrForward =
 				mode === "reply" || mode === "reply-all" || mode === "forward";
 			return {
@@ -78,6 +80,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 				selectedEmailId: isReplyOrForward ? state.selectedEmailId : null,
 				composeOptions: {
 					...(options || { mode: "new", originalEmail: null }),
+					mode: options?.draftEmail
+						? (options.draftEmail.draft_mode ?? "new")
+						: options?.mode || "new",
 					sendScope: crypto.randomUUID(),
 				},
 				isSidebarOpen: false,
@@ -108,6 +113,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 		set({
 			composeOptions: {
 				...(options || { mode: "new", originalEmail: null }),
+				mode: options?.draftEmail
+					? (options.draftEmail.draft_mode ?? "new")
+					: options?.mode || "new",
 				sendScope: crypto.randomUUID(),
 			},
 			isComposeModalOpen: true,

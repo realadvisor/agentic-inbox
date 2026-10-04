@@ -290,9 +290,10 @@ export function useComposeForm(
 					bcc: bcc || undefined,
 					subject,
 					body: body + quotedBody,
-					in_reply_to:
+					draft_mode: composeOptions.mode,
+					draft_source_id:
 						composeOptions.originalEmail?.id ||
-						composeOptions.draftEmail?.in_reply_to ||
+						composeOptions.draftEmail?.draft_source_id ||
 						undefined,
 					thread_id:
 						composeOptions.originalEmail?.thread_id ||
@@ -356,7 +357,7 @@ export function useComposeForm(
 		const mode = composeOptions.mode;
 		const originalId =
 			composeOptions.originalEmail?.id ||
-			composeOptions.draftEmail?.in_reply_to;
+			composeOptions.draftEmail?.draft_source_id;
 		sendAttempted.current = true;
 		setIsSending(true);
 		toastManager.add({ title: "Submitting message…" });

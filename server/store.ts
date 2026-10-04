@@ -35,6 +35,8 @@ export interface NewMessage {
 	thread_id?: string;
 	message_id?: string;
 	in_reply_to?: string;
+	draft_mode?: Email["draft_mode"];
+	draft_source_id?: string | null;
 	email_references?: string;
 	delivery_status?: MessageRow["delivery_status"];
 	read?: boolean;
@@ -110,7 +112,7 @@ export class InboxStore {
 			(
 				await this.db<
 					MessageRow[]
-				>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
+				>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND id = ${id}`
 			)[0],
 		);
 		const attachments = await this.db<
@@ -126,7 +128,7 @@ export class InboxStore {
 	async thread(mailbox: string, thread: string) {
 		const rows = await this.db<
 			MessageRow[]
-		>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
+		>`SELECT *, CASE WHEN delivery_status='draft' THEN md5(jsonb_build_array(recipient,cc,bcc,subject,body,sender_identity_id,draft_mode,draft_source_id)::text) END AS draft_version FROM emails WHERE mailbox_id = ${mailbox} AND thread_id = ${thread} ORDER BY date, id`;
 		const attachments = await this.db<
 			(Attachment & { email_id: string })[]
 		>`SELECT a.id, a.email_id, a.filename, a.mimetype, a.size
@@ -160,6 +162,12 @@ export class InboxStore {
 			thread_id: input.thread_id ?? id,
 			message_id: input.message_id ?? `<${id}@prototype.invalid>`,
 			in_reply_to: input.in_reply_to ?? null,
+			...(input.draft_mode !== undefined
+				? { draft_mode: input.draft_mode }
+				: {}),
+			...(input.draft_source_id !== undefined
+				? { draft_source_id: input.draft_source_id }
+				: {}),
 			email_references: input.email_references ?? null,
 			delivery_status: input.delivery_status ?? "received",
 			read: input.read ?? false,
@@ -277,7 +285,7 @@ export class InboxStore {
 		const projection =
 			params.view === "summary"
 				? this
-						.db`e.id,e.mailbox_id,e.folder_id,e.subject,e.sender,e.recipient,e.cc,e.bcc,e.date,e.read,e.starred,e.thread_id,e.message_id,e.in_reply_to,e.email_references,e.delivery_status,e.reply_to,e.sender_identity_id,
+						.db`e.id,e.mailbox_id,e.folder_id,e.subject,e.sender,e.recipient,e.cc,e.bcc,e.date,e.read,e.starred,e.thread_id,e.message_id,e.in_reply_to,e.email_references,e.draft_mode,e.draft_source_id,e.delivery_status,e.reply_to,e.sender_identity_id,
  left(regexp_replace(e.body, '<[^>]*>', ' ', 'g'),180) AS snippet`
 				: this.db`e.*`;
 		const records = await this.db<

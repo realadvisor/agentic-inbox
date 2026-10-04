@@ -128,7 +128,8 @@ test("draft identity persists through default changes and sender-only edits are 
 	const incoming = await parent();
 	const response = await call(`mailboxes/${all}/drafts`, "POST", {
 		body: "Draft",
-		in_reply_to: incoming.id,
+		draft_mode: "reply",
+		draft_source_id: incoming.id,
 	});
 	assert.equal(response.status, 201, await response.clone().text());
 	const draft = await response.json();
