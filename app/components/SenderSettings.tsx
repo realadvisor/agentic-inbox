@@ -1,3 +1,4 @@
+import { AppSelect } from "./AppSelect";
 import { Button, Input, Loader } from "@cloudflare/kumo";
 import { EnvelopeSimpleIcon, PlusIcon } from "@phosphor-icons/react";
 import {
@@ -103,27 +104,24 @@ export default function SenderSettings({
 							setEditor({ ...editor, email: event.target.value })
 						}
 					/>
-					<label className="block text-sm">
-						Sending mailbox
-						<select
-							aria-label="Sending mailbox"
-							required
-							className="mt-2 block w-full rounded-lg border border-kumo-line bg-kumo-base p-2 text-sm"
+					<div className="text-sm">
+						<span>Sending mailbox</span>
+						<AppSelect
+							label="Sending mailbox"
 							value={editor.mailbox_id}
-							onChange={(event) =>
-								setEditor({ ...editor, mailbox_id: event.target.value })
-							}
-						>
-							<option value="">Select a mailbox</option>
-							{mailboxes.data
-								?.filter((box) => box.email !== "all@ingest.realadvisor.com")
-								.map((box) => (
-									<option key={box.id} value={box.id}>
-										{box.name} — {box.email}
-									</option>
-								))}
-						</select>
-					</label>
+							disabled={pending || mailboxes.isPending}
+							onChange={(mailbox_id) => setEditor({ ...editor, mailbox_id })}
+							options={[
+								{ value: "", label: "Select a mailbox", disabled: true },
+								...(mailboxes.data ?? [])
+									.filter((box) => box.email !== "all@ingest.realadvisor.com")
+									.map((box) => ({
+										value: box.id,
+										label: `${box.name} — ${box.email}`,
+									})),
+							]}
+						/>
+					</div>
 					{live && (
 						<p className="text-xs text-kumo-subtle">
 							Use the approved public address for the selected ingest mailbox.
@@ -150,7 +148,7 @@ export default function SenderSettings({
 							size="sm"
 							variant="primary"
 							loading={save.isPending}
-							disabled={pending}
+							disabled={pending || !editor.mailbox_id}
 						>
 							Save sender
 						</Button>

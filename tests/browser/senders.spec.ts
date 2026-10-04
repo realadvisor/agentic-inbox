@@ -32,7 +32,7 @@ test("All inbox replies retain their sender across draft saves and default chang
 			page
 				.getByRole("region", { name: "Email composer" })
 				.getByRole("combobox", { name: "From", exact: true }),
-		).toHaveValue(info);
+		).toContainText(info);
 		await page
 			.getByRole("button", { name: "Close compose", exact: true })
 			.click();
@@ -44,10 +44,9 @@ test("All inbox replies retain their sender across draft saves and default chang
 		const composer = page.getByRole("region", { name: "Email composer" });
 		await expect(
 			composer.getByRole("combobox", { name: "From", exact: true }),
-		).toHaveValue(privacy);
-		await composer
-			.getByRole("combobox", { name: "From", exact: true })
-			.selectOption(info);
+		).toContainText(privacy);
+		await composer.getByRole("combobox", { name: "From", exact: true }).click();
+		await page.getByRole("option", { name: /<info@realadvisor\.com>/ }).click();
 		await composer
 			.locator('[contenteditable="true"]')
 			.fill("Testing sender persistence.");
@@ -74,7 +73,7 @@ test("All inbox replies retain their sender across draft saves and default chang
 			page
 				.getByRole("region", { name: "Email composer" })
 				.getByRole("combobox", { name: "From", exact: true }),
-		).toHaveValue(privacy);
+		).toContainText(privacy);
 		await page
 			.getByRole("button", { name: "Close compose", exact: true })
 			.click();
@@ -95,11 +94,14 @@ test("All inbox replies retain their sender across draft saves and default chang
 			page
 				.getByRole("region", { name: "Email composer" })
 				.getByRole("combobox", { name: "From", exact: true }),
-		).toHaveValue(info);
+		).toContainText(info);
 		await page
 			.getByRole("region", { name: "Email composer" })
 			.getByRole("combobox", { name: "From", exact: true })
-			.selectOption(privacy);
+			.click();
+		await page
+			.getByRole("option", { name: /<privacy@realadvisor\.com>/ })
+			.click();
 		await page.screenshot({
 			path: ".local/senders-preview.png",
 			fullPage: true,
@@ -135,9 +137,10 @@ test("settings can create, edit and remove a sender", async ({ page }) => {
 		await page.getByRole("button", { name: "Add sender", exact: true }).click();
 		await page.getByLabel("Sender name", { exact: true }).fill("Support");
 		await page.getByLabel("Sender email", { exact: true }).fill(email);
+		await page.getByLabel("Sending mailbox", { exact: true }).click();
 		await page
-			.getByLabel("Sending mailbox", { exact: true })
-			.selectOption("info@realadvisor.com");
+			.getByRole("option", { name: "Info — info@realadvisor.com", exact: true })
+			.click();
 		await page
 			.getByRole("button", { name: "Save sender", exact: true })
 			.click();

@@ -1,3 +1,4 @@
+import { AppSelect } from "./AppSelect";
 import type { SenderConfiguration } from "shared/senders";
 
 export default function SenderSelect({
@@ -14,32 +15,26 @@ export default function SenderSelect({
 	label?: string;
 }) {
 	return (
-		<label className="block text-sm font-medium text-kumo-default">
-			{label}
-			<select
-				aria-label={label}
-				className="mt-1 block w-full rounded-md border border-kumo-line bg-kumo-base p-2 text-sm"
+		<div className="text-sm font-medium text-kumo-default">
+			<span>{label}</span>
+			<AppSelect
+				label={label}
 				value={value}
-				onChange={(e) => onChange(e.target.value)}
+				onChange={onChange}
 				disabled={disabled || !config}
-			>
-				<option value="" disabled>
-					{config ? "Choose a sender" : "Loading senders…"}
-				</option>
-				{config?.senders.map((sender) => (
-					<option
-						key={sender.id}
-						value={sender.id}
-						disabled={!sender.active || !sender.mailbox_id}
-					>
-						{sender.name} &lt;{sender.email}&gt;
-						{sender.id === config.default_sender_identity_id
-							? " (default)"
-							: ""}
-						{!sender.active || !sender.mailbox_id ? " — unavailable" : ""}
-					</option>
-				))}
-			</select>
-		</label>
+				options={[
+					{
+						value: "",
+						label: config ? "Choose a sender" : "Loading senders…",
+						disabled: true,
+					},
+					...(config?.senders ?? []).map((sender) => ({
+						value: sender.id,
+						label: `${sender.name} <${sender.email}>${sender.id === config?.default_sender_identity_id ? " (default)" : ""}${!sender.active || !sender.mailbox_id ? " — unavailable" : ""}`,
+						disabled: !sender.active || !sender.mailbox_id,
+					})),
+				]}
+			/>
+		</div>
 	);
 }

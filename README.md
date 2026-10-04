@@ -166,6 +166,14 @@ ORDER BY date;
 
 The UI reads this same database; there is no SQLite or Durable Object mailbox store. The backend uses parameterized Postgres.js queries. All message queries are mailbox-scoped; composite foreign keys prevent cross-mailbox folder and attachment associations. This is structural isolation, not user-level authorization: the local prototype user can access both inboxes.
 
+## UI components
+
+Use `app/components/AppSelect.tsx` for dropdowns. It wraps Kumo Select and keeps
+menus in the owning drawer's focus and stacking context. Do not introduce native
+`<select>` menus in components; ESLint enforces this. Use Kumo inputs and buttons,
+check existing components before adding controls, and visually verify both the
+closed control and open menu at narrow and desktop widths.
+
 ## Verification
 
 ```sh

@@ -13,7 +13,7 @@ export function AppSelect({
 }: {
 	label: string;
 	value: string;
-	options: { value: string; label: string }[];
+	options: { value: string; label: string; disabled?: boolean }[];
 	onChange: (value: string) => void;
 	compact?: boolean;
 	inline?: boolean;
@@ -40,7 +40,11 @@ export function AppSelect({
 				}}
 			>
 				{options.map((option) => (
-					<Select.Option key={option.value} value={option.value}>
+					<Select.Option
+						key={option.value}
+						value={option.value}
+						disabled={option.disabled}
+					>
 						{option.label}
 					</Select.Option>
 				))}
