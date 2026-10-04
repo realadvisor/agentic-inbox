@@ -236,6 +236,33 @@ Inbound MIME is limited to 10 MiB and stored privately in R2 before parsing. Pos
 
 Outbound requests require an idempotency key and persist the authenticated actor and send state. Provider acceptance is recorded as `sent`, not proof of final recipient delivery. An ambiguous provider error is recorded as `unknown` and is not automatically retried. Check provider logs before resending. Delivery/bounce webhook reconciliation and outbound attachment uploads remain follow-up work. A live test must be completed before treating this rollout as operational.
 
+Browser sends keep a per-mailbox intent journal in `sessionStorage`, including the
+exact serialized request (including selected `sender_identity_id` and `draft_id`)
+and its idempotency key. Direct draft sends also pin the loaded draft sender.
+Changing the selected sender, workspace default or saved draft cannot alter a
+pending request. Compose, reply, forward and
+Send draft retries reuse it after a timeout or lost response, including after a
+reload in the same tab. Identical concurrent submissions share one request.
+Changed content or a different send endpoint is blocked while an intent is
+unresolved. The confirmation dialog can check/retry the saved **original** request;
+it never submits the changed message in that action. After confirmation, review
+Sent and start a new composition for different content. A server `sending` or
+`unknown` outcome stays blocked for manual delivery investigation; there is no
+automatic resend with a new key or expiry. A first-attempt validation/access
+rejection permits correction, but a rejection after uncertainty cannot unlock it.
+
+Confirmed compositions/drafts remain protected for the tab session, independently
+of draft cleanup. A new composition after confirmed delivery gets a new intent.
+The journal contains message content and lasts until the tab session ends; storage
+failure prevents sending. Confirmed-scope receipts are saved before the pending
+intent is released, so a storage failure preserves the original retry key.
+It does not coordinate separate tabs/devices or survive
+clearing browser data. Verify delivery in Sent before recreating an uncertain
+message outside that session. Local simulated sends do not implement the live
+server's idempotency ledger; lost-response integration tests use a fake mail sender
+with the real live handler and isolated Postgres.
+
+
 Sent messages retain their outbound audit/idempotency record and can be moved to Trash but not permanently deleted through the API. Object retention cleanup, mailbox-level permissions, classification and Probo integration are not implemented.
 
 ## API reference

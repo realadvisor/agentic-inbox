@@ -329,6 +329,7 @@ export function useComposeForm(
 			text: htmlToPlainText(body + quotedBody),
 		};
 		const draftId = savedDraftId;
+		const sendScope = draftId || composeOptions.sendScope!;
 		const mode = composeOptions.mode;
 		const originalId =
 			composeOptions.originalEmail?.id ||
@@ -341,14 +342,21 @@ export function useComposeForm(
 					mailboxId,
 					emailId: originalId,
 					email: emailData,
+					sendScope,
 				});
 			else if (mode === "forward" && originalId)
 				await forwardMutation.mutateAsync({
 					mailboxId,
 					emailId: originalId,
 					email: emailData,
+					sendScope,
 				});
-			else await sendEmailMutation.mutateAsync({ mailboxId, email: emailData });
+			else
+				await sendEmailMutation.mutateAsync({
+					mailboxId,
+					email: emailData,
+					sendScope,
+				});
 			if (draftId)
 				await deleteEmailMutation.mutateAsync({ mailboxId, id: draftId });
 			toastManager.add({ title: "Message submitted" });
