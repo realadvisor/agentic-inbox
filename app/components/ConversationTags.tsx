@@ -1,4 +1,4 @@
-import { Button, Input, Popover } from "@cloudflare/kumo";
+import { Button, Input, Popover, Tooltip } from "@cloudflare/kumo";
 import {
 	RobotIcon,
 	CheckIcon,
@@ -14,12 +14,16 @@ import api from "~/services/api";
 import type { ConversationTag, Tag } from "~/types";
 
 export function TagChips({
+	inline = false,
+	compact = false,
 	tags = [],
 	onRemove,
 	removeLabel = "Remove tag",
 	disabled,
 	details,
 }: {
+	inline?: boolean;
+	compact?: boolean;
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
 	onRemove?: (id: string) => void;
 	removeLabel?: string;
@@ -27,7 +31,13 @@ export function TagChips({
 	details?: Record<string, string>;
 }) {
 	return (
-		<span className="inline-flex max-w-full flex-wrap gap-1.5">
+		<span
+			className={
+				inline
+					? "contents"
+					: `inline-flex max-w-full flex-wrap ${compact ? "gap-1" : "gap-1.5"}`
+			}
+		>
 			{tags.map((tag) => (
 				<span
 					key={tag.id}
@@ -38,7 +48,7 @@ export function TagChips({
 								? "Applied manually"
 								: undefined
 					}
-					className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium text-kumo-default"
+					className={`inline-flex min-w-0 max-w-full items-center rounded-md border text-xs font-medium text-kumo-default ${compact ? "min-h-[22px] gap-1 px-1.5 leading-4" : "gap-1.5 px-2 py-0.5"}`}
 					style={{
 						backgroundColor: `${tag.color}20`,
 						color: `color-mix(in srgb, ${tag.color} 45%, currentColor)`,
@@ -90,6 +100,7 @@ export function TagPicker({
 	allowAll = false,
 	multiple = false,
 	compact = false,
+	toolbarAction = false,
 	onRemove,
 	source,
 }: {
@@ -103,6 +114,7 @@ export function TagPicker({
 	allowAll?: boolean;
 	multiple?: boolean;
 	compact?: boolean;
+	toolbarAction?: boolean;
 	onRemove?: () => void;
 	source?: ConversationTag["source"];
 }) {
@@ -134,69 +146,74 @@ export function TagPicker({
 				if (next) setSearch("");
 			}}
 		>
-			<Popover.Trigger
-				render={
-					<button
-						type="button"
-						disabled={disabled}
-						aria-label={label}
-						title={
-							source === "classifier"
-								? "Applied automatically by Jev"
-								: source === "manual"
-									? "Applied manually"
+			<Tooltip content={label} side="bottom" asChild>
+				<Popover.Trigger
+					render={
+						<Button
+							variant="ghost"
+							size="sm"
+							type="button"
+							disabled={disabled}
+							aria-label={label}
+							className={
+								toolbarAction
+									? "h-6 gap-1 rounded-md px-1.5 text-xs text-kumo-subtle"
+									: `inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${toolbarAction ? "h-6 gap-1 rounded-md px-1.5 text-kumo-subtle" : compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected && !triggerLabel ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`
+							}
+							style={
+								compact && selected && !triggerLabel
+									? {
+											backgroundColor: `${selected.color}20`,
+											color: `color-mix(in srgb, ${selected.color} 45%, currentColor)`,
+											borderColor: `${selected.color}14`,
+										}
 									: undefined
-						}
-						className={`inline-flex max-w-full items-center border text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-kumo-brand disabled:opacity-50 ${compact ? "h-[22px] gap-1.5 rounded-md px-2 py-0.5" : "h-8 gap-2 rounded-lg px-2.5"} ${selected && !triggerLabel ? "border-kumo-line bg-kumo-tint text-kumo-default" : "border-transparent text-kumo-subtle hover:border-kumo-line hover:bg-kumo-tint hover:text-kumo-default"}`}
-						style={
-							compact && selected && !triggerLabel
-								? {
-										backgroundColor: `${selected.color}20`,
-										color: `color-mix(in srgb, ${selected.color} 45%, currentColor)`,
-										borderColor: `${selected.color}14`,
-									}
-								: undefined
-						}
-					/>
-				}
-			>
-				{selected && source === "classifier" && (
-					<RobotIcon
-						size={12}
-						weight="fill"
-						className="shrink-0"
-						role="img"
-						aria-label="Applied automatically"
-					/>
-				)}
-				{triggerLabel ? (
-					<TagIcon size={14} />
-				) : selected ? (
-					compact ? null : (
-						<span
-							className="h-2 w-2 rounded-full shrink-0"
-							style={{ backgroundColor: selected.color }}
+							}
 						/>
-					)
-				) : allowAll ? (
-					<TagIcon size={15} />
-				) : (
-					<PlusIcon size={14} />
-				)}
-				<span className="max-w-40 truncate">
-					{triggerLabel ??
-						(multiple && selectedIds.length > 1
-							? `${selectedIds.length} tags`
-							: selected
-								? selected.group_name
-									? `${selected.group_name}: ${selected.name}`
-									: selected.name
-								: allowAll && value
-									? "Deleted tag"
-									: placeholder)}
-				</span>
-				<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
-			</Popover.Trigger>
+					}
+				>
+					{selected && source === "classifier" && (
+						<RobotIcon
+							size={12}
+							weight="fill"
+							className="shrink-0"
+							role="img"
+							aria-label="Applied automatically"
+						/>
+					)}
+					{triggerLabel ? (
+						<TagIcon size={14} />
+					) : selected ? (
+						compact ? null : (
+							<span
+								className="h-2 w-2 rounded-full shrink-0"
+								style={{ backgroundColor: selected.color }}
+							/>
+						)
+					) : allowAll ? (
+						<TagIcon size={15} />
+					) : (
+						<PlusIcon size={14} />
+					)}
+					{
+						<span className="max-w-40 truncate">
+							{triggerLabel ??
+								(multiple && selectedIds.length > 1
+									? `${selectedIds.length} tags`
+									: selected
+										? selected.group_name
+											? `${selected.group_name}: ${selected.name}`
+											: selected.name
+										: allowAll && value
+											? "Deleted tag"
+											: placeholder)}
+						</span>
+					}
+					{!toolbarAction && (
+						<CaretDownIcon size={12} className="shrink-0 text-kumo-subtle" />
+					)}
+				</Popover.Trigger>
+			</Tooltip>
 			<Popover.Content
 				align="start"
 				className="w-64 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl p-0 shadow-lg"
@@ -282,12 +299,16 @@ export function TagPicker({
 }
 
 export function TagActions({
+	compact = false,
+	actions,
 	children,
 	mailboxId,
 	threadIds,
 	tags,
 	bulk = false,
 }: {
+	compact?: boolean;
+	actions?: ReactNode;
 	mailboxId: string;
 	threadIds: string[];
 	tags?: (Tag & Partial<Pick<ConversationTag, "source">>)[];
@@ -310,13 +331,15 @@ export function TagActions({
 		mutation.mutate({ id, action });
 	return (
 		<div
-			className="flex flex-wrap items-center gap-1.5 text-sm"
+			className={`flex flex-wrap items-center text-sm ${compact ? "gap-x-1 gap-y-2" : "gap-1.5"}`}
 			aria-label={bulk ? "Bulk tags" : "Conversation tags"}
 		>
 			{children}
 			{!bulk && (
 				<>
 					<TagChips
+						inline={compact}
+						compact={compact}
 						tags={tags?.filter(
 							(tag) =>
 								tag.group_selection !== "single" &&
@@ -351,13 +374,15 @@ export function TagActions({
 			)}
 			<TagPicker
 				compact={!bulk}
+				toolbarAction={compact}
 				tags={choices}
 				value={bulk ? validSelection : undefined}
-				label={bulk ? "Tag for selected conversations" : "+ Tag"}
+				label={bulk ? "Tag for selected conversations" : "Add tag"}
 				placeholder={bulk ? "Choose tag" : "Add tag"}
 				disabled={mutation.isPending || catalog.isPending || catalog.isError}
 				onChange={(id) => (bulk ? setSelected(id) : change(id, "add"))}
 			/>
+			{actions}
 			{bulk && (
 				<>
 					<Button

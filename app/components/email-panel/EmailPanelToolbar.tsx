@@ -1,3 +1,4 @@
+import ThreadStatus from "../ThreadStatus";
 import { SendLabel } from "~/components/MailMode";
 // Modified for the RealAdvisor local Postgres prototype.
 // Copyright (c) 2026 Cloudflare, Inc.
@@ -62,7 +63,7 @@ export default function EmailPanelToolbar({
 	onDelete,
 }: EmailPanelToolbarProps) {
 	return (
-		<div className="flex items-center gap-1 px-3 py-2 border-b border-kumo-line shrink-0 md:px-4">
+		<div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-kumo-line shrink-0 md:px-4">
 			<Button
 				variant="ghost"
 				shape="square"
@@ -174,7 +175,14 @@ export default function EmailPanelToolbar({
 
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
 
-			<div className="ml-auto flex items-center gap-0.5">
+			<div className="ml-auto flex flex-wrap items-center gap-0.5">
+				{mailboxId && email.thread_id && !isDraftFolder && (
+					<ThreadStatus
+						key={`${mailboxId}/${email.thread_id}`}
+						mailboxId={mailboxId}
+						threadId={email.thread_id}
+					/>
+				)}
 				<Tooltip content="View source" side="bottom" asChild>
 					<Button
 						variant="ghost"

@@ -1,4 +1,4 @@
-import { Button, Dialog, Select } from "@cloudflare/kumo";
+import { Button, Dialog, Select, Tooltip } from "@cloudflare/kumo";
 import { SparkleIcon, CaretRightIcon, XIcon } from "@phosphor-icons/react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -9,9 +9,11 @@ import { RunDetail } from "./ClassifierRunDetail";
 export function ConversationClassifierDrawer({
 	mailboxId,
 	threadId,
+	compact = false,
 }: {
 	mailboxId: string;
 	threadId: string;
+	compact?: boolean;
 }) {
 	const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(
 		null,
@@ -54,19 +56,28 @@ export function ConversationClassifierDrawer({
 				if (value) setSelected(null);
 			}}
 		>
-			<Dialog.Trigger
-				render={
-					<button
-						type="button"
-						aria-label="View classifier runs"
-						className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-2.5 py-1.5 text-xs font-medium text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default focus-visible:outline-2 focus-visible:outline-kumo-brand cursor-pointer"
-					/>
-				}
-			>
-				<SparkleIcon size={15} aria-hidden="true" />
-				<span>Classification</span>
-				<CaretRightIcon size={12} aria-hidden="true" />
-			</Dialog.Trigger>
+			<Tooltip content="Classification" side="bottom" asChild>
+				<Dialog.Trigger
+					render={
+						<Button
+							variant="ghost"
+							size="sm"
+							shape={compact ? "square" : undefined}
+							type="button"
+							aria-label="View classifier runs"
+							className={
+								compact
+									? "h-6 w-6 min-w-6 rounded-md p-0 text-kumo-subtle"
+									: "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-2.5 py-1.5 text-xs font-medium text-kumo-subtle hover:bg-kumo-tint cursor-pointer"
+							}
+						/>
+					}
+				>
+					<SparkleIcon size={15} aria-hidden="true" />
+					{!compact && <span>Classification</span>}
+					{!compact && <CaretRightIcon size={12} aria-hidden="true" />}
+				</Dialog.Trigger>
+			</Tooltip>
 			<Dialog
 				className="flex flex-col"
 				style={{

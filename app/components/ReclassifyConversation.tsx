@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@cloudflare/kumo";
+import { Button, Tooltip } from "@cloudflare/kumo";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { classifierRequest } from "~/services/classifiers";
 type Status = {
@@ -13,9 +13,11 @@ type Status = {
 export function ReclassifyConversation({
 	mailboxId,
 	threadId,
+	compact = false,
 }: {
 	mailboxId: string;
 	threadId: string;
+	compact?: boolean;
 }) {
 	const client = useQueryClient();
 	const [attempt, setAttempt] = useState(0);
@@ -60,17 +62,36 @@ export function ReclassifyConversation({
 	}, [attempt, completed, pending, client]);
 	return (
 		<>
-			<Button
-				type="button"
-				variant="ghost"
-				size="sm"
-				disabled={pending}
-				onClick={() => run.mutate()}
-				title="Run all configured Jev questions, including those with automatic assignment off. Manual tag choices are preserved."
+			<Tooltip
+				content={pending ? "Reclassifying…" : "Reclassify"}
+				side="bottom"
+				asChild
 			>
-				<ArrowClockwiseIcon size={15} />
-				{pending ? "Reclassifying…" : "Reclassify"}
-			</Button>
+				<span className="inline-flex">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						shape={compact ? "square" : undefined}
+						className={
+							compact
+								? "h-6 w-6 min-w-6 rounded-md p-0 text-kumo-subtle"
+								: undefined
+						}
+						aria-label={pending ? "Reclassifying…" : "Reclassify"}
+						disabled={pending}
+						onClick={() => run.mutate()}
+					>
+						<ArrowClockwiseIcon
+							size={16}
+							className={
+								pending ? "animate-spin motion-reduce:animate-none" : undefined
+							}
+						/>
+						{!compact && (pending ? "Reclassifying…" : "Reclassify")}
+					</Button>
+				</span>
+			</Tooltip>
 			{run.data && (
 				<span role="status" className="basis-full text-xs text-kumo-subtle">
 					{!run.data.queued

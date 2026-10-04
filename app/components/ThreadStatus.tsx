@@ -11,7 +11,7 @@ import api from "~/services/api";
 
 export function StatusBadge({ status }: { status: keyof typeof statusLabels }) {
 	const color = {
-		open: "text-kumo-brand",
+		open: "text-orange-600 dark:text-orange-400",
 		done: "text-kumo-success",
 	}[status];
 	return (
@@ -51,7 +51,7 @@ export default function ThreadStatus({
 	});
 	if (query.isError)
 		return (
-			<div className="p-4 text-sm" role="alert">
+			<div className="px-2 text-sm" role="alert">
 				Could not load conversation status.{" "}
 				<Button size="sm" onClick={() => query.refetch()}>
 					Retry
@@ -59,13 +59,10 @@ export default function ThreadStatus({
 			</div>
 		);
 	if (!query.data)
-		return <div className="p-4 text-sm text-kumo-subtle">Loading status…</div>;
+		return <div className="px-2 text-sm text-kumo-subtle">Loading status…</div>;
 	const state = query.data;
 	return (
-		<section
-			aria-label="Conversation status"
-			className="border-b border-kumo-line px-5 py-3 space-y-3"
-		>
+		<section aria-label="Conversation status" className="mr-2 space-y-1">
 			<div className="flex items-center justify-between gap-3 flex-wrap">
 				<div className="flex items-center gap-1">
 					<StatusBadge status={state.status} />
