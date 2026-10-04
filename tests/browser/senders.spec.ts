@@ -63,8 +63,8 @@ test("All inbox replies retain their sender across draft saves and default chang
 			.toBe(info);
 		await page.goto(`/mailbox/${all}/settings?tab=senders`);
 		await page
-			.getByRole("combobox", { name: "Default sender", exact: true })
-			.selectOption(privacy);
+			.getByRole("button", { name: `Set ${privacy} as default`, exact: true })
+			.click();
 		await expect(
 			page.getByRole("status").filter({ hasText: "Default sender saved." }),
 		).toBeVisible();
