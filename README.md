@@ -81,6 +81,27 @@ probe. Rate limits and transient server errors retain automatic backoff.
 Migration 035 adds the shared pause state and excluded credit-attempt counter.
 The migration does not pause work or retry past terminal failures automatically.
 
+## Draft cleanup after sending
+
+Accepted delivery and draft deletion are separate operations. If deletion fails,
+**Message submitted** remains successful; reopen the leftover draft and use
+**Retry draft cleanup**. This retries deletion only. A missing draft (404), including
+a deletion whose response was lost, counts as completed cleanup. Accepted drafts
+cannot be sent or saved again from either composer or the draft panel.
+
+Cleanup receipts contain only mailbox/draft identifiers and accepted/cleaned state
+in this browser profile's local storage. They survive refresh, reopening and other
+same-origin tabs, including stale panels after deletion. They are not server locks:
+other devices/users, cleared storage, storage failures after acceptance, and
+simultaneous sends in separate tabs before acceptance are outside this guard.
+There is no automatic expiry, because an old open panel must not resend a draft.
+
+Unconfirmed responses preserve draft text and never trigger deletion or automatic
+resending. Safe explicit recovery uses the send-intent journal and the existing
+`sendScope` for each composition or draft. That journal owns the original idempotency key and
+exact request payload; cleanup receipts do not replace it or block its explicit
+uncertain-send retry. This change adds no server API or database migration.
+
 ## Recipient suggestions
 
 To, Cc and Bcc search a mailbox-scoped contact index after two characters.
@@ -261,7 +282,6 @@ clearing browser data. Verify delivery in Sent before recreating an uncertain
 message outside that session. Local simulated sends do not implement the live
 server's idempotency ledger; lost-response integration tests use a fake mail sender
 with the real live handler and isolated Postgres.
-
 
 Sent messages retain their outbound audit/idempotency record and can be moved to Trash but not permanently deleted through the API. Object retention cleanup, mailbox-level permissions, classification and Probo integration are not implemented.
 
