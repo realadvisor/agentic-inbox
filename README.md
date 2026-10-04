@@ -145,6 +145,15 @@ model output instead of silently returning a partial translation. Failed request
 the original readable and offer an explicit retry. No external images or attachments are
 sent to the model, and mailbox writing instructions do not influence translation.
 
+Inline reply, expanded/modal compose, and direct draft sending share the same
+recipient/sender initialization and send operation (`useComposerSend`). The
+operation delegates uncertain retries to the existing send-intent journal and
+accepted/cleaned draft receipts to the existing delivery ledger. It never creates
+a replacement send key or retries delivery during draft cleanup. Saved draft mode,
+source reference, and edit version remain explicit; missing reply/forward sources
+and unavailable senders must be resolved before sending. AI suggestions and
+translation do not replace the original reply/forward source content.
+
 ## Recipient suggestions
 
 To, Cc and Bcc search a mailbox-scoped contact index after two characters.

@@ -3,13 +3,17 @@ import { randomUUID } from "node:crypto";
 import { connect } from "../../server/db";
 import { InboxStore } from "../../server/store";
 
-for (const [composerSend, reply] of [
-	[false, false],
-	[true, false],
-	[false, true],
-	[true, true],
-]) {
-	test(`${composerSend ? "composer" : "direct draft"} ${reply ? "reply" : "new message"}: failed deletion stays successful and cleanup retries never send`, async ({
+for (const [composerSend, mode] of [
+	[false, "new"],
+	[true, "new"],
+	[false, "reply"],
+	[true, "reply"],
+	[false, "reply-all"],
+	[true, "reply-all"],
+	[false, "forward"],
+	[true, "forward"],
+] as const) {
+	test(`${composerSend ? "composer" : "direct draft"} ${mode}: failed deletion stays successful and cleanup retries never send`, async ({
 		page,
 		context,
 	}) => {
@@ -18,21 +22,22 @@ for (const [composerSend, reply] of [
 		const mailbox = `cleanup-${randomUUID()}@example.test`;
 		try {
 			await store.createMailbox(mailbox, "Cleanup regression");
-			const parent = reply
-				? await store.insert(mailbox, {
-						sender: "synthetic@example.test",
-						recipient: mailbox,
-						subject: "Original question",
-						body: "<p>Question</p>",
-					})
-				: undefined;
+			const parent =
+				mode !== "new"
+					? await store.insert(mailbox, {
+							sender: "synthetic@example.test",
+							recipient: mailbox,
+							subject: "Original question",
+							body: "<p>Question</p>",
+						})
+					: undefined;
 			const draft = await store.insert(mailbox, {
 				sender: mailbox,
 				sender_identity_id: mailbox,
 				recipient: "synthetic@example.test",
 				subject: "Cleanup regression",
 				body: "<p>Keep this recoverable.</p>",
-				draft_mode: parent ? "reply" : "new",
+				draft_mode: mode,
 				draft_source_id: parent?.id,
 				thread_id: parent?.thread_id ?? undefined,
 				delivery_status: "draft",
@@ -47,7 +52,7 @@ for (const [composerSend, reply] of [
 				const request = route.request();
 				if (
 					request.method() === "POST" &&
-					/\/(emails|reply)$/.test(request.url())
+					/\/(emails|reply|forward)$/.test(request.url())
 				)
 					sends++;
 				if (
