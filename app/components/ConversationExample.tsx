@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@cloudflare/kumo";
+import { Button, Tooltip } from "@cloudflare/kumo";
 import { BookmarkSimpleIcon, CircleNotchIcon } from "@phosphor-icons/react";
 import { classifierRequest } from "~/services/classifiers";
 import type { Tag } from "~/types";
@@ -9,10 +9,12 @@ export function ConversationExample({
 	mailboxId,
 	threadId,
 	tags = [],
+	compact = false,
 }: {
 	mailboxId: string;
 	threadId: string;
 	tags?: Tag[];
+	compact?: boolean;
 }) {
 	const client = useQueryClient();
 	const mutations = useIsMutating();
@@ -53,45 +55,55 @@ export function ConversationExample({
 	}
 	return (
 		<>
-			<Button
-				type="button"
-				size="sm"
-				variant="ghost"
-				disabled={busy || mutations > 0 || !status.isSuccess}
-				title={
-					isSaved
-						? "Remove this conversation from all example sets"
-						: "Confirm the current tags as example labels. Unassigned groups are skipped."
+			<Tooltip
+				content={
+					busy
+						? "Updating example…"
+						: isSaved
+							? "Remove saved example"
+							: "Save as example"
 				}
-				className={
-					isSaved ? "text-emerald-700 dark:text-emerald-400" : undefined
-				}
-				aria-pressed={isSaved}
-				aria-live="polite"
-				aria-busy={busy}
-				onClick={() => void save()}
+				side="bottom"
+				asChild
 			>
-				{busy ? (
-					<CircleNotchIcon
-						size={15}
-						className="animate-spin"
-						aria-hidden="true"
-					/>
-				) : (
-					<BookmarkSimpleIcon
-						size={15}
-						weight={isSaved ? "fill" : "regular"}
-						aria-hidden="true"
-					/>
-				)}
-				{busy
-					? isSaved
-						? "Removing…"
-						: "Saving…"
-					: isSaved
-						? "Saved as example"
-						: "Save as example"}
-			</Button>
+				<span className="inline-flex">
+					<Button
+						type="button"
+						size="sm"
+						shape={compact ? "square" : undefined}
+						aria-label={isSaved ? "Remove saved example" : "Save as example"}
+						variant="ghost"
+						disabled={busy || mutations > 0 || !status.isSuccess}
+						className={`${compact ? "h-6 w-6 min-w-6 rounded-md p-0" : ""} ${isSaved ? "text-kumo-brand" : "text-kumo-subtle"}`}
+						aria-pressed={isSaved}
+						aria-live="polite"
+						aria-busy={busy}
+						onClick={() => void save()}
+					>
+						{busy ? (
+							<CircleNotchIcon
+								size={15}
+								className="animate-spin"
+								aria-hidden="true"
+							/>
+						) : (
+							<BookmarkSimpleIcon
+								size={15}
+								weight={isSaved ? "fill" : "regular"}
+								aria-hidden="true"
+							/>
+						)}
+						{!compact &&
+							(busy
+								? isSaved
+									? "Removing…"
+									: "Saving…"
+								: isSaved
+									? "Saved as example"
+									: "Save as example")}
+					</Button>
+				</span>
+			</Tooltip>
 
 			{(error || status.isError) && (
 				<span role="alert" className="basis-full text-xs text-kumo-danger">
