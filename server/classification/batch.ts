@@ -1,3 +1,4 @@
+import { cropConversation } from "../../shared/jev-context";
 import {
 	providerError,
 	requestFits,
@@ -85,6 +86,25 @@ export function batchRequests(
 					) {
 						await send(smaller);
 						return;
+					}
+				}
+				if (error === "provider_context_limit") {
+					const state = group[0].body.state;
+					const alreadyCropped =
+						state &&
+						typeof state === "object" &&
+						"context_preparation" in state;
+					if (!alreadyCropped) {
+						const cropped = cropConversation(state, payload(group).questions);
+						if (cropped !== state) {
+							await send(
+								group.map((item) => ({
+									...item,
+									body: { ...item.body, state: cropped },
+								})),
+							);
+							return;
+						}
 					}
 				}
 				for (const item of group) item.resolve(response.clone());
