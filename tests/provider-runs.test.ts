@@ -1,3 +1,4 @@
+import { singleRequestByteLimit } from "../shared/jev-budget";
 import { before, after, test } from "node:test";
 import assert from "node:assert/strict";
 import { connect } from "../server/db";
@@ -323,7 +324,7 @@ test("queued and blocked attempts appear without a provider call and remain insp
 	const queuedDetail = await (await app.request("/" + id)).json();
 	assert.equal(queuedDetail.request_body, null);
 	assert.equal(queuedDetail.kind, "attempt");
-	await db`UPDATE emails SET body=${"x".repeat(35000)} WHERE thread_id=${thread}`;
+	await db`UPDATE emails SET body=${"x".repeat(singleRequestByteLimit)} WHERE thread_id=${thread}`;
 	const [job] =
 		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread}`;
 	let calls = 0;
@@ -336,10 +337,10 @@ test("queued and blocked attempts appear without a provider call and remain insp
 		await app.request("/?" + new URLSearchParams({ thread, status: "blocked" }))
 	).json();
 	assert.equal(blocked.runs.length, 1);
-	assert.equal(blocked.runs[0].error, "provider_context_limit");
+	assert.equal(blocked.runs[0].error, "conversation_too_large");
 	const detail = await (await app.request("/" + blocked.runs[0].id)).json();
 	assert.equal(detail.request_body, null);
-	assert.equal(detail.items[0].error, "provider_context_limit");
+	assert.equal(detail.items[0].error, "conversation_too_large");
 	// Previous activity survives the new message/token.
 	assert.equal((await app.request("/" + id)).status, 200);
 	assert.notEqual(token, job.token);

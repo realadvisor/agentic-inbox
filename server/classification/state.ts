@@ -17,7 +17,8 @@ export function readableText(html: string) {
 				: text;
 	}
 	return visit(parseFragment(html))
-		.replace(/[ \t]+/g, " ")
+		.replace(/[ \t\u00a0]+/g, " ")
+		.replace(/^[ \t]+|[ \t]+$/gm, "")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
 }

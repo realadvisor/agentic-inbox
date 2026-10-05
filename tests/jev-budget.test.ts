@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { requestFits, providerError } from "../shared/jev-budget";
+import {
+	requestFits,
+	providerError,
+	singleRequestByteLimit,
+} from "../shared/jev-budget";
 import { askJev } from "../server/classification/queue";
 import { batchRequests } from "../server/classification/batch";
 
@@ -20,11 +24,11 @@ test("budget checks both individual questions and combined request including Uni
 test("oversized single requests never reach provider; token errors retain a specific code", async () => {
 	let calls = 0;
 	await assert.rejects(
-		askJev("key", "question", "x".repeat(30000), async () => {
+		askJev("key", "question", "x".repeat(singleRequestByteLimit), async () => {
 			calls++;
 			return Response.json({});
 		}),
-		/provider_context_limit/,
+		/conversation_too_large/,
 	);
 	assert.equal(calls, 0);
 	assert.equal(
@@ -94,4 +98,71 @@ test("token recovery drops examples once and never drops conversation text", asy
 	});
 	assert.equal(response.status, 400);
 	assert.equal(calls, 2);
+});
+
+test("larger single requests reach the provider without losing conversation text", async () => {
+	const state = {
+		messages: [{ text: "A meaningful sentence. ".repeat(2500) }],
+	};
+	let calls = 0;
+	const result = await askJev("key", "question", state, async (_url, init) => {
+		calls++;
+		assert.deepEqual(JSON.parse(String(init?.body)).state, state);
+		return Response.json({
+			model: "test",
+			answers: { match: { type: "noul", noul: 0.95 } },
+		});
+	});
+	assert.equal(calls, 1);
+	assert.equal(result.answer, true);
+});
+
+test("real token rejection remains reviewable and never truncates the message", async () => {
+	const state = "Important context. ".repeat(3000);
+	await assert.rejects(
+		askJev("key", "question", state, async (_url, init) => {
+			assert.equal(JSON.parse(String(init?.body)).state, state);
+			return Response.json(
+				{ detail: { error_type: "max_tokens_exceeded" } },
+				{ status: 400 },
+			);
+		}),
+		/provider_context_limit/,
+	);
+});
+
+test("oversized Choice siblings share a single provider evaluation", async () => {
+	let calls = 0;
+	const body = JSON.stringify({
+		model: "jev-latest",
+		state: "body ".repeat(10000),
+		questions: {
+			match: {
+				type: "choice",
+				instructions: "Topic",
+				criteria: { a: "A", b: "B" },
+			},
+		},
+	});
+	const batch = batchRequests(async (_url, init) => {
+		calls++;
+		const p = JSON.parse(String(init?.body));
+		assert.equal(Object.keys(p.questions).length, 1);
+		return Response.json({
+			answers: Object.fromEntries(
+				Object.keys(p.questions).map((k) => [
+					k,
+					{ type: "choice", choice: "a" },
+				]),
+			),
+		});
+	}, 10);
+	const responses = await Promise.all(
+		Array.from({ length: 10 }, (_, i) =>
+			batch.forJob(i)("https://example.test", { body }),
+		),
+	);
+	assert.equal(calls, 1);
+	for (const r of responses)
+		assert.equal((await r.json()).answers.match.choice, "a");
 });

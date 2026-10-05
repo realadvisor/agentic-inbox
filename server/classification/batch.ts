@@ -1,3 +1,4 @@
+import { cropConversation } from "../../shared/jev-context";
 import {
 	providerError,
 	requestFits,
@@ -87,6 +88,25 @@ export function batchRequests(
 						return;
 					}
 				}
+				if (error === "provider_context_limit") {
+					const state = group[0].body.state;
+					const alreadyCropped =
+						state &&
+						typeof state === "object" &&
+						"context_preparation" in state;
+					if (!alreadyCropped) {
+						const cropped = cropConversation(state, payload(group).questions);
+						if (cropped !== state) {
+							await send(
+								group.map((item) => ({
+									...item,
+									body: { ...item.body, state: cropped },
+								})),
+							);
+							return;
+						}
+					}
+				}
 				for (const item of group) item.resolve(response.clone());
 				return;
 			}
@@ -140,7 +160,11 @@ export function batchRequests(
 				(JSON.stringify(group[0].body.state) !==
 					JSON.stringify(item.body.state) ||
 					group[0].body.model !== item.body.model ||
-					!requestFits(item.body.state, payload([...group, item]).questions))
+					(!requestFits(item.body.state, payload([...group, item]).questions) &&
+						JSON.stringify(Object.values(payload(group).questions)) !==
+							JSON.stringify(
+								Object.values(payload([...group, item]).questions),
+							)))
 			) {
 				await send(group);
 				group = [];
