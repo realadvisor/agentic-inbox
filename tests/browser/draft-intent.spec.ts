@@ -109,7 +109,8 @@ for (const mode of ["new", "reply", "reply-all", "forward"] as const) {
 					await db`SELECT * FROM emails WHERE mailbox_id=${mailbox} AND delivery_status='simulated'`;
 				const reply = mode === "reply" || mode === "reply-all";
 				expect(sent.in_reply_to).toBe(reply ? source.message_id : null);
-				expect(sent.thread_id === source.thread_id).toBe(reply);
+				expect(sent.thread_id === source.thread_id).toBe(mode !== "new");
+				if (!reply) expect(sent.email_references).toBeNull();
 				expect(sent.sender).toBe(mailbox);
 				expect(sent.cc).toBe(
 					mode === "reply-all" ? "colleague@example.test" : "",
