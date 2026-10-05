@@ -53,6 +53,7 @@ export const translationSchema = z
 	})
 	.strict();
 export interface TranslationResult {
+	html: string;
 	text: string;
 	targetLanguage: TranslationLanguage;
 }
