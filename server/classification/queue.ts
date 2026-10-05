@@ -1,3 +1,4 @@
+import { prepareOversizedContext } from "../../shared/jev-context";
 import {
 	creditGuard,
 	creditsPaused,
@@ -69,6 +70,7 @@ export async function askJev(
 		) as JevQuestion;
 	if (encodedSize(prepared) > singleRequestByteLimit)
 		throw new JevError("conversation_too_large", false);
+	prepared.state = prepareOversizedContext(prepared.state, prepared.questions);
 	let response: Response;
 	try {
 		response = await request("https://api.typesafe.ai/v1/systemone", {
