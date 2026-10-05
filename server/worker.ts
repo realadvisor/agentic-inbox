@@ -1,3 +1,7 @@
+import {
+	workspaceDirectory,
+	type WorkspaceDirectoryEnv,
+} from "./workspace-directory";
 import { pruneInboundRecovery } from "./operations";
 import { getCookie } from "hono/cookie";
 import { resolveAccessRole } from "./members";
@@ -29,7 +33,7 @@ import { verifyAccess, type AccessIdentity } from "./access";
 import { ingest, type InboundMessage, type ObjectStore } from "./inbound";
 import type { MailSender } from "./outbound";
 
-export interface WorkerEnv extends CloudTasksEnv {
+export interface WorkerEnv extends CloudTasksEnv, WorkspaceDirectoryEnv {
 	WEBHOOK_SECRET_KEY?: string;
 	AI?: AiBinding;
 	AI_GATEWAY_API_KEY?: string;
@@ -206,6 +210,7 @@ worker.all("/api/*", async (c) => {
 				403,
 			);
 		const response = await createApi(db, {
+			directorySearch: workspaceDirectory(c.env),
 			membershipEnabled,
 			readinessCheck: async () => {
 				if (

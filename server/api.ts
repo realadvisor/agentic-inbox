@@ -1,3 +1,4 @@
+import type { DirectorySearch } from "./workspace-directory";
 import {
 	sendEmailSchema as sendSchema,
 	saveDraftSchema as draftSchema,
@@ -72,6 +73,7 @@ const querySchema = z.object({
 });
 
 export interface ApiOptions {
+	directorySearch?: DirectorySearch;
 	readinessCheck?: () => Promise<boolean>;
 	recoveryObjects?: ObjectStore;
 	webhookSecretKey?: string;
@@ -514,6 +516,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				c.req.param("mailboxId"),
 				c.req.query("q") ?? "",
 				(c.req.query("exclude") ?? "").split(",").slice(0, 50),
+				c.get("apiKey") ? undefined : options.directorySearch,
 			),
 		),
 	);

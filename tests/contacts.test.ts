@@ -221,3 +221,44 @@ test("All supplies shared suggestions, with local contacts first and no duplicat
 		["shared-local@example.test"],
 	);
 });
+
+test("directory people merge with contacts, exclude selected addresses and remain session-only", async () => {
+	const lookup = async () => [
+		{ email: "directory.person@example.test", name: "Directory Person" },
+		{ email: "DIRECTORY.PERSON@example.test", name: "Duplicate" },
+		{ email: "excluded@example.test", name: "Excluded" },
+		{ email: mailbox, name: "Self" },
+	];
+	const combined = await recipientSuggestions(
+		db,
+		mailbox,
+		"directory",
+		["excluded@example.test"],
+		lookup,
+	);
+	assert.deepEqual(combined, [
+		{ email: "directory.person@example.test", name: "Directory Person" },
+	]);
+	assert.deepEqual(
+		await recipientSuggestions(db, mailbox, "directory", [], async () => {
+			throw new Error("offline");
+		}),
+		[],
+	);
+	const directoryApi = createApi(db, {
+		readAttachment: async () => null,
+		directorySearch: lookup,
+	});
+	const route = `http://localhost/api/v1/mailboxes/${mailbox}/recipients?q=directory&exclude=excluded@example.test`;
+	const response = await directoryApi.request(route);
+	assert.equal(response.status, 200);
+	assert.deepEqual(await response.json(), combined);
+	const { hashApiKey } = await import("../server/api-keys");
+	const key = "inbox_" + "ef".repeat(32);
+	await db`INSERT INTO inbox_api_keys(name,prefix,token_hash,mailbox_ids,permissions,created_by) VALUES ('Directory isolation','inbox_ef',${await hashApiKey(key)},ARRAY[${mailbox}],ARRAY['mail:read'],'test')`;
+	const scoped = await directoryApi.request(route, {
+		headers: { Authorization: `Bearer ${key}` },
+	});
+	assert.equal(scoped.status, 200);
+	assert.deepEqual(await scoped.json(), []);
+});
