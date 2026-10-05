@@ -129,20 +129,22 @@ uncertain-send retry. This change adds no server API or database migration.
 
 ## One-click email translation
 
-Delivered messages offer **See translation** and **See original**, including individual
+Delivered messages offer **Translate** and **Show original**, including individual
 messages in a conversation. The target defaults to the first supported browser language
 (English fallback); the language selector remembers your choice on that browser. Translation
 runs only on request through the mailbox's configured AI model and server-side provider.
-The body is translated as plain text; original HTML, attachments, source, and reply content
-remain unchanged. Results are cached in browser memory per message/body/language for up to
+Only text-node segments are sent to the model. Validated translations replace those source
+spans in the original HTML and use the same sanitized, sandboxed email renderer. Styles,
+tables, images and link destinations are preserved; translated text can naturally change
+line wrapping and height. Original stored content, attachments and reply content remain unchanged. Results are cached in browser memory per message/body/language for up to
 30 minutes after leaving the message, not persisted as emails or in browser storage. Only the language
 preference is stored. Refreshing the page clears translation results.
 
 The authenticated inbox endpoint is `POST /api/v1/mailboxes/:mailboxId/emails/:emailId/translation`
 with `{ "targetLanguage": "fr" }`; integration API keys cannot invoke it. It rejects drafts,
-empty text, oversized content (200,000 HTML / 16,000 extracted characters), and incomplete
+empty text, oversized content (200,000 HTML / 16,000 extracted characters / 500 text segments), and incomplete
 model output instead of silently returning a partial translation. Failed requests leave
-the original readable and offer an explicit retry. No external images or attachments are
+the original readable and offer an explicit retry. Loading has a cancel action. No external images or attachments are
 sent to the model, and mailbox writing instructions do not influence translation.
 
 Inline reply, expanded/modal compose, and direct draft sending share the same
