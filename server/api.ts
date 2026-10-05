@@ -828,7 +828,7 @@ export function createApi(db: Database, options: ApiOptions) {
 				folder_id: "sent",
 				read: true,
 				delivery_status: "simulated",
-				thread_id: reply ? (parent?.thread_id ?? parent?.id) : undefined,
+				thread_id: parent?.thread_id ?? parent?.id,
 				in_reply_to: reply ? (parent?.message_id ?? undefined) : undefined,
 				email_references: reply
 					? [parent?.email_references, parent?.message_id]
