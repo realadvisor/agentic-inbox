@@ -26,11 +26,11 @@ async function mailboxSuggestions(
 				SELECT email, name, sent_count, last_used_at FROM mailbox_contacts
 				WHERE mailbox_id=sources.mailbox_id
 				  AND (email LIKE ${prefix} OR lower(name) LIKE ${prefix})
-				  AND NOT (email = ANY(${[
+				  AND email NOT IN ${db([
 						...excluded.map((s) => s.toLowerCase()),
 						mailbox.toLowerCase(),
 						mailbox.toLowerCase().replace("@ingest.", "@"),
-					]}::text[]))
+					])}
 				ORDER BY (email=${search}) DESC, sent_count DESC, last_used_at DESC, email
 				LIMIT 5
 			) contact
