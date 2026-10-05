@@ -133,7 +133,10 @@ Delivered messages offer **Translate** and **Show original**, including individu
 messages in a conversation. The target defaults to the first supported browser language
 (English fallback); the language selector remembers your choice on that browser. Translation
 runs only on request through the mailbox's configured AI model and server-side provider.
-Only text-node segments are sent to the model. Validated translations replace those source
+Only text-node segments are sent to the model. Larger or heavily fragmented messages
+use up to three parallel batches with bounded neighboring context; short messages use
+one request. Boundary whitespace is restored locally. Batches share a 25-second deadline
+and are cancelled together on failure; only complete translations are displayed. Validated translations replace those source
 spans in the original HTML and use the same sanitized, sandboxed email renderer. Styles,
 tables, images and link destinations are preserved; translated text can naturally change
 line wrapping and height. Original stored content, attachments and reply content remain unchanged. Results are cached in browser memory per message/body/language for up to

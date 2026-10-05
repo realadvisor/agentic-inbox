@@ -163,3 +163,78 @@ test("browser locales fall back sensibly and translation is not implicitly expos
 		false,
 	);
 });
+
+test("large HTML translations run in parallel, preserve every span and fail as a whole if a batch is incomplete", async () => {
+	const body = Array.from(
+		{ length: 180 },
+		(_, id) => `<p style="color:red">  Sentence ${id} &amp; details. </p>`,
+	).join("");
+	const email = (await store.insert(mailbox, {
+		sender: "sender@example.test",
+		recipient: mailbox,
+		subject: "Long HTML",
+		body,
+	}))!;
+	let active = 0,
+		peak = 0,
+		requests = 0,
+		incomplete = false,
+		cancelled = 0;
+	const parallelModel = new MockLanguageModelV3({
+		doGenerate: async (options) => {
+			requests++;
+			peak = Math.max(peak, ++active);
+			const user = options.prompt.find((p) => p.role === "user")!;
+			assert.equal(user.role, "user");
+			const part = user.content.find((p) => p.type === "text")!;
+			assert.equal(part.type, "text");
+			const batch = JSON.parse(part.text) as {
+				segments: { id: number; text: string }[];
+			};
+			if (incomplete && batch.segments[0].id !== 0) {
+				await new Promise((_, reject) => {
+					const abort = () => {
+						cancelled++;
+						reject(new DOMException("Cancelled", "AbortError"));
+					};
+					if (options.abortSignal?.aborted) abort();
+					else
+						options.abortSignal?.addEventListener("abort", abort, {
+							once: true,
+						});
+				});
+			}
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			active--;
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							segments: incomplete ? batch.segments.slice(1) : batch.segments,
+						}),
+					},
+				],
+				finishReason: { unified: "stop", raw: "stop" },
+				usage: {
+					inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+					outputTokens: { total: 3, text: 3, reasoning: 0 },
+				},
+				warnings: [],
+			};
+		},
+	});
+	const app = createApi(db, {
+		readAttachment: async () => null,
+		agent: { model: () => parallelModel, sources: ["workers"] },
+	});
+	const response = await request(undefined, email.id, mailbox, app);
+	assert.equal(response.status, 200);
+	assert.equal((await response.json()).html, body);
+	assert.equal(requests, 3);
+	assert.equal(peak, 3);
+	incomplete = true;
+	assert.equal((await request(undefined, email.id, mailbox, app)).status, 502);
+	assert.equal(cancelled, 2);
+	assert.equal((await store.message(mailbox, email.id)).body, body);
+});
