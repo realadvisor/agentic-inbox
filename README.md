@@ -54,8 +54,8 @@ Migration 044 adds `draft_mode` (`new`, `reply`, `reply-all`, `forward`) and
 `draft_source_id`, an internal source email ID distinct from RFC `in_reply_to`.
 The inbox and agent save this intent; editing, reopening and direct sending retain
 it and the selected sender. Replies use the source's RFC Message-ID and references;
-forwards start a new conversation without reply headers. Saved intent is immutable;
-compose a new draft to change its mode or source. A deleted source prevents sending
+forwards stay in the source conversation internally without reply headers. Saved
+intent is immutable; compose a new draft to change its mode or source. A deleted source prevents sending
 an explicit reply/forward rather than silently changing its intent.
 
 Existing drafts have unknown mode: historical replies and forwards cannot be

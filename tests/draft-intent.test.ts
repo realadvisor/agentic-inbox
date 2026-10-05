@@ -85,7 +85,11 @@ for (const mode of ["new", "reply", "reply-all", "forward"] as const) {
 		const sent = await store.message(box, (await simulated.json()).id);
 		const reply = mode === "reply" || mode === "reply-all";
 		assert.equal(sent.in_reply_to, reply ? parent.message_id : null);
-		assert.equal(sent.thread_id === parent.thread_id, reply);
+		assert.equal(sent.thread_id === parent.thread_id, mode !== "new");
+		assert.equal(
+			sent.email_references,
+			reply ? `<ancestor@external.test> ${parent.message_id}` : null,
+		);
 		const calls: Parameters<MailSender["send"]>[0][] = [];
 		const sender: MailSender = {
 			send: async (mail) => {
@@ -106,6 +110,13 @@ for (const mode of ["new", "reply", "reply-all", "forward"] as const) {
 			reply,
 		);
 		assert.equal(live.sender, draft.sender);
+		const delivered = await store.message(box, live.id);
+		assert.equal(delivered.thread_id === parent.thread_id, mode !== "new");
+		assert.equal(delivered.in_reply_to, reply ? parent.message_id : null);
+		assert.equal(
+			delivered.email_references,
+			reply ? `<ancestor@external.test> ${parent.message_id}` : null,
+		);
 		assert.equal(
 			calls[0].headers?.["In-Reply-To"],
 			reply ? parent.message_id : undefined,

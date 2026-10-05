@@ -266,3 +266,83 @@ test("only administrators create live mailboxes; new registered addresses receiv
 		403,
 	);
 });
+
+test("forwarding a later message preserves the conversation and incoming replies without reply headers", async () => {
+	const root = (await store.insert(mailbox, {
+		sender: "customer@example.test",
+		recipient: "privacy@realadvisor.com",
+		subject: "Original request",
+		body: "Original",
+		message_id: "<forward-root@example.test>",
+	}))!;
+	const source = (await store.insert(mailbox, {
+		sender: "customer@example.test",
+		recipient: "privacy@realadvisor.com",
+		subject: "Re: Original request",
+		body: "More details",
+		thread_id: root.thread_id!,
+		message_id: "<forward-source@example.test>",
+		in_reply_to: root.message_id!,
+		email_references: root.message_id!,
+	}))!;
+	const { createApi } = await import("../server/api");
+	let calls = 0;
+	for (const mode of ["synthetic", "live"] as const) {
+		const api = createApi(db, {
+			mode,
+			actor: "synthetic-test",
+			readAttachment: async () => null,
+			sender: {
+				send: async (mail) => {
+					calls++;
+					assert.equal(mail.headers, undefined);
+					assert.equal(mail.to, "colleague@example.test");
+					return { messageId: "<forward-sent@example.test>" };
+				},
+			},
+		});
+		const key = crypto.randomUUID();
+		const forward = () =>
+			api.request(
+				`http://localhost/api/v1/mailboxes/${mailbox}/emails/${source.id}/forward`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"Idempotency-Key": key,
+					},
+					body: JSON.stringify({
+						to: "colleague@example.test",
+						subject: "Fwd: Original request",
+						text: "Please review",
+					}),
+				},
+			);
+		const response = await forward();
+		assert.equal(response.status, 201);
+		const { id } = await response.json();
+		const sent = await store.message(mailbox, id);
+		assert.equal(sent.thread_id, root.thread_id);
+		assert.equal(sent.in_reply_to, null);
+		assert.equal(sent.email_references, null);
+		assert.ok(
+			(await store.thread(mailbox, root.thread_id!)).some(
+				(mail) => mail.id === id,
+			),
+		);
+		if (mode === "live") {
+			assert.equal((await (await forward()).json()).id, id);
+			assert.equal(calls, 1);
+		}
+	}
+	await ingest(
+		message(
+			"From: Colleague <colleague@example.test>\r\nTo: privacy@realadvisor.com\r\nMessage-ID: <forward-response@example.test>\r\nIn-Reply-To: <forward-sent@example.test>\r\nSubject: Re: Fwd: Original request\r\n\r\nReviewed",
+		),
+		db,
+		objects,
+	);
+	const [response] =
+		await db`SELECT thread_id FROM emails WHERE message_id='<forward-response@example.test>'`;
+	assert.equal(response.thread_id, root.thread_id);
+});

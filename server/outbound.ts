@@ -103,7 +103,8 @@ export async function sendReal(
 				.replace(/</g, "&lt;")
 				.replace(/>/g, "&gt;")
 				.replace(/\n/g, "<br>");
-		await tx`INSERT INTO emails (id,mailbox_id,folder_id,subject,sender,sender_identity_id,recipient,cc,bcc,body,thread_id,message_id,in_reply_to,email_references,delivery_status,read) VALUES (${id},${mailbox},'sent',${input.subject},${identity.email},${identity.id},${join(input.to)},${join(input.cc)},${join(input.bcc)},${body},${isReply ? (parent?.thread_id ?? id) : id},${`<${id}@realadvisor.com>`},${isReply ? (parent?.message_id ?? null) : null},${isReply ? [parent?.email_references, parent?.message_id].filter(Boolean).join(" ") : null},'sending',true)`;
+		// Forwarding keeps the local conversation without adding RFC reply headers.
+		await tx`INSERT INTO emails (id,mailbox_id,folder_id,subject,sender,sender_identity_id,recipient,cc,bcc,body,thread_id,message_id,in_reply_to,email_references,delivery_status,read) VALUES (${id},${mailbox},'sent',${input.subject},${identity.email},${identity.id},${join(input.to)},${join(input.cc)},${join(input.bcc)},${body},${parent?.thread_id ?? parent?.id ?? id},${`<${id}@realadvisor.com>`},${isReply ? (parent?.message_id ?? null) : null},${isReply ? [parent?.email_references, parent?.message_id].filter(Boolean).join(" ") : null},'sending',true)`;
 		await tx`INSERT INTO outbound_requests (mailbox_id,request_id,payload_hash,email_id,actor) VALUES (${mailbox},${requestId},${hash},${id},${actor})`;
 		return {
 			id,
