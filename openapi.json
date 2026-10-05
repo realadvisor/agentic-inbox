@@ -7861,13 +7861,17 @@
 							"application/json": {
 								"schema": {
 									"type": "object",
-									"required": ["text", "targetLanguage"],
+									"required": ["text", "targetLanguage", "html"],
 									"properties": {
 										"text": {
 											"type": "string"
 										},
 										"targetLanguage": {
 											"type": "string"
+										},
+										"html": {
+											"type": "string",
+											"description": "Original email HTML with translated text nodes. Render using the same sandboxed sanitizer as the original email."
 										}
 									}
 								}

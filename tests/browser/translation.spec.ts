@@ -24,6 +24,10 @@ test("one-click translation uses browser language, caches toggles and remembers 
 			const { targetLanguage } = route.request().postDataJSON();
 			await route.fulfill({
 				json: {
+					html:
+						targetLanguage === "fr"
+							? '<p style="color:rgb(120, 40, 80)">Bonjour ! &lt;script&gt;bad()&lt;/script&gt;</p>'
+							: '<p style="color:rgb(120, 40, 80)">Hallo!</p>',
 					text:
 						targetLanguage === "fr"
 							? "Bonjour ! <script>bad()</script>"
@@ -38,26 +42,29 @@ test("one-click translation uses browser language, caches toggles and remembers 
 			page.getByRole("combobox", { name: "Translation language" }),
 		).toContainText("Français");
 		expect(requests).toBe(0);
-		await page
-			.getByRole("button", { name: "See translation", exact: true })
-			.click();
+		await page.getByRole("button", { name: "Translate", exact: true }).click();
 		const translated = page.getByRole("region", { name: "Translated email" });
-		await expect(translated).toHaveText("Bonjour ! <script>bad()</script>");
-		await expect(translated.locator("script")).toHaveCount(0);
+		const translatedBody = translated.frameLocator("iframe").locator("body");
+		await expect(translatedBody).toContainText(
+			"Bonjour ! <script>bad()</script>",
+		);
+		await expect(translatedBody.locator("script:not([nonce])")).toHaveCount(0);
 		await page
-			.getByRole("button", { name: "See original", exact: true })
+			.getByRole("button", { name: "Show original", exact: true })
 			.click();
 		await expect(
 			page.frameLocator('iframe[title="Email content"]').locator("body"),
 		).toContainText("Hello from the original message.");
-		await page
-			.getByRole("button", { name: "See translation", exact: true })
-			.click();
-		await expect(translated).toContainText("Bonjour");
+		await page.getByRole("button", { name: "Translate", exact: true }).click();
+		await expect(translatedBody).toContainText("Bonjour");
+		await expect(translatedBody.locator("p")).toHaveCSS(
+			"color",
+			"rgb(120, 40, 80)",
+		);
 		expect(requests).toBe(1);
 		await page.getByRole("combobox", { name: "Translation language" }).click();
 		await page.getByRole("option", { name: "Deutsch", exact: true }).click();
-		await expect(translated).toHaveText("Hallo!");
+		await expect(translatedBody).toContainText("Hallo!");
 		expect(requests).toBe(2);
 		await page.screenshot({ path: ".local/translation-desktop.png" });
 		// Check the control's narrow layout independently of the app's desktop sidebar.
@@ -72,7 +79,7 @@ test("one-click translation uses browser language, caches toggles and remembers 
 			page.getByRole("combobox", { name: "Translation language" }),
 		).toContainText("Deutsch");
 		await expect(
-			page.getByRole("button", { name: "See translation", exact: true }),
+			page.getByRole("button", { name: "Translate", exact: true }),
 		).toBeVisible();
 		expect(requests).toBe(2);
 	} finally {
@@ -111,23 +118,28 @@ test("failure keeps original visible, explicit retry works and translation does 
 					json: { error: "Translation unavailable." },
 				});
 			return route.fulfill({
-				json: { text: "Traduction réussie.", targetLanguage: "fr" },
+				json: {
+					text: "Traduction réussie.",
+					html: "<p>Traduction réussie.</p>",
+					targetLanguage: "fr",
+				},
 			});
 		});
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
 		await page.getByText("Thread translation", { exact: true }).click();
 		await page.getByRole("button", { name: /^F first@example\.test/ }).click();
-		await page
-			.getByRole("button", { name: "See translation", exact: true })
-			.click();
+		await page.getByRole("button", { name: "Translate", exact: true }).click();
 		await expect(page.getByRole("alert")).toContainText(
 			"Translation unavailable.",
 		);
 		await expect(page.locator('iframe[title="Email content"]')).toBeVisible();
 		await page.getByRole("button", { name: "Retry translation" }).click();
 		await expect(
-			page.getByRole("region", { name: "Translated email" }),
-		).toHaveText("Traduction réussie.");
+			page
+				.getByRole("region", { name: "Translated email" })
+				.frameLocator("iframe")
+				.locator("body"),
+		).toContainText("Traduction réussie.");
 		await page
 			.getByRole("button", { name: "Collapse message" })
 			.first()
@@ -137,7 +149,7 @@ test("failure keeps original visible, explicit retry works and translation does 
 			page.getByRole("region", { name: "Translated email" }),
 		).toHaveCount(0);
 		await expect(
-			page.getByRole("button", { name: "See translation", exact: true }),
+			page.getByRole("button", { name: "Translate", exact: true }),
 		).toBeVisible();
 		expect(requests).toBe(2);
 	} finally {
@@ -170,6 +182,10 @@ test("a late translation never replaces a newly selected language", async ({
 			await route
 				.fulfill({
 					json: {
+						html:
+							targetLanguage === "fr"
+								? "<p>Réponse tardive.</p>"
+								: "<p>Deutsche Übersetzung.</p>",
 						text:
 							targetLanguage === "fr"
 								? "Réponse tardive."
@@ -181,9 +197,7 @@ test("a late translation never replaces a newly selected language", async ({
 		});
 		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
 		await page.getByText("Slow translation", { exact: true }).click();
-		await page
-			.getByRole("button", { name: "See translation", exact: true })
-			.click();
+		await page.getByRole("button", { name: "Translate", exact: true }).click();
 		await expect(
 			page.getByRole("status").filter({ hasText: "Translating…" }),
 		).toHaveText("Translating…");
@@ -193,14 +207,76 @@ test("a late translation never replaces a newly selected language", async ({
 		await page.getByRole("combobox", { name: "Translation language" }).click();
 		await page.getByRole("option", { name: "Deutsch", exact: true }).click();
 		await expect(
-			page.getByRole("region", { name: "Translated email" }),
-		).toHaveText("Deutsche Übersetzung.");
+			page
+				.getByRole("region", { name: "Translated email" })
+				.frameLocator("iframe")
+				.locator("body"),
+		).toContainText("Deutsche Übersetzung.");
 		finishFrench?.();
 		await expect(
-			page.getByRole("region", { name: "Translated email" }),
-		).toHaveText("Deutsche Übersetzung.");
+			page
+				.getByRole("region", { name: "Translated email" })
+				.frameLocator("iframe")
+				.locator("body"),
+		).toContainText("Deutsche Übersetzung.");
 	} finally {
 		finishFrench?.();
+		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
+		await db.end();
+	}
+});
+
+test("cancel keeps the original visible even when the translation returns later", async ({
+	page,
+}) => {
+	const db = connect(),
+		store = new InboxStore(db),
+		mailbox = `translation-cancel-${randomUUID()}@example.test`;
+	let finish: (() => void) | undefined;
+	try {
+		await store.createMailbox(mailbox, "Cancel translation");
+		await store.insert(mailbox, {
+			sender: "person@example.test",
+			recipient: mailbox,
+			subject: "Cancel translation",
+			body: '<p style="font-family:Georgia;color:rgb(120, 40, 80)">Original stays.</p>',
+		});
+		await page.route("**/emails/*/translation", async (route) => {
+			await new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+			await route
+				.fulfill({
+					json: {
+						html: "<p>Bonjour</p>",
+						text: "Bonjour",
+						targetLanguage: "fr",
+					},
+				})
+				.catch(() => {});
+		});
+		await page.goto(`/mailbox/${mailbox}/emails/inbox`);
+		await page.getByText("Cancel translation", { exact: true }).last().click();
+		await page.getByRole("button", { name: "Translate", exact: true }).click();
+		await expect(
+			page.getByRole("button", { name: "Cancel", exact: true }),
+		).toBeVisible();
+		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		finish?.();
+		await expect(
+			page
+				.getByRole("region", { name: "Original email" })
+				.frameLocator("iframe")
+				.locator("p"),
+		).toHaveText("Original stays.");
+		await expect(
+			page.getByRole("region", { name: "Translated email" }),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", { name: "Translate", exact: true }),
+		).toBeVisible();
+	} finally {
+		finish?.();
 		await db`DELETE FROM mailboxes WHERE id=${mailbox}`;
 		await db.end();
 	}

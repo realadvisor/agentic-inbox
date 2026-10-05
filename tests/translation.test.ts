@@ -18,7 +18,12 @@ const mailbox = "translate@example.test",
 let emailId = "",
 	captured = "",
 	calls = 0;
-let output = "Bonjour,\n\nMerci pour votre message.";
+let output = JSON.stringify({
+	segments: [
+		{ id: 0, text: "Bonjour & bienvenue" },
+		{ id: 1, text: "Gardez 42 inchangé." },
+	],
+});
 let finishReason: "stop" | "length" = "stop";
 const model = new MockLanguageModelV3({
 	doGenerate: async (options) => {
@@ -82,7 +87,8 @@ test("translation uses only the selected message, decodes HTML and leaves origin
 	const response = await request();
 	assert.equal(response.status, 200);
 	assert.deepEqual(await response.json(), {
-		text: output,
+		text: "Bonjour & bienvenue\nGardez 42 inchangé.",
+		html: "<p>Bonjour &amp; bienvenue</p><p>Gardez 42 inchangé.</p><script>hidden-script</script><style>hidden-style</style>",
 		targetLanguage: "fr",
 	});
 	assert.ok(captured.includes("Hello & welcome"));
