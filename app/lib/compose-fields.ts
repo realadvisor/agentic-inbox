@@ -1,15 +1,16 @@
+import { sanitizeEmailDocument } from "./email-document";
+import {
+	forwardDocumentMarker,
+	forwardNoteStart,
+	forwardNoteEnd,
+} from "./forward-document";
 import type { ComposeOptions } from "../hooks/useUIStore";
 import {
 	resolveSenderId,
 	type SenderIdentity,
 	type SenderConfiguration,
 } from "../../shared/senders";
-import {
-	buildQuotedReplyBlock,
-	escapeHtml,
-	formatComposeDate,
-	stripHtml,
-} from "./utils";
+import { buildQuotedReplyBlock, escapeHtml, formatComposeDate } from "./utils";
 import { buildReplyAllFields, getReplyAddress } from "./replies";
 export interface ComposeFormFields {
 	to: string;
@@ -42,16 +43,15 @@ function buildForwardBody(
 ) {
 	const safeSender = escapeHtml(original.sender);
 	const safeSubject = escapeHtml(original.subject);
-	const safeBody = escapeHtml(stripHtml(original.body || "")).replace(
-		/\n/g,
-		"<br>",
+	const doc = sanitizeEmailDocument(original.body || "");
+	const note = `<p><br></p>${sigBlock ? `${sigBlock}<br>` : ""}`;
+	const header = `<div style="border-top:1px solid #ddd;padding:12px 0;margin:16px 0;font:14px Arial,sans-serif;color:#333"><strong>Forwarded message:</strong><br><strong>From:</strong> ${safeSender}<br><strong>Date:</strong> ${formatComposeDate(original.date)}<br><strong>Subject:</strong> ${safeSubject}</div>`;
+	// Only the marked note enters the editor. Keep the original document and CSS intact.
+	doc.body.insertAdjacentHTML(
+		"afterbegin",
+		`${forwardNoteStart}${note}${forwardNoteEnd}${header}`,
 	);
-
-	return `<p><br></p>${
-		sigBlock ? `${sigBlock}<br>` : ""
-	}<div style="border: 1px solid #ddd; padding: 1em; background-color: #f9f9f9; margin: 1em 0;"><strong>Forwarded message:</strong><br><strong>From:</strong> ${safeSender}<br><strong>Date:</strong> ${formatComposeDate(
-		original.date,
-	)}<br><strong>Subject:</strong> ${safeSubject}<br><br>${safeBody}</div>`;
+	return `${forwardDocumentMarker}<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
 }
 
 export function buildInitialComposeFields(
