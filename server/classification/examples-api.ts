@@ -1,3 +1,4 @@
+import { MAX_GROUP_TAGS } from "../../shared/tag-groups";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -18,7 +19,7 @@ const targetSchema = z
 const valueSchema = z
 	.object({
 		role: z.enum(["teach", "test"]),
-		labels: z.array(z.string().max(80)).max(10),
+		labels: z.array(z.string().max(80)).max(MAX_GROUP_TAGS),
 		note: z.string().trim().max(1000).default(""),
 		config: z.string().max(20000),
 	})

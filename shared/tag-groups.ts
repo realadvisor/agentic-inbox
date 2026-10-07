@@ -1,6 +1,8 @@
 import { decisionRulesSchema } from "./decision-rules";
 import { z } from "zod";
 
+export const MAX_GROUP_TAGS = 20;
+
 export const tagGroupInput = z
 	.object({
 		name: z.string().trim().min(1).max(80),
@@ -21,7 +23,7 @@ export const tagGroupInput = z
 					.strict(),
 			)
 			.min(1)
-			.max(10),
+			.max(MAX_GROUP_TAGS),
 	})
 	.strict()
 	.superRefine((group, ctx) => {
@@ -33,6 +35,12 @@ export const tagGroupInput = z
 					"Add instructions for Jev before enabling automatic assignment.",
 			});
 		if (group.selection === "score") {
+			if (group.tags.length > 10)
+				ctx.addIssue({
+					code: "custom",
+					path: ["tags"],
+					message: "An ordered scale supports at most 10 levels.",
+				});
 			const edges = group.decision_rules?.score_boundaries;
 			if (
 				edges &&

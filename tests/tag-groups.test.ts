@@ -777,3 +777,48 @@ test("editing group instructions preserves historical automatic tags and reviewe
 		c.revision + 1,
 	);
 });
+
+test("adding choices beyond ten preserves historical assignments and reviewed answers", async () => {
+	const tags = Array.from({ length: 10 }, (_, i) => ({
+		id: crypto.randomUUID(),
+		name: `Expansion ${i}`,
+		description: "A detailed category description. ".repeat(20),
+		color: "#123456",
+	}));
+	const created = await call("/tag-groups", "POST", {
+		name: "Expansion",
+		selection: "single",
+		enabled: true,
+		instructions: "Choose the matching topic.",
+		tags,
+	});
+	assert.equal(created.status, 201, await created.clone().text());
+	const g: TagGroup = await created.json();
+	const thread = await message();
+	const [classifier] =
+		await db`SELECT id FROM classifiers WHERE tag_id=${tags[0].id}`;
+	await db`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor) VALUES(${mailbox},${thread},${tags[0].id},'classifier','test')`;
+	await db`UPDATE conversation_classifications SET status='complete',source='human',answer=true WHERE mailbox_id=${mailbox} AND thread_id=${thread} AND classifier_id=${classifier.id}`;
+	const [before] =
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread} AND classifier_id=${classifier.id}`;
+	const expanded = await call("/tag-groups/" + g.id, "PUT", {
+		...input(g),
+		tags: [
+			...tags,
+			{ id: crypto.randomUUID(), name: "Expansion Legal", color: "#123456" },
+			{ id: crypto.randomUUID(), name: "Expansion Other", color: "#123456" },
+		],
+	});
+	assert.equal(expanded.status, 200, await expanded.clone().text());
+	assert.equal((await expanded.json()).tags.length, 12);
+	assert.equal(
+		(
+			await db`SELECT count(*)::int n FROM conversation_tags WHERE thread_id=${thread} AND tag_id=${tags[0].id} AND removed_at IS NULL`
+		)[0].n,
+		1,
+	);
+	const [after] =
+		await db`SELECT token,source FROM conversation_classifications WHERE thread_id=${thread} AND classifier_id=${classifier.id}`;
+	assert.equal(after.token, before.token);
+	assert.equal(after.source, "human");
+});

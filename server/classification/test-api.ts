@@ -1,3 +1,4 @@
+import { MAX_GROUP_TAGS } from "../../shared/tag-groups";
 import { creditGuard } from "./provider-state";
 import { decisionRulesSchema } from "../../shared/decision-rules";
 import { Hono } from "hono";
@@ -25,13 +26,13 @@ const input = z
 					.object({
 						decision_rules: decisionRulesSchema.optional(),
 						name: z.string().trim().min(1).max(80),
-						question: z.string().trim().min(1).max(8000),
+						question: z.string().trim().min(1).max(30000),
 						classifier_id: z.string().uuid().optional(),
 					})
 					.strict(),
 			)
 			.min(1)
-			.max(10),
+			.max(MAX_GROUP_TAGS),
 		group: tagGroupInput.optional(),
 		group_id: z.string().uuid().optional(),
 		example_id: z.string().uuid().optional(),
@@ -128,7 +129,7 @@ export function classifierTestApi(
 								legacy: data.include_examples,
 							})
 						: data.group?.selection === "single" ||
-								data.group?.selection === "score"
+							data.group?.selection === "score"
 							? groupChoice(data.group)
 							: jevQuestion(q.question);
 
