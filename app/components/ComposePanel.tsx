@@ -1,3 +1,4 @@
+import ForwardedMessage from "./ForwardedMessage";
 import DraftDeliveryNotice from "./DraftDeliveryNotice";
 import { Input as KumoInput } from "@cloudflare/kumo";
 import "./composer-fields.css";
@@ -211,6 +212,17 @@ export default function ComposePanel({ inline = false }: { inline?: boolean }) {
 							showToolbar={formatting}
 						/>
 					</div>
+					{form.forwardPreview && (
+						<ForwardedMessage
+							html={form.forwardPreview}
+							mailboxId={mailboxId}
+							sourceId={
+								composeOptions.originalEmail?.id ??
+								composeOptions.draftEmail?.draft_source_id ??
+								undefined
+							}
+						/>
+					)}
 					{form.quotedBody && (
 						<details className="mx-5 mb-4 text-xs text-kumo-subtle">
 							<summary className="cursor-pointer py-2">
