@@ -263,7 +263,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const hasThread = allMessages.length > 1;
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="email-panel flex flex-col h-full">
 			<EmailPanelToolbar
 				email={email}
 				mailboxId={mailboxId}
@@ -303,7 +303,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			/>
 
 			{mailboxId && (
-				<div className="px-4 py-2 border-b border-kumo-line">
+				<div className="flex min-h-12 shrink-0 items-center px-4 py-2 border-b border-kumo-line">
 					<div className="min-w-0 flex-1">
 						<TagActions
 							compact
@@ -364,7 +364,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				showThreadCount={hasThread}
 			/>
 
-			<div className="flex-1 overflow-y-auto">
+			<div className="email-panel-content flex-1 min-h-0 overflow-y-auto">
 				{allMessages
 					.filter((msg) => draftMessageIds.has(msg.id))
 					.map((msg) => (

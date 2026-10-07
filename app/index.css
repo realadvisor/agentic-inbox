@@ -37,3 +37,35 @@ body {
 div:has(> .date-range-popup) {
 	z-index: 120;
 }
+
+/* Share the three toolbar tracks across the list and reader. Subgrid lets
+   wrapped tags or subjects grow both sides without measuring heights in JS.
+   The final two tracks hold the scrolling list and its optional pagination. */
+@media (min-width: 48rem) {
+	.mailbox-aligned-toolbars {
+		display: grid;
+		grid-template-columns: 380px minmax(0, 1fr);
+		grid-template-rows: repeat(3, minmax(3rem, auto)) minmax(0, 1fr) auto;
+	}
+
+	.mailbox-aligned-toolbars > .mailbox-list-pane,
+	.mailbox-aligned-toolbars > .mailbox-detail-pane,
+	.mailbox-aligned-toolbars > .mailbox-detail-pane > .email-panel {
+		display: grid;
+		grid-template-rows: subgrid;
+		grid-row: 1 / -1;
+		min-height: 0;
+	}
+
+	.mailbox-aligned-toolbars > .mailbox-list-pane {
+		grid-column: 1;
+	}
+
+	.mailbox-aligned-toolbars > .mailbox-detail-pane {
+		grid-column: 2;
+	}
+
+	.mailbox-aligned-toolbars .email-panel-content {
+		grid-row: 4 / -1;
+	}
+}
