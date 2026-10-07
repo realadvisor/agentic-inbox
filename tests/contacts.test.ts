@@ -262,3 +262,41 @@ test("directory people merge with contacts, exclude selected addresses and remai
 	assert.equal(scoped.status, 200);
 	assert.deepEqual(await scoped.json(), []);
 });
+
+test("recipient API merges directory people with Worker database settings", async () => {
+	const { default: postgres } = await import("postgres");
+	const workerDb = postgres(process.env.DATABASE_URL!, {
+		fetch_types: false,
+		connection: { search_path: schema },
+	});
+	try {
+		await db`INSERT INTO mailbox_contacts(mailbox_id,email,name,sent_count,last_used_at)
+			VALUES(${mailbox},'worker-contact@example.test','Worker Contact',1,now())`;
+		const app = createApi(workerDb, {
+			readAttachment: async () => null,
+			directorySearch: async () => [
+				{ email: "worker-person@example.test", name: "Worker Person" },
+			],
+		});
+		for (const exclude of ["", "worker-contact@example.test"]) {
+			const response = await app.request(
+				`http://localhost/api/v1/mailboxes/${mailbox}/recipients?q=worker&exclude=${exclude}`,
+			);
+			assert.equal(response.status, 200, await response.clone().text());
+			const results = await response.json();
+			assert.ok(
+				results.some(
+					(p: { email: string }) => p.email === "worker-person@example.test",
+				),
+			);
+			assert.equal(
+				results.some(
+					(p: { email: string }) => p.email === "worker-contact@example.test",
+				),
+				!exclude,
+			);
+		}
+	} finally {
+		await workerDb.end();
+	}
+});
