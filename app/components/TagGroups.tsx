@@ -10,7 +10,7 @@ import {
 } from "@cloudflare/kumo";
 import { DecisionRules } from "./DecisionRules";
 import { JevRequestPreview } from "./JevRequestPreview";
-import { groupQuestion } from "../../shared/tag-groups";
+import { groupQuestion, MAX_GROUP_TAGS } from "../../shared/tag-groups";
 import { ExistingConversations, useTagClassifiers } from "./TagAutomation";
 import { Button, Dialog, Input, Popover } from "@cloudflare/kumo";
 import {
@@ -546,12 +546,19 @@ function Editor({
 									placeholder="Add a tag…"
 									maxLength={80}
 									value={newTag}
-									disabled={draft.tags.length >= 10}
+									disabled={
+										draft.tags.length >=
+										(draft.selection === "score" ? 10 : MAX_GROUP_TAGS)
+									}
 									onChange={(e) => setNewTag(e.target.value)}
 									onKeyDown={(e) => {
 										if (e.key === "Enter") {
 											e.preventDefault();
-											if (draft.tags.length < 10) add();
+											if (
+												draft.tags.length <
+												(draft.selection === "score" ? 10 : MAX_GROUP_TAGS)
+											)
+												add();
 										}
 									}}
 									className="min-w-0 flex-1"
@@ -559,7 +566,11 @@ function Editor({
 								<Button
 									type="button"
 									variant="secondary"
-									disabled={!newTag.trim() || draft.tags.length >= 10}
+									disabled={
+										!newTag.trim() ||
+										draft.tags.length >=
+											(draft.selection === "score" ? 10 : MAX_GROUP_TAGS)
+									}
 									onClick={add}
 								>
 									Add
