@@ -1,3 +1,4 @@
+import ForwardedMessage from "./ForwardedMessage";
 import SenderSelect from "./SenderSelect";
 import DraftDeliveryNotice from "./DraftDeliveryNotice";
 import { SendLabel } from "~/components/MailMode";
@@ -40,6 +41,7 @@ export default function ComposeEmail() {
 		setSubject,
 		body,
 		setBody,
+		forwardPreview,
 		error,
 		isSavingDraft,
 		isSending,
@@ -133,6 +135,17 @@ export default function ComposeEmail() {
 						</Text>
 						<RichTextEditor value={body} onChange={setBody} />
 					</div>
+					{forwardPreview && (
+						<ForwardedMessage
+							html={forwardPreview}
+							mailboxId={mailboxId}
+							sourceId={
+								composeOptions.originalEmail?.id ??
+								composeOptions.draftEmail?.draft_source_id ??
+								undefined
+							}
+						/>
+					)}
 					<div className="flex justify-between items-center pt-2">
 						<Button
 							type="button"

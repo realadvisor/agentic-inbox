@@ -1,3 +1,4 @@
+import { splitForwardDocument } from "~/lib/forward-document";
 import {
 	buildInitialComposeFields,
 	resolveComposeSender,
@@ -41,6 +42,11 @@ export function useComposeForm(
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
 	const [quotedBody, setQuotedBody] = useState("");
+	const [forwardDocument, setForwardDocument] =
+		useState<ReturnType<typeof splitForwardDocument>>();
+	const completeBody = forwardDocument
+		? forwardDocument.before + body + forwardDocument.after
+		: body + quotedBody;
 	const [error, setError] = useState<string | null>(null);
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
@@ -112,15 +118,23 @@ export function useComposeForm(
 		setBcc(initialFields.bcc);
 		setShowCcBcc(initialFields.showCcBcc);
 		setSubject(initialFields.subject);
-		const quoteIndex = separateQuote
-			? initialFields.body.indexOf(
-					'<br><blockquote style="border-left: 2px solid #ccc;',
-				)
-			: -1;
+		const forward =
+			composeOptions.mode === "forward"
+				? splitForwardDocument(initialFields.body)
+				: undefined;
+		setForwardDocument(forward);
+		const quoteIndex =
+			!forward && separateQuote
+				? initialFields.body.indexOf(
+						'<br><blockquote style="border-left: 2px solid #ccc;',
+					)
+				: -1;
 		setBody(
-			quoteIndex >= 0
-				? initialFields.body.slice(0, quoteIndex)
-				: initialFields.body,
+			forward
+				? forward.note
+				: quoteIndex >= 0
+					? initialFields.body.slice(0, quoteIndex)
+					: initialFields.body,
 		);
 		setQuotedBody(quoteIndex >= 0 ? initialFields.body.slice(quoteIndex) : "");
 	}, [composeOptions, currentMailbox, senderConfig, separateQuote]);
@@ -149,7 +163,7 @@ export function useComposeForm(
 					cc: cc || undefined,
 					bcc: bcc || undefined,
 					subject,
-					body: body + quotedBody,
+					body: completeBody,
 					draft_mode: composeOptions.mode,
 					draft_source_id:
 						composeOptions.originalEmail?.id ||
@@ -203,7 +217,7 @@ export function useComposeForm(
 					composeOptions.draftEmail?.draft_source_id ||
 					undefined,
 				sender: selectedSender,
-				fields: { to, cc, bcc, subject, body: body + quotedBody },
+				fields: { to, cc, bcc, subject, body: completeBody },
 			});
 			if (outcome.status === "accepted") onClose();
 		} catch (err) {
@@ -232,6 +246,9 @@ export function useComposeForm(
 		setSubject,
 		body,
 		setBody,
+		forwardPreview: forwardDocument
+			? forwardDocument.before + forwardDocument.after
+			: undefined,
 		quotedBody,
 		quotedText: htmlToPlainText(quotedBody),
 		error: error ?? senderLoadError?.message ?? null,

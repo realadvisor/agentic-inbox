@@ -31,8 +31,8 @@ export function sanitizeEmailCss(css: string, inline = false): string {
 	}
 }
 
-/** Browser-only: build a complete, isolated email document, preserving body attributes. */
-export function createEmailDocument(html: string, autoSize: boolean, nonce: string): string {
+/** Browser-only: sanitize an email while retaining its document, layout and body attributes. */
+export function sanitizeEmailDocument(html: string): Document {
 	const clean = DOMPurify.sanitize(html, {
 		WHOLE_DOCUMENT: true,
 		USE_PROFILES: { html: true },
@@ -51,6 +51,12 @@ export function createEmailDocument(html: string, autoSize: boolean, nonce: stri
 		anchor.target = "_blank";
 		anchor.rel = "noopener noreferrer";
 	}
+	return doc;
+}
+
+/** Browser-only: build a complete, isolated email document, preserving body attributes. */
+export function createEmailDocument(html: string, autoSize: boolean, nonce: string): string {
+	const doc = sanitizeEmailDocument(html);
 	const csp = doc.createElement("meta");
 	csp.httpEquiv = "Content-Security-Policy";
 	csp.content = `default-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; img-src https: data: cid:; font-src 'none'; script-src 'nonce-${nonce}';`;
