@@ -14,7 +14,7 @@ export default function EmailPanelHeader({
 	showThreadCount,
 }: EmailPanelHeaderProps) {
 	return (
-		<div className="px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
+		<div className="flex min-h-12 flex-col justify-center px-4 py-2 border-b border-kumo-line shrink-0 md:px-6">
 			<h2 className="text-base font-semibold text-kumo-default">{subject}</h2>
 			{showThreadCount && (
 				<span className="text-xs text-kumo-subtle mt-0.5 block">

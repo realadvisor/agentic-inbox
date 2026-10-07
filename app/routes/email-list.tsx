@@ -372,11 +372,12 @@ export default function EmailListRoute() {
 
 	return (
 		<MailboxSplitView
+			alignToolbars
 			selectedEmailId={selectedEmailId}
 			isComposing={isComposing}
 		>
 			{/* Folder header */}
-			<div className="flex items-center justify-between px-4 py-3.5 border-b border-kumo-line shrink-0 md:px-5">
+			<div className="flex items-center justify-between px-4 py-2 min-h-12 border-b border-kumo-line shrink-0 md:px-5">
 				<h1 className="text-lg font-semibold text-kumo-default">
 					{folderName}
 				</h1>
@@ -409,7 +410,7 @@ export default function EmailListRoute() {
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-kumo-line text-sm">
+			<div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-4 py-2 border-b border-kumo-line text-sm">
 				{catalog.data?.some((t) => t.group_selection === "score") && (
 					<select
 						aria-label="Sort conversations"
@@ -543,7 +544,7 @@ export default function EmailListRoute() {
 			</div>
 
 			<div
-				className="flex flex-wrap gap-2 px-4 py-2 border-b border-kumo-line"
+				className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-4 py-2 border-b border-kumo-line"
 				aria-label="Conversation views"
 			>
 				{(["open", "done", "all"] as const).map((value) => (
