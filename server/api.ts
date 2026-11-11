@@ -851,22 +851,26 @@ export function createApi(db: Database, options: ApiOptions) {
 		"/api/v1/mailboxes/:mailboxId/emails/:id/attachments/:attachmentId",
 		async (c) => {
 			const [attachment] = await db<
-				{ storage_key: string; filename: string }[]
-			>`SELECT storage_key, filename FROM attachments
+				{ storage_key: string; filename: string; mimetype: string | null }[]
+			>`SELECT storage_key, filename, mimetype FROM attachments
 			WHERE mailbox_id = ${c.req.param("mailboxId")} AND email_id = ${id.parse(
 				c.req.param("id"),
 			)} AND id = ${id.parse(c.req.param("attachmentId"))}`;
-			if (!attachment || !/^[a-f0-9-]{36}$/.test(attachment.storage_key))
-				throw new HTTPException(404);
+			// The key is server-written and scoped by the mailbox query above; inbound
+			// mail stores `inbound-attachments/...` keys, imports store UUIDs.
+			if (!attachment?.storage_key) throw new HTTPException(404);
 			const content = await options.readAttachment(attachment.storage_key);
 			if (!content) throw new HTTPException(404);
+			const filename = encodeURIComponent(attachment.filename);
+			const type = inlineAttachmentType(attachment.mimetype);
 			return new Response(new Uint8Array(content), {
 				headers: {
-					"Content-Type": "application/octet-stream",
+					"Content-Type": type ?? "application/octet-stream",
 					"X-Content-Type-Options": "nosniff",
-					"Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(
-						attachment.filename,
-					)}`,
+					"Content-Disposition": `${type ? "inline" : "attachment"}; filename*=UTF-8''${filename}`,
+					...(type?.startsWith("image/")
+						? { "Content-Security-Policy": "default-src 'none'; sandbox" }
+						: {}),
 				},
 			});
 		},
@@ -886,6 +890,21 @@ export function createApi(db: Database, options: ApiOptions) {
 		app.route("/api/preview", options.previewRoutes);
 	app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 	return app;
+}
+
+// Types a browser can display without running attacker content (no SVG/HTML).
+const INLINE_ATTACHMENT_TYPES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/gif",
+	"image/webp",
+	"image/avif",
+	"application/pdf",
+]);
+export function inlineAttachmentType(mimetype: string | null | undefined) {
+	const type = mimetype?.split(";")[0]?.trim().toLowerCase();
+	if (type === "image/jpg" || type === "image/pjpeg") return "image/jpeg";
+	return type && INLINE_ATTACHMENT_TYPES.has(type) ? type : null;
 }
 
 function joinRecipients(value: string | string[] | undefined) {
