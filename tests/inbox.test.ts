@@ -348,3 +348,39 @@ test("compact lists preserve paging and thread metadata while details retain ful
 	assert.equal(empty.totalCount, 2);
 	assert.equal(empty.emails.length, 0);
 });
+
+test("inbound attachments with path-style storage keys can be opened", async () => {
+	const row = await store.insert(a, {
+		sender: "photos@example.test",
+		recipient: a,
+		subject: "Photos",
+		body: "See attached",
+	});
+	assert.ok(row);
+	const objects = new Map([
+		[`inbound-attachments/${a}/abc123/0`, new TextEncoder().encode("png")],
+		[`inbound-attachments/${a}/abc123/1`, new TextEncoder().encode("<svg/>")],
+	]);
+	const inbound = createApi(db, {
+		readAttachment: async (key) => objects.get(key) ?? null,
+	});
+	const image = randomUUID();
+	const svg = randomUUID();
+	await db`INSERT INTO attachments VALUES (${image}, ${a}, ${row.id}, 'plan.png', 'image/png', 3, ${`inbound-attachments/${a}/abc123/0`})`;
+	await db`INSERT INTO attachments VALUES (${svg}, ${a}, ${row.id}, 'logo.svg', 'image/svg+xml', 6, ${`inbound-attachments/${a}/abc123/1`})`;
+	const open = (attachment: string) =>
+		inbound.request(
+			`http://127.0.0.1:4311${prefix()}/emails/${row.id}/attachments/${attachment}`,
+		);
+
+	const png = await open(image);
+	assert.equal(png.status, 200);
+	assert.equal(await png.text(), "png");
+	assert.equal(png.headers.get("content-type"), "image/png");
+	assert.match(png.headers.get("content-disposition") ?? "", /^inline;/);
+
+	const unsafe = await open(svg);
+	assert.equal(unsafe.status, 200);
+	assert.equal(unsafe.headers.get("content-type"), "application/octet-stream");
+	assert.match(unsafe.headers.get("content-disposition") ?? "", /^attachment;/);
+});
