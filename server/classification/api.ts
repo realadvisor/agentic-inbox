@@ -121,15 +121,25 @@ export function classifierApi(
 	app.get("/classifiers", async (c) => {
 		await finishRuns(db);
 		return c.json(
-			await db`SELECT c.*,to_json(c.mailbox_ids) AS mailbox_ids,t.name,t.color,t.group_id,
-   (SELECT row_to_json(s) FROM (SELECT r.id,r.status,r.created_at,count(i.*)::int AS total,
+			await db`WITH err_counts AS (
+    SELECT classifier_id,count(*)::int AS errors
+    FROM conversation_classifications
+    WHERE status='error'
+    GROUP BY classifier_id
+   )
+   SELECT c.*,to_json(c.mailbox_ids) AS mailbox_ids,t.name,t.color,t.group_id,
+   (SELECT row_to_json(s) FROM (
+    SELECT r.id,r.status,r.created_at,count(i.status)::int AS total,
      count(*) FILTER(WHERE i.status IN ('complete','review'))::int AS processed,
      count(*) FILTER(WHERE i.status='review')::int AS review,
      count(*) FILTER(WHERE i.status='failed')::int AS failed,
      count(*) FILTER(WHERE i.status='skipped')::int AS skipped
-    FROM classifier_runs r LEFT JOIN classifier_run_items i ON i.run_id=r.id WHERE r.classifier_id=c.id GROUP BY r.id ORDER BY r.created_at DESC LIMIT 1) s) AS run,
-   (SELECT count(*)::int FROM conversation_classifications j WHERE j.classifier_id=c.id AND j.status='error') AS errors
-   FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.archived_at IS NULL ORDER BY c.updated_at,c.id`,
+    FROM (SELECT id,status,created_at FROM classifier_runs WHERE classifier_id=c.id ORDER BY created_at DESC LIMIT 1) r
+    LEFT JOIN classifier_run_items i ON i.run_id=r.id
+    GROUP BY r.id,r.status,r.created_at
+   ) s) AS run,
+   coalesce(e.errors,0)::int AS errors
+   FROM classifiers c JOIN tags t ON t.id=c.tag_id LEFT JOIN err_counts e ON e.classifier_id=c.id WHERE t.archived_at IS NULL ORDER BY c.updated_at,c.id`,
 		);
 	});
 	async function save(classifierId: string | null, body: unknown) {

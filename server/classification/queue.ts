@@ -206,6 +206,7 @@ export async function processJob(
 	);
 	for (const result of results)
 		if (result.status === "rejected") throw result.reason;
+	if (runIds.length) await finishRuns(db);
 	for (const result of results) {
 		if (result.status === "fulfilled" && "retry" in result.value)
 			return result.value;
@@ -222,7 +223,7 @@ async function claimJobs(db: Database, token: string) {
 		// Use the same lock order as configuration writers. Commit every ready
 		// sibling's lease together so competing deliveries cannot split a batch.
 		const classifiers =
-			await tx`SELECT c.*,classifier_config_key(c.id,${anchor.mailbox_id}) AS config_key FROM classifiers c JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR UPDATE OF c`;
+			await tx`SELECT c.*,classifier_config_key(c.id,${anchor.mailbox_id}) AS config_key FROM classifiers c JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR SHARE OF c`;
 		const [conversation] =
 			await tx`SELECT generation FROM conversations WHERE mailbox_id=${anchor.mailbox_id} AND thread_id=${anchor.thread_id} FOR UPDATE`;
 		const jobs = await tx<
@@ -355,7 +356,7 @@ async function processSingleJob(
 	try {
 		await db.begin(async (tx) => {
 			const [classifier] =
-				await tx`SELECT * FROM classifiers WHERE id=${j.classifier_id} FOR UPDATE`;
+				await tx`SELECT * FROM classifiers WHERE id=${j.classifier_id} FOR SHARE`;
 			const [conversation] =
 				await tx`SELECT generation FROM conversations WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} FOR UPDATE`;
 			const [current] =
@@ -425,7 +426,6 @@ async function processSingleJob(
 	} finally {
 		await db`UPDATE conversation_classifications SET lease_id=NULL,lease_until=NULL WHERE token=${j.token} AND lease_id=${j.lease_id}`;
 	}
-	await finishRuns(db);
 	return delivery;
 }
 
@@ -438,18 +438,19 @@ export async function failDelivery(
 		const [candidate] = await tx<
 			Job[]
 		>`SELECT * FROM conversation_classifications WHERE token=${token} AND status='pending'`;
-		if (!candidate) return { ack: true } as const;
-		await tx`SELECT id FROM classifiers WHERE id=${candidate.classifier_id} FOR UPDATE`;
+		if (!candidate) return { ack: true, hasRun: false } as const;
+		await tx`SELECT id FROM classifiers WHERE id=${candidate.classifier_id} FOR SHARE`;
 		await tx`SELECT generation FROM conversations WHERE mailbox_id=${candidate.mailbox_id} AND thread_id=${candidate.thread_id} FOR UPDATE`;
 		const [current] =
 			await tx`SELECT greatest(0,ceil(extract(epoch FROM lease_until-now())))::int AS remaining FROM conversation_classifications WHERE token=${token} AND status='pending' FOR UPDATE`;
-		if (current?.remaining > 0) return { retry: current.remaining + 1 };
+		if (current?.remaining > 0)
+			return { retry: current.remaining + 1, hasRun: false };
 		const [row] =
 			await tx`UPDATE conversation_classifications SET status='error',error=coalesce(error,'queue_delivery_exhausted'),lease_until=NULL,lease_id=NULL,updated_at=now() WHERE token=${token} AND status='pending' RETURNING *`;
 		if (row?.run_id)
 			await tx`UPDATE classifier_run_items SET status='failed' WHERE run_id=${row.run_id} AND mailbox_id=${row.mailbox_id} AND thread_id=${row.thread_id} AND status='pending'`;
-		return { ack: true } as const;
+		return { ack: true, hasRun: !!row?.run_id } as const;
 	});
-	await finishRuns(db);
-	return result.ack === true ? { ack: true } : { retry: result.retry };
+	if (result.hasRun) await finishRuns(db);
+	return "ack" in result ? { ack: true } : { retry: result.retry };
 }

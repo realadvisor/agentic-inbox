@@ -509,3 +509,53 @@ test("mixed request and attempt pages keep older attempts and apply filters befo
 		[attemptIds[1], requestIds[1], attemptIds[2]],
 	);
 });
+
+test("status=review and status=succeeded filter provider runs and respect request cutoff bounds", async () => {
+	const { thread } = await prepare();
+	await db`DELETE FROM classification_attempts WHERE thread_id=${thread}`;
+	const reviewIds: string[] = [],
+		succeededIds: string[] = [],
+		queuedIds: string[] = [];
+	for (const [idx, second] of [10, 8, 6].entries()) {
+		const [r] =
+			await db`INSERT INTO classifier_provider_runs(mailbox_id,thread_id,subject,started_at,status,requested_model,request_body) VALUES(${mailbox},${thread},'Status filter','2026-10-02T00:00:00Z'::timestamptz+${second}*interval '1 second','succeeded','test','{}') RETURNING id`;
+		const disposition = idx === 1 ? "review" : "applied";
+		await db`INSERT INTO classifier_provider_run_items(run_id,question_key,classifier_id,classifier_name,question,revision,generation,job_token,lease_id,attempt,disposition) VALUES(${r.id},'match',${classifierIds[0]},'Filter','Filter?',1,1,${crypto.randomUUID()},${crypto.randomUUID()},1,${disposition})`;
+		if (disposition === "review") reviewIds.push(r.id);
+		else succeededIds.push(r.id);
+	}
+	for (const second of [9, 2]) {
+		const [a] =
+			await db`INSERT INTO classification_attempts(job_token,attempt,mailbox_id,thread_id,classifier_id,classifier_name,question,subject,revision,generation,started_at,status) VALUES(${crypto.randomUUID()},1,${mailbox},${thread},${classifierIds[0]},'Filter','Filter?','Status filter',1,1,'2026-10-02T00:00:00Z'::timestamptz+${second}*interval '1 second','queued') RETURNING id`;
+		queuedIds.push(a.id);
+	}
+	async function pages(extra: Record<string, string>) {
+		const ids: string[] = [];
+		let cursor: string | null = null;
+		do {
+			const query = new URLSearchParams({
+				thread,
+				mailbox,
+				limit: "2",
+				...extra,
+			});
+			if (cursor) query.set("cursor", cursor);
+			const res = await app.request("/?" + query);
+			assert.equal(res.status, 200);
+			const page = await res.json();
+			ids.push(...page.runs.map((r: { id: string }) => r.id));
+			cursor = page.next_cursor;
+		} while (cursor);
+		return ids;
+	}
+	assert.deepEqual(await pages({ status: "review" }), reviewIds);
+	assert.deepEqual(await pages({ status: "succeeded" }), succeededIds);
+	assert.deepEqual(await pages({ status: "queued" }), queuedIds);
+	assert.deepEqual(await pages({}), [
+		succeededIds[0],
+		queuedIds[0],
+		reviewIds[0],
+		succeededIds[1],
+		queuedIds[1],
+	]);
+});

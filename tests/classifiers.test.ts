@@ -1649,3 +1649,81 @@ test("inbound dispatch happens before preparing a historical run", async () => {
 	); // Deliberately invalid backfill configuration cannot prevent live delivery.
 	assert.equal(delivered, true);
 });
+
+test("outbox batch boundary keeps multi-classifier conversation siblings together and tracks priority changes", async () => {
+	await reset();
+	const allClassifiers =
+		await db`SELECT id FROM classifiers ORDER BY id LIMIT 3`;
+	assert.equal(allClassifiers.length, 3);
+	await db`UPDATE classifiers SET enabled=true,mailbox_ids='{}' WHERE id IN ${db(allClassifiers.map((c) => c.id))}`;
+	const bulkThread = await message();
+	await db`UPDATE conversation_classifications SET priority=1 WHERE thread_id=${bulkThread}`;
+	const bulkOutbox =
+		await db`SELECT priority FROM classifier_outbox o JOIN conversation_classifications j ON j.token=o.job_token WHERE j.thread_id=${bulkThread}`;
+	assert.ok(bulkOutbox.every((r) => r.priority === 1));
+	const threads: string[] = [];
+	for (let i = 0; i < 34; i++) threads.push(await message());
+	const lastThread = threads.at(-1)!;
+	const expectedLastTokens = (
+		await db`SELECT token FROM conversation_classifications WHERE thread_id=${lastThread} ORDER BY token`
+	).map((r) => r.token as string);
+	const liveMessages: { body: { tokens: string[] } }[] = [];
+	const bulkMessages: { body: { tokens: string[] } }[] = [];
+	const count = await publishOutbox(db, {
+		live: {
+			sendBatch: async (msgs) => {
+				liveMessages.push(...(msgs as { body: { tokens: string[] } }[]));
+			},
+		},
+		backfill: {
+			sendBatch: async (msgs) => {
+				bulkMessages.push(...(msgs as { body: { tokens: string[] } }[]));
+			},
+		},
+	});
+	assert.equal(count, 102);
+	assert.equal(bulkMessages.length, 0);
+	const lastGroup = liveMessages.find((m) =>
+		m.body.tokens.includes(expectedLastTokens[0]),
+	);
+	assert.ok(lastGroup);
+	assert.deepEqual([...lastGroup.body.tokens].sort(), expectedLastTokens);
+	const remaining = await publishOutbox(db, {
+		live: { sendBatch: async () => {} },
+		backfill: {
+			sendBatch: async (msgs) => {
+				bulkMessages.push(...(msgs as { body: { tokens: string[] } }[]));
+			},
+		},
+	});
+	assert.equal(remaining, 3);
+	assert.equal(bulkMessages.length, 1);
+	assert.equal(bulkMessages[0].body.tokens.length, 3);
+});
+
+test("GET /classifiers returns accurate latest run stats and error counts", async () => {
+	await reset();
+	const before = await (await call("/classifiers")).json();
+	const current = before.find((c: { id: string }) => c.id === classifierId);
+	assert.equal(current.run, null);
+	assert.equal(current.errors, 0);
+	const [emptyRun] =
+		await db`INSERT INTO classifier_runs(classifier_id,revision,actor,status) VALUES(${classifierId},1,'test','completed') RETURNING id`;
+	const withEmpty = await (await call("/classifiers")).json();
+	const emptyCurrent = withEmpty.find(
+		(c: { id: string }) => c.id === classifierId,
+	);
+	assert.equal(emptyCurrent.run.id, emptyRun.id);
+	assert.equal(emptyCurrent.run.total, 0);
+	const thread = await message();
+	const [createdRun] =
+		await db`INSERT INTO classifier_runs(classifier_id,revision,actor,status) VALUES(${classifierId},1,'test','completed') RETURNING id`;
+	await db`INSERT INTO classifier_run_items(run_id,mailbox_id,thread_id,status) VALUES(${createdRun.id},${mailbox},${thread},'failed')`;
+	await db`UPDATE conversation_classifications SET status='error',error='failed' WHERE thread_id=${thread} AND classifier_id=${classifierId}`;
+	const after = await (await call("/classifiers")).json();
+	const afterCurrent = after.find((c: { id: string }) => c.id === classifierId);
+	assert.equal(afterCurrent.run.id, createdRun.id);
+	assert.equal(afterCurrent.run.total, 1);
+	assert.equal(afterCurrent.run.failed, 1);
+	assert.equal(afterCurrent.errors, 1);
+});

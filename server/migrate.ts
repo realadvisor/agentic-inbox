@@ -46,6 +46,7 @@ export async function migrate(db: Database) {
 		[45, "045_inbound_recovery.sql"],
 		[46, "046_group_question_capacity.sql"],
 		[47, "047_api_key_senders.sql"],
+		[48, "048_classifier_outbox_priority.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),
@@ -96,6 +97,16 @@ export async function migrate(db: Database) {
 					"emails_thread_list",
 					"classifier_reviews_mailbox",
 					"conversation_tags_manual",
+				],
+			],
+			[
+				49,
+				"049_classifier_perf_indexes.sql",
+				[
+					"classifier_outbox_ready",
+					"classifier_outbox_stale",
+					"conversation_classifications_classifier_errors",
+					"classifier_runs_classifier_latest",
 				],
 			],
 		] as const) {

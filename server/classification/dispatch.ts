@@ -52,10 +52,42 @@ export async function publishOutbox(db: Database, queues: ClassifierQueues) {
 	if (await creditsPaused(db)) return 0;
 	// Publish and commit new-mail work before touching bulk preparation or delivery.
 	const live = await publishPriority(db, queues, true, 100);
-	if (live === 100) return live;
+	if (live >= 100) return live;
 	const advanced = await advanceBackfills(db);
-	const bulk = await publishPriority(db, queues, false, 100 - live);
+	const bulk = await publishPriority(
+		db,
+		queues,
+		false,
+		Math.max(0, 100 - live),
+	);
 	return advanced ? Math.max(100, live + bulk) : live + bulk;
+}
+
+type OutboxRow = {
+	job_token: string;
+	priority: number;
+	mailbox_id: string;
+	thread_id: string;
+	generation: number;
+	delay: number;
+};
+
+type ClaimedCandidate = OutboxRow & {
+	job_status: string | null;
+	active_classifier_id: string | null;
+	classifier_enabled: boolean | null;
+	classifier_revision: number | null;
+	job_revision: number | null;
+};
+
+function isPublishable(row: ClaimedCandidate, live: boolean) {
+	return (
+		row.job_status === "pending" &&
+		!!row.active_classifier_id &&
+		(row.classifier_enabled === true || row.priority === 2) &&
+		row.classifier_revision === row.job_revision &&
+		(live ? row.priority === 0 : row.priority !== 0)
+	);
 }
 
 async function publishPriority(
@@ -64,46 +96,141 @@ async function publishPriority(
 	live: boolean,
 	limit: number,
 ) {
-	return db.begin(async (tx) => {
-		const rows =
-			await tx`SELECT o.job_token,j.priority,j.mailbox_id,j.thread_id,j.generation,greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay
-   FROM classifier_outbox o JOIN conversation_classifications j ON j.token=o.job_token JOIN classifiers c ON c.id=j.classifier_id
-   WHERE (o.published_at IS NULL OR o.published_at<now()-interval '25 hours') AND j.status='pending' AND (c.enabled OR j.priority=2) AND c.revision=j.revision AND ${live ? tx`j.priority=0` : tx`j.priority<>0`}
-   ORDER BY j.priority,o.created_at,o.job_token LIMIT ${limit} FOR UPDATE OF o SKIP LOCKED`;
-		for (const priority of [0, 1]) {
-			const groups = new Map<
-				string,
-				{ body: WorkMessage; contentType: "json"; delaySeconds: number }
-			>();
-			for (const row of rows.filter(
-				(r) => (r.priority === 0 ? 0 : 1) === priority,
-			)) {
-				const key = JSON.stringify([
-					row.mailbox_id,
-					row.thread_id,
-					row.generation,
-					row.delay,
-				]);
-				let group = groups.get(key);
-				if (!group) {
-					group = {
-						body: { version: 2, tokens: [] },
-						contentType: "json",
-						delaySeconds: Math.min(86400, row.delay),
-					};
-					groups.set(key, group);
-				}
-				if (group.body.version === 2) group.body.tokens.push(row.job_token);
+	if (limit <= 0) return 0;
+	const rows = await db.begin(async (tx) => {
+		const priorityFilter = live ? tx`o.priority=0` : tx`o.priority<>0`;
+		const orderClause = live
+			? tx`o.created_at,o.job_token`
+			: tx`o.priority,o.created_at,o.job_token`;
+		const initial = await tx<ClaimedCandidate[]>`
+   WITH batch AS MATERIALIZED (
+    SELECT o.job_token,o.created_at
+    FROM classifier_outbox o
+    WHERE o.published_at IS NULL AND ${priorityFilter}
+    ORDER BY ${orderClause}
+    LIMIT ${limit}
+    FOR UPDATE OF o SKIP LOCKED
+   )
+   SELECT b.job_token,j.priority,j.mailbox_id,j.thread_id,j.generation,
+    greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay,
+    j.status AS job_status,c.id AS active_classifier_id,
+    c.enabled AS classifier_enabled,c.revision AS classifier_revision,
+    j.revision AS job_revision
+   FROM batch b
+   LEFT JOIN conversation_classifications j ON j.token=b.job_token
+   LEFT JOIN classifiers c ON c.id=j.classifier_id`;
+		const orphanTokens: string[] = [];
+		const parkTokens: string[] = [];
+		const eligible: OutboxRow[] = [];
+		const collect = (candidates: ClaimedCandidate[]) => {
+			for (const row of candidates) {
+				if (isPublishable(row, live)) eligible.push(row);
+				else if (row.job_status !== "pending") orphanTokens.push(row.job_token);
+				else parkTokens.push(row.job_token);
 			}
-			if (groups.size)
-				await (priority === 0 ? queues.live : queues.backfill).sendBatch([
-					...groups.values(),
-				]);
+		};
+		collect(initial);
+		if (eligible.length < limit) {
+			const stale = await tx<ClaimedCandidate[]>`
+    WITH batch AS MATERIALIZED (
+     SELECT o.job_token,o.created_at
+     FROM classifier_outbox o
+     WHERE o.published_at<now()-interval '25 hours' AND ${priorityFilter}
+     ORDER BY o.published_at,o.created_at,o.job_token
+     LIMIT ${limit - eligible.length}
+     FOR UPDATE OF o SKIP LOCKED
+    )
+    SELECT b.job_token,j.priority,j.mailbox_id,j.thread_id,j.generation,
+     greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay,
+     j.status AS job_status,c.id AS active_classifier_id,
+     c.enabled AS classifier_enabled,c.revision AS classifier_revision,
+     j.revision AS job_revision
+    FROM batch b
+    LEFT JOIN conversation_classifications j ON j.token=b.job_token
+    LEFT JOIN classifiers c ON c.id=j.classifier_id`;
+			collect(stale);
 		}
-		if (rows.length)
-			await tx`UPDATE classifier_outbox SET published_at=now() WHERE job_token IN ${tx(rows.map((r) => r.job_token))}`;
-		return rows.length;
+		if (orphanTokens.length)
+			await tx`DELETE FROM classifier_outbox WHERE job_token IN ${tx(orphanTokens)}`;
+		if (parkTokens.length)
+			await tx`UPDATE classifier_outbox SET published_at=now() WHERE job_token IN ${tx(parkTokens)}`;
+		if (!eligible.length) return [];
+		// Expand claimed rows to ready siblings in the same conversation so a
+		// multi-classifier thread is dispatched as one message instead of racing.
+		const threads = new Map<
+			string,
+			{ mailbox_id: string; thread_id: string; generation: number }
+		>();
+		for (const row of eligible) {
+			threads.set(`${row.mailbox_id}\0${row.thread_id}\0${row.generation}`, {
+				mailbox_id: row.mailbox_id,
+				thread_id: row.thread_id,
+				generation: row.generation,
+			});
+		}
+		const claimedTokens = eligible.map((r) => r.job_token);
+		const siblings = await tx<OutboxRow[]>`
+   SELECT o.job_token,j.priority,j.mailbox_id,j.thread_id,j.generation,
+    greatest(0,ceil(extract(epoch FROM j.available_at-now())))::int AS delay
+   FROM jsonb_to_recordset(${tx.json([...threads.values()])}) AS t(mailbox_id text,thread_id uuid,generation int)
+   JOIN conversation_classifications j
+    ON j.mailbox_id=t.mailbox_id AND j.thread_id=t.thread_id AND j.status='pending' AND j.generation=t.generation
+   JOIN classifiers c ON c.id=j.classifier_id
+   JOIN classifier_outbox o ON o.job_token=j.token
+   WHERE (c.enabled OR j.priority=2) AND c.revision=j.revision
+    AND ${live ? tx`j.priority=0` : tx`j.priority<>0`}
+    AND (o.published_at IS NULL OR o.published_at<now()-interval '25 hours')
+    AND o.job_token NOT IN ${tx(claimedTokens)}
+   FOR UPDATE OF o SKIP LOCKED`;
+		const all = [...eligible, ...siblings];
+		// Hold a short lease outside the transaction while Cloud Tasks accepts the batch.
+		await tx`UPDATE classifier_outbox SET published_at=now()-interval '24 hours 55 minutes' WHERE job_token IN ${tx(all.map((r) => r.job_token))}`;
+		return all;
 	});
+	if (!rows.length) return 0;
+	const tokens = rows.map((r) => r.job_token);
+	const groups = new Map<
+		string,
+		{ body: WorkMessage; contentType: "json"; delaySeconds: number }[]
+	>();
+	for (const row of rows) {
+		const key = JSON.stringify([
+			row.mailbox_id,
+			row.thread_id,
+			row.generation,
+			row.delay,
+		]);
+		let buckets = groups.get(key);
+		if (!buckets) {
+			buckets = [];
+			groups.set(key, buckets);
+		}
+		let current = buckets.at(-1);
+		if (
+			!current ||
+			(current.body.version === 2 && current.body.tokens.length >= 100)
+		) {
+			current = {
+				body: { version: 2, tokens: [] },
+				contentType: "json",
+				delaySeconds: Math.min(86400, row.delay),
+			};
+			buckets.push(current);
+		}
+		if (current.body.version === 2) current.body.tokens.push(row.job_token);
+	}
+	const messages = [...groups.values()].flat();
+	try {
+		if (messages.length)
+			await (live ? queues.live : queues.backfill).sendBatch(messages);
+	} catch (error) {
+		await db`UPDATE classifier_outbox SET published_at=NULL WHERE job_token IN ${db(tokens)}`.catch(
+			() => undefined,
+		);
+		throw error;
+	}
+	await db`UPDATE classifier_outbox SET published_at=now() WHERE job_token IN ${db(tokens)}`;
+	return rows.length;
 }
 
 /** Batch size is one in production; sequential iteration preserves the configured
@@ -164,7 +291,6 @@ export async function consumeBatch(
 			});
 		}
 	}
-	await finishRuns(db);
 }
 
 /** Paused deliveries remain in the outbox and are republished after re-enabling. */
