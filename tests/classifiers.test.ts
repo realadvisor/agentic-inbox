@@ -1664,10 +1664,6 @@ test("outbox batch boundary keeps multi-classifier conversation siblings togethe
 	assert.ok(bulkOutbox.every((r) => r.priority === 1));
 	const threads: string[] = [];
 	for (let i = 0; i < 34; i++) threads.push(await message());
-	const lastThread = threads.at(-1)!;
-	const expectedLastTokens = (
-		await db`SELECT token FROM conversation_classifications WHERE thread_id=${lastThread} ORDER BY token`
-	).map((r) => r.token as string);
 	const liveMessages: { body: { tokens: string[] } }[] = [];
 	const bulkMessages: { body: { tokens: string[] } }[] = [];
 	const count = await publishOutbox(db, {
@@ -1684,11 +1680,16 @@ test("outbox batch boundary keeps multi-classifier conversation siblings togethe
 	});
 	assert.equal(count, 102);
 	assert.equal(bulkMessages.length, 0);
-	const lastGroup = liveMessages.find((m) =>
-		m.body.tokens.includes(expectedLastTokens[0]),
-	);
-	assert.ok(lastGroup);
-	assert.deepEqual([...lastGroup.body.tokens].sort(), expectedLastTokens);
+	for (const thread of threads) {
+		const expectedTokens = (
+			await db`SELECT token FROM conversation_classifications WHERE thread_id=${thread} ORDER BY token`
+		).map((r) => r.token as string);
+		const group = liveMessages.find((m) =>
+			m.body.tokens.includes(expectedTokens[0]),
+		);
+		assert.ok(group);
+		assert.deepEqual([...group.body.tokens].sort(), expectedTokens);
+	}
 	const remaining = await publishOutbox(db, {
 		live: { sendBatch: async () => {} },
 		backfill: {
@@ -1727,4 +1728,64 @@ test("GET /classifiers returns accurate latest run stats and error counts", asyn
 	assert.equal(afterCurrent.run.total, 1);
 	assert.equal(afterCurrent.run.failed, 1);
 	assert.equal(afterCurrent.errors, 1);
+});
+
+test("processJob persists mixed sibling outcomes together and releases all leases on configuration_changed", async () => {
+	await reset();
+	const classifiers =
+		await db`SELECT id,tag_id FROM classifiers ORDER BY id LIMIT 3`;
+	assert.equal(classifiers.length, 3);
+	await db`UPDATE classifiers SET enabled=false`;
+	await db`UPDATE classifiers SET enabled=true,mailbox_ids='{}' WHERE id IN ${db(classifiers.map((c) => c.id))}`;
+	const thread = await message();
+	await setConversationTags(
+		db,
+		mailbox,
+		[thread],
+		classifiers[2].tag_id,
+		"add",
+		"reviewer@example.test",
+	);
+	const jobs =
+		await db`SELECT token,classifier_id FROM conversation_classifications WHERE thread_id=${thread} ORDER BY classifier_id`;
+	assert.equal(jobs.length, 3);
+	await processJob(db, "test", jobs[0].token, async (_url, init) => {
+		const payload = JSON.parse(String(init?.body));
+		const keys = Object.keys(payload.questions);
+		assert.equal(keys.length, 2);
+		return Response.json({
+			model: "jev-test",
+			answers: {
+				[keys[0]]: { type: "noul", noul: 0.99 },
+				[keys[1]]: { type: "noul", noul: 0.5 },
+			},
+		});
+	});
+	const saved =
+		await db`SELECT classifier_id,status,answer,lease_id,lease_until FROM conversation_classifications WHERE thread_id=${thread} ORDER BY classifier_id`;
+	assert.equal(saved[0].status, "complete");
+	assert.equal(saved[0].answer, true);
+	assert.equal(saved[1].status, "review");
+	assert.equal(saved[1].answer, null);
+	assert.equal(saved[2].status, "skipped");
+	assert.ok(saved.every((r) => r.lease_id === null && r.lease_until === null));
+
+	const thread2 = await message();
+	const jobs2 =
+		await db`SELECT token,classifier_id FROM conversation_classifications WHERE thread_id=${thread2} ORDER BY classifier_id`;
+	await assert.rejects(
+		processJob(db, "test", jobs2[0].token, async (url, init) => {
+			await db`INSERT INTO jev_examples(classifier_id,mailbox_id,thread_id,role,labels,state,config,actor) VALUES(${classifiers[0].id},${mailbox},${thread},'teach','["yes"]'::jsonb,'{}'::jsonb,'changed','test')`;
+			return yes(url, init);
+		}),
+		/configuration_changed/,
+	);
+	const afterConfigChange =
+		await db`SELECT status,lease_id,lease_until FROM conversation_classifications WHERE thread_id=${thread2}`;
+	assert.ok(afterConfigChange.every((r) => r.status === "pending"));
+	assert.ok(
+		afterConfigChange.every(
+			(r) => r.lease_id === null && r.lease_until === null,
+		),
+	);
 });

@@ -25,6 +25,7 @@
 	"vars": {
 		"MAIL_MODE": "live",
 		"CLASSIFIERS_ENABLED": "true",
+		"CLASSIFIER_LOG_RETENTION_DAYS": "14",
 		"CLOUD_TASKS_PROJECT": "realadvisor-prod",
 		"CLOUD_TASKS_LOCATION": "europe-west1",
 		"CLOUD_TASKS_SERVICE_ACCOUNT": "inbox-classifications@realadvisor-prod.iam.gserviceaccount.com",

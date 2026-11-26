@@ -14,7 +14,8 @@ import {
 	withoutExamples,
 } from "../../shared/jev-budget";
 import type { DecisionRules } from "../../shared/decision-rules";
-import { curatedQuestion } from "./curated-examples";
+import { curatedQuestion, listExamples } from "./curated-examples";
+import type { CuratedExample, ExampleTarget } from "../../shared/jev-examples";
 import {
 	interpretAnswer,
 	type JevQuestion,
@@ -145,76 +146,173 @@ export async function processJob(
 		return { ack: true };
 	}
 	const claims = await claimJobs(db, token);
+	const activeJobs = claims.filter((c): c is ClaimedJob => "token" in c);
+	if (!activeJobs.length) {
+		for (const claim of claims)
+			if ("retry" in claim && claim.retry !== undefined)
+				return { retry: claim.retry };
+		return { ack: true };
+	}
 	const contexts = new Map<number, CaptureJob>();
 	const runIds = [
+		...new Set(activeJobs.flatMap((c) => (c.run_id ? [c.run_id] : []))),
+	];
+	const mailboxId = activeJobs[0].mailbox_id;
+	const threadId = activeJobs[0].thread_id;
+	const tagIds = [...new Set(activeJobs.map((j) => j.tag_id))];
+	const groupIds = [
 		...new Set(
-			claims.flatMap((c) => ("run_id" in c && c.run_id ? [c.run_id] : [])),
+			activeJobs.flatMap((j) => (j.tag_group_id ? [j.tag_group_id] : [])),
 		),
 	];
-	const runs = runIds.length
-		? await db`SELECT id,created_at FROM classifier_runs WHERE id IN ${db(runIds)}`
-		: [];
-	const evaluatedAt = new Date();
-	const states = new Map<string, ReturnType<typeof conversationState>>();
-	const loadState = (job: Job) => {
-		const id = `${job.mailbox_id}/${job.thread_id}/${job.generation}`;
-		let state = states.get(id);
-		if (!state) {
-			const run = runs.find((r) => r.id === job.run_id);
-			state = conversationState(
-				db,
-				job.mailbox_id,
-				job.thread_id,
-				run?.created_at ?? evaluatedAt,
-			);
-			states.set(id, state);
-		}
-		return state;
-	};
-	const batch = batchRequests(
-		request,
-		claims.length,
-		(url, init, indexes, questionKeys) =>
-			creditGuard(db, (url, init) =>
-				captureProviderRequest(
+	let committed = false;
+	try {
+		const [runs, eligibilityRows, groupRows] = await Promise.all([
+			runIds.length
+				? db`SELECT id,created_at FROM classifier_runs WHERE id IN ${db(runIds)}`
+				: Promise.resolve([]),
+			db<
+				{
+					active: boolean;
+					has_mail: boolean;
+					tag_id: string;
+					manual: boolean;
+				}[]
+			>`SELECT classifier_thread_active(${mailboxId},${threadId}) AS active,
+     EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${mailboxId} AND thread_id=${threadId} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')) AS has_mail,
+     t.tag_id,
+     tag_manually_overridden(${mailboxId},${threadId},t.tag_id) AS manual
+    FROM unnest(${tagIds}::uuid[]) AS t(tag_id)`,
+			groupIds.length
+				? db<({ id: string } & TagGroupInput)[]>`
+     SELECT g.*,
+      (SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id)
+       FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL) AS tags
+     FROM tag_groups g
+     WHERE g.id IN ${db(groupIds)}`
+				: Promise.resolve([]),
+		]);
+		const threadActive = eligibilityRows[0]?.active ?? false;
+		const threadHasMail = eligibilityRows[0]?.has_mail ?? false;
+		const manualByTag = new Map(
+			eligibilityRows.map((r) => [r.tag_id, r.manual]),
+		);
+		const groupsById = new Map(groupRows.map((g) => [g.id, g]));
+		const examplesCache = new Map<string, Promise<CuratedExample[]>>();
+		const getExamples = (target: ExampleTarget) => {
+			const cacheKey = target.group_id
+				? `group:${target.group_id}`
+				: `classifier:${target.classifier_id!}`;
+			let cached = examplesCache.get(cacheKey);
+			if (!cached) {
+				cached = listExamples(db, target, mailboxId);
+				examplesCache.set(cacheKey, cached);
+			}
+			return cached;
+		};
+		const evaluatedAt = new Date();
+		const states = new Map<string, ReturnType<typeof conversationState>>();
+		const loadState = (job: Job) => {
+			const id = `${job.mailbox_id}/${job.thread_id}/${job.generation}`;
+			let state = states.get(id);
+			if (!state) {
+				const run = runs.find((r) => r.id === job.run_id);
+				state = conversationState(
 					db,
-					request,
-					url,
-					init ?? {},
-					indexes.map((index) => {
-						const job = contexts.get(index);
-						if (!job) throw new Error("Missing classifier log context");
-						return {
-							...job,
-							question_key: questionKeys?.[indexes.indexOf(index)],
-						};
-					}),
-				),
-			)(url, init),
-	);
-	const results = await Promise.allSettled(
-		claims.map((claimed, index) =>
-			processSingleJob(
-				db,
-				key,
-				claimed,
-				batch.forJob(index),
-				(job) => contexts.set(index, job),
-				loadState,
-			).finally(() => batch.done(index)),
-		),
-	);
-	for (const result of results)
-		if (result.status === "rejected") throw result.reason;
-	if (runIds.length) await finishRuns(db);
-	for (const result of results) {
-		if (result.status === "fulfilled" && "retry" in result.value)
-			return result.value;
+					job.mailbox_id,
+					job.thread_id,
+					run?.created_at ?? evaluatedAt,
+				);
+				states.set(id, state);
+			}
+			return state;
+		};
+		const batch = batchRequests(
+			request,
+			claims.length,
+			(url, init, indexes, questionKeys) =>
+				creditGuard(db, (url, init) =>
+					captureProviderRequest(
+						db,
+						request,
+						url,
+						init ?? {},
+						indexes.map((index) => {
+							const job = contexts.get(index);
+							if (!job) throw new Error("Missing classifier log context");
+							return {
+								...job,
+								question_key: questionKeys?.[indexes.indexOf(index)],
+							};
+						}),
+					),
+				)(url, init),
+		);
+		const results = await Promise.allSettled(
+			claims.map((claimed, index) =>
+				evaluateSingleJob(
+					db,
+					key,
+					claimed,
+					batch.forJob(index),
+					(job) => contexts.set(index, job),
+					loadState,
+					{
+						threadActive,
+						threadHasMail,
+						manualByTag,
+						groupsById,
+						getExamples,
+					},
+				).finally(() => batch.done(index)),
+			),
+		);
+		for (const result of results)
+			if (result.status === "rejected") throw result.reason;
+		const evaluations: JobEvaluation[] = [];
+		let claimRetry: number | undefined;
+		for (const result of results) {
+			if (result.status !== "fulfilled") continue;
+			if ("job" in result.value) evaluations.push(result.value);
+			else if ("retry" in result.value && result.value.retry !== undefined)
+				claimRetry = Math.min(claimRetry ?? Infinity, result.value.retry);
+		}
+		const persistRetry = evaluations.length
+			? await persistConversationResults(db, mailboxId, threadId, evaluations)
+			: undefined;
+		committed = true;
+		if (runIds.length) await finishRuns(db);
+		const retry =
+			claimRetry !== undefined && persistRetry !== undefined
+				? Math.min(claimRetry, persistRetry)
+				: (claimRetry ?? persistRetry);
+		return retry !== undefined ? { retry } : { ack: true };
+	} finally {
+		if (!committed) {
+			const leases = activeJobs.map((j) => ({
+				token: j.token,
+				lease_id: j.lease_id,
+			}));
+			await db`UPDATE conversation_classifications j SET lease_id=NULL,lease_until=NULL FROM jsonb_to_recordset(${db.json(leases)}) AS l(token uuid,lease_id uuid) WHERE j.token=l.token AND j.lease_id=l.lease_id`;
+		}
 	}
-	return { ack: true };
 }
 
-async function claimJobs(db: Database, token: string) {
+type ClaimedJob = Job & {
+	attempts: number;
+	lease_id: string;
+	question: string;
+	config_key: string;
+	decision_rules: Partial<DecisionRules>;
+	tag_id: string;
+	tag_name: string;
+	tag_group_id: string | null;
+	include_reviewed_examples: boolean;
+};
+
+type ClaimOutcome = { ack: true } | { retry: number } | ClaimedJob;
+
+async function claimJobs(db: Database, token: string): Promise<ClaimOutcome[]> {
 	return db.begin(async (tx) => {
 		const [anchor] = await tx<
 			Job[]
@@ -223,13 +321,13 @@ async function claimJobs(db: Database, token: string) {
 		// Use the same lock order as configuration writers. Commit every ready
 		// sibling's lease together so competing deliveries cannot split a batch.
 		const classifiers =
-			await tx`SELECT c.*,classifier_config_key(c.id,${anchor.mailbox_id}) AS config_key FROM classifiers c JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR SHARE OF c`;
+			await tx`SELECT c.*,t.name AS tag_name,t.group_id AS tag_group_id,classifier_config_key(c.id,${anchor.mailbox_id}) AS config_key FROM classifiers c JOIN tags t ON t.id=c.tag_id JOIN conversation_classifications j ON j.classifier_id=c.id WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' ORDER BY c.id FOR SHARE OF c`;
 		const [conversation] =
 			await tx`SELECT generation FROM conversations WHERE mailbox_id=${anchor.mailbox_id} AND thread_id=${anchor.thread_id} FOR UPDATE`;
 		const jobs = await tx<
 			(Job & { seconds: number })[]
 		>`SELECT j.*, greatest(0,ceil(extract(epoch FROM greatest(j.lease_until,j.available_at,p.cooldown_until)-now())))::int AS seconds FROM conversation_classifications j CROSS JOIN classifier_provider_state p WHERE j.mailbox_id=${anchor.mailbox_id} AND j.thread_id=${anchor.thread_id} AND j.generation=${anchor.generation} AND j.status='pending' AND (j.token=${token} OR j.available_at<=now()) AND p.singleton ORDER BY j.classifier_id FOR UPDATE OF j`;
-		const claims = jobs.map((job) => {
+		const claims: ClaimOutcome[] = jobs.map((job) => {
 			const classifier = classifiers.find((c) => c.id === job.classifier_id);
 			if (
 				!classifier ||
@@ -247,6 +345,8 @@ async function claimJobs(db: Database, token: string) {
 				config_key: classifier.config_key as string,
 				decision_rules: classifier.decision_rules as Partial<DecisionRules>,
 				tag_id: classifier.tag_id,
+				tag_name: classifier.tag_name as string,
+				tag_group_id: (classifier.tag_group_id as string | null) ?? null,
 				include_reviewed_examples: classifier.include_reviewed_examples,
 			};
 		});
@@ -259,32 +359,45 @@ async function claimJobs(db: Database, token: string) {
 	});
 }
 
-/** Process exactly the version named by the broker. Leases only deduplicate delivery;
- * concurrency, scheduling and redelivery belong to Cloudflare Queues. */
-async function processSingleJob(
+interface EvaluationResult {
+	score?: number;
+	confidence?: number;
+	answer: boolean | null;
+	probability: number | null;
+	model: string | null;
+	status: string;
+	error: string | null;
+}
+
+interface JobEvaluation {
+	job: ClaimedJob;
+	result: EvaluationResult;
+	failure?: JevError;
+	reused: boolean;
+}
+
+/** Evaluate a claimed classification job without opening a persistence transaction. */
+async function evaluateSingleJob(
 	db: Database,
 	key: string,
-	claimed: Awaited<ReturnType<typeof claimJobs>>[number],
+	claimed: ClaimOutcome,
 	request: typeof fetch,
 	onClaim: (job: CaptureJob) => void,
 	loadState: (job: Job) => ReturnType<typeof conversationState>,
-): Promise<DeliveryResult> {
-	if (claimed.ack === true) return { ack: true };
-	if (claimed.retry !== undefined) return { retry: claimed.retry };
+	shared: {
+		threadActive: boolean;
+		threadHasMail: boolean;
+		manualByTag: Map<string, boolean>;
+		groupsById: Map<string, { id: string } & TagGroupInput>;
+		getExamples: (target: ExampleTarget) => Promise<CuratedExample[]>;
+	},
+): Promise<{ ack: true } | { retry: number } | JobEvaluation> {
+	if ("ack" in claimed) return { ack: true };
+	if ("retry" in claimed) return { retry: claimed.retry };
 	const j = claimed;
-	const [tag] = await db`SELECT name FROM tags WHERE id=${j.tag_id}`;
-	onClaim({ ...j, classifier_name: tag.name, option: j.tag_id });
-	let delivery: DeliveryResult = { ack: true };
+	onClaim({ ...j, classifier_name: j.tag_name, option: j.tag_id });
 
-	let result: {
-		score?: number;
-		confidence?: number;
-		answer: boolean | null;
-		probability: number | null;
-		model: string | null;
-		status: string;
-		error: string | null;
-	} = {
+	let result: EvaluationResult = {
 		answer: null,
 		probability: null,
 		model: null,
@@ -294,24 +407,29 @@ async function processSingleJob(
 	let failure: JevError | undefined;
 	let reused = false;
 	try {
-		const [eligibility] =
-			await db`SELECT (classifier_thread_active(${j.mailbox_id},${j.thread_id}) OR (${j.priority === 2} AND EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')))) AS active, tag_manually_overridden(${j.mailbox_id},${j.thread_id},${j.tag_id}) AS manual`;
-		if (!eligibility.active || eligibility.manual) result.status = "skipped";
+		const active =
+			shared.threadActive || (j.priority === 2 && shared.threadHasMail);
+		const manual = shared.manualByTag.get(j.tag_id) ?? false;
+		if (!active || manual) result.status = "skipped";
 		else {
 			const state = await loadState(j);
-			const [group] =
-				await db`SELECT g.*, (SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color,'description',t.description) ORDER BY t.position,t.id) FROM tags t WHERE t.group_id=g.id AND t.archived_at IS NULL) AS tags FROM tag_groups g JOIN tags t ON t.group_id=g.id WHERE t.id=${j.tag_id}`;
+			const group = j.tag_group_id
+				? shared.groupsById.get(j.tag_group_id)
+				: undefined;
+			const target: ExampleTarget = group
+				? { group_id: group.id }
+				: { classifier_id: j.classifier_id };
+			const examples = await shared.getExamples(target);
 			const typedQuestion = await curatedQuestion(db, {
-				target: group
-					? { group_id: group.id }
-					: { classifier_id: j.classifier_id },
+				target,
 				mailbox: j.mailbox_id,
 				thread: j.thread_id,
 				state,
-				group: group as TagGroupInput | undefined,
+				group,
 				question: j.question,
 				option: j.tag_id,
 				legacy: j.include_reviewed_examples,
+				examples,
 			});
 
 			const compute = () =>
@@ -353,14 +471,85 @@ async function processSingleJob(
 					? error
 					: new JevError("processing_failed", true);
 	}
-	try {
-		await db.begin(async (tx) => {
-			const [classifier] =
-				await tx`SELECT * FROM classifiers WHERE id=${j.classifier_id} FOR SHARE`;
-			const [conversation] =
-				await tx`SELECT generation FROM conversations WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} FOR UPDATE`;
-			const [current] =
-				await tx`SELECT * FROM conversation_classifications WHERE mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND classifier_id=${j.classifier_id} FOR UPDATE`;
+	return { job: j, result, failure, reused };
+}
+
+/** Persist all evaluated sibling jobs for one conversation in a single transaction. */
+async function persistConversationResults(
+	db: Database,
+	mailboxId: string,
+	threadId: string,
+	evaluations: JobEvaluation[],
+): Promise<number | undefined> {
+	return db.begin(async (tx) => {
+		const classifierIds = [
+			...new Set(evaluations.map((e) => e.job.classifier_id)),
+		].sort();
+		const lockedClassifiers = await tx<
+			{
+				id: string;
+				tag_id: string;
+				enabled: boolean;
+				revision: number;
+				config_key: string;
+				manual: boolean;
+			}[]
+		>`SELECT c.id,c.tag_id,c.enabled,c.revision,
+    classifier_config_key(c.id,${mailboxId}) AS config_key,
+    tag_manually_overridden(${mailboxId},${threadId},c.tag_id) AS manual
+   FROM classifiers c
+   WHERE c.id IN ${tx(classifierIds)}
+   ORDER BY c.id
+   FOR SHARE OF c`;
+		const classifierMap = new Map(lockedClassifiers.map((c) => [c.id, c]));
+		const [conversation] = await tx<
+			{ generation: number }[]
+		>`SELECT generation FROM conversations WHERE mailbox_id=${mailboxId} AND thread_id=${threadId} FOR UPDATE`;
+		const currentRows = await tx<
+			{
+				classifier_id: string;
+				token: string;
+				lease_id: string | null;
+				status: string;
+			}[]
+		>`SELECT classifier_id,token,lease_id,status FROM conversation_classifications WHERE mailbox_id=${mailboxId} AND thread_id=${threadId} AND classifier_id IN ${tx(classifierIds)} ORDER BY classifier_id FOR UPDATE`;
+		const currentMap = new Map(currentRows.map((r) => [r.classifier_id, r]));
+
+		const discardedLeases: string[] = [];
+		const pausedItems: { token: string; lease_id: string; error: string }[] =
+			[];
+		const retryItems: {
+			token: string;
+			lease_id: string;
+			decrement_attempts: number;
+			delay: number;
+			error: string;
+			is_429: boolean;
+		}[] = [];
+		const terminalItems: {
+			token: string;
+			lease_id: string;
+			tag_id: string;
+			run_id: string | null;
+			evaluation_key: string;
+			cache_hit: boolean;
+			score: number | null;
+			confidence: number | null;
+			status: string;
+			answer: boolean | null;
+			probability: number | null;
+			model: string | null;
+			error: string | null;
+			disposition: string;
+			run_item_status: string;
+		}[] = [];
+		let minRetry: number | undefined;
+
+		for (const evaluation of evaluations) {
+			const { job: j, failure, reused } = evaluation;
+			let result = evaluation.result;
+			const classifier = classifierMap.get(j.classifier_id);
+			const current = currentMap.get(j.classifier_id);
 			if (
 				!current ||
 				current.token !== j.token ||
@@ -371,21 +560,21 @@ async function processSingleJob(
 				classifier.revision !== j.revision ||
 				conversation?.generation !== j.generation
 			) {
-				await tx`UPDATE classifier_provider_run_items SET disposition='discarded' WHERE lease_id=${j.lease_id}`;
-				return;
+				discardedLeases.push(j.lease_id);
+				continue;
 			}
 			if (
 				failure &&
 				["provider_http_402", "provider_credit_paused"].includes(failure.code)
 			) {
-				await tx`UPDATE conversation_classifications SET credit_pauses=credit_pauses+1,lease_until=NULL,lease_id=NULL,error=${failure.code},available_at=now(),updated_at=now() WHERE token=${j.token}`;
-				await tx`UPDATE classifier_outbox SET published_at=NULL WHERE job_token=${j.token}`;
-				await tx`UPDATE classifier_provider_run_items SET disposition='retry',error=${failure.code} WHERE lease_id=${j.lease_id}`;
-				return;
+				pausedItems.push({
+					token: j.token,
+					lease_id: j.lease_id,
+					error: failure.code,
+				});
+				continue;
 			}
-			const [configuration] =
-				await tx`SELECT classifier_config_key(${j.classifier_id},${j.mailbox_id}) AS key,tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id}) AS manual`;
-			if (!configuration.manual && configuration.key !== j.config_key)
+			if (!classifier.manual && classifier.config_key !== j.config_key)
 				throw new JevError("configuration_changed", true);
 			if (failure?.retryable) {
 				const delay =
@@ -396,12 +585,17 @@ async function processSingleJob(
 								Math.min(3600, 30 * 2 ** Math.min(j.attempts - 1, 7)) +
 									Math.floor(Math.random() * 15),
 							);
-				await tx`UPDATE conversation_classifications SET attempts=greatest(0,attempts-${failure.code === "identical_input_pending" ? 1 : 0}),lease_until=NULL,available_at=now()+${delay}*interval '1 second',error=${failure.code},updated_at=now() WHERE token=${j.token}`;
-				if (failure.code === "provider_http_429")
-					await tx`UPDATE classifier_provider_state SET cooldown_until=greatest(cooldown_until,now()+${delay}*interval '1 second') WHERE singleton`;
-				await tx`UPDATE classifier_provider_run_items SET disposition='retry',error=${failure.code} WHERE lease_id=${j.lease_id}`;
-				delivery = { retry: Math.ceil(delay) };
-				return;
+				retryItems.push({
+					token: j.token,
+					lease_id: j.lease_id,
+					decrement_attempts:
+						failure.code === "identical_input_pending" ? 1 : 0,
+					delay,
+					error: failure.code,
+					is_429: failure.code === "provider_http_429",
+				});
+				minRetry = Math.min(minRetry ?? Infinity, Math.ceil(delay));
+				continue;
 			}
 			if (failure)
 				result = {
@@ -413,20 +607,61 @@ async function processSingleJob(
 						: "error",
 					error: failure.code,
 				};
-			const [manual] =
-				await tx`SELECT 1 WHERE tag_manually_overridden(${j.mailbox_id},${j.thread_id},${classifier.tag_id})`;
-			if (manual) result.status = "skipped";
-			await tx`UPDATE classifier_provider_run_items SET disposition=${result.status === "skipped" ? "discarded" : result.status === "error" ? "failed" : result.status === "review" ? "review" : "applied"},probability=${result.probability},answer=${result.answer},error=${result.error} WHERE lease_id=${j.lease_id} AND disposition<>'failed'`;
-			await tx`UPDATE conversation_classifications SET evaluation_key=${j.config_key},cache_hit=${reused},score=${result.score ?? null},confidence=${result.confidence ?? null},status=${result.status},answer=${result.answer},probability=${result.probability},model=${result.model},error=${result.error},lease_until=NULL,updated_at=now() WHERE token=${j.token}`;
-			if (result.status !== "skipped")
-				await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) VALUES(${j.mailbox_id},${j.thread_id},${classifier.tag_id},'classifier','jev',${result.answer === true ? null : tx`now()`}) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET actor='jev',removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;
-			if (j.run_id)
-				await tx`UPDATE classifier_run_items SET status=${result.status === "error" ? "failed" : result.status} WHERE run_id=${j.run_id} AND mailbox_id=${j.mailbox_id} AND thread_id=${j.thread_id} AND status='pending'`;
-		});
-	} finally {
-		await db`UPDATE conversation_classifications SET lease_id=NULL,lease_until=NULL WHERE token=${j.token} AND lease_id=${j.lease_id}`;
-	}
-	return delivery;
+			if (classifier.manual) result = { ...result, status: "skipped" };
+			terminalItems.push({
+				token: j.token,
+				lease_id: j.lease_id,
+				tag_id: classifier.tag_id,
+				run_id: j.run_id,
+				evaluation_key: j.config_key,
+				cache_hit: reused,
+				score: result.score ?? null,
+				confidence: result.confidence ?? null,
+				status: result.status,
+				answer: result.answer,
+				probability: result.probability,
+				model: result.model,
+				error: result.error,
+				disposition:
+					result.status === "skipped"
+						? "discarded"
+						: result.status === "error"
+							? "failed"
+							: result.status === "review"
+								? "review"
+								: "applied",
+				run_item_status: result.status === "error" ? "failed" : result.status,
+			});
+		}
+
+		if (discardedLeases.length)
+			await tx`UPDATE classifier_provider_run_items SET disposition='discarded' WHERE lease_id IN ${tx(discardedLeases)}`;
+		if (pausedItems.length) {
+			await tx`UPDATE conversation_classifications j SET credit_pauses=j.credit_pauses+1,lease_until=NULL,lease_id=NULL,error=p.error,available_at=now(),updated_at=now() FROM jsonb_to_recordset(${tx.json(pausedItems)}) AS p(token uuid,error text) WHERE j.token=p.token`;
+			await tx`UPDATE classifier_outbox SET published_at=NULL WHERE job_token IN ${tx(pausedItems.map((p) => p.token))}`;
+			await tx`UPDATE classifier_provider_run_items i SET disposition='retry',error=p.error FROM jsonb_to_recordset(${tx.json(pausedItems)}) AS p(lease_id uuid,error text) WHERE i.lease_id=p.lease_id`;
+		}
+		if (retryItems.length) {
+			await tx`UPDATE conversation_classifications j SET attempts=greatest(0,j.attempts-r.decrement_attempts),lease_id=NULL,lease_until=NULL,available_at=now()+r.delay*interval '1 second',error=r.error,updated_at=now() FROM jsonb_to_recordset(${tx.json(retryItems)}) AS r(token uuid,decrement_attempts int,delay double precision,error text) WHERE j.token=r.token`;
+			const delayed429 = retryItems.filter((r) => r.is_429);
+			if (delayed429.length) {
+				const maxDelay = Math.max(...delayed429.map((r) => r.delay));
+				await tx`UPDATE classifier_provider_state SET cooldown_until=greatest(cooldown_until,now()+${maxDelay}*interval '1 second') WHERE singleton`;
+			}
+			await tx`UPDATE classifier_provider_run_items i SET disposition='retry',error=r.error FROM jsonb_to_recordset(${tx.json(retryItems)}) AS r(lease_id uuid,error text) WHERE i.lease_id=r.lease_id`;
+		}
+		if (terminalItems.length) {
+			await tx`UPDATE classifier_provider_run_items i SET disposition=t.disposition,probability=t.probability,answer=t.answer,error=t.error FROM jsonb_to_recordset(${tx.json(terminalItems)}) AS t(lease_id uuid,disposition text,probability double precision,answer boolean,error text) WHERE i.lease_id=t.lease_id AND i.disposition<>'failed'`;
+			await tx`UPDATE conversation_classifications j SET evaluation_key=t.evaluation_key,cache_hit=t.cache_hit,score=t.score,confidence=t.confidence,status=t.status,answer=t.answer,probability=t.probability,model=t.model,error=t.error,lease_id=NULL,lease_until=NULL,updated_at=now() FROM jsonb_to_recordset(${tx.json(terminalItems)}) AS t(token uuid,evaluation_key text,cache_hit boolean,score double precision,confidence double precision,status text,answer boolean,probability double precision,model text,error text) WHERE j.token=t.token`;
+			const tagItems = terminalItems.filter((t) => t.status !== "skipped");
+			if (tagItems.length)
+				await tx`INSERT INTO conversation_tags(mailbox_id,thread_id,tag_id,source,actor,removed_at) SELECT ${mailboxId},${threadId},t.tag_id,'classifier','jev',CASE WHEN t.answer IS TRUE THEN NULL ELSE now() END FROM jsonb_to_recordset(${tx.json(tagItems)}) AS t(tag_id uuid,answer boolean) ON CONFLICT(mailbox_id,thread_id,tag_id) DO UPDATE SET actor='jev',removed_at=excluded.removed_at,updated_at=now() WHERE conversation_tags.source='classifier'`;
+			const runItems = terminalItems.filter((t) => t.run_id !== null);
+			if (runItems.length)
+				await tx`UPDATE classifier_run_items i SET status=r.run_item_status FROM jsonb_to_recordset(${tx.json(runItems)}) AS r(run_id uuid,run_item_status text) WHERE i.run_id=r.run_id AND i.mailbox_id=${mailboxId} AND i.thread_id=${threadId} AND i.status='pending'`;
+		}
+		return minRetry;
+	});
 }
 
 /** Called only by the dead-letter consumer after broker retries are exhausted. */
