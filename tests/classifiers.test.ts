@@ -1659,7 +1659,7 @@ test("outbox batch boundary keeps multi-classifier conversation siblings togethe
 	const bulkThread = await message();
 	await db`UPDATE conversation_classifications SET priority=1 WHERE thread_id=${bulkThread}`;
 	const bulkOutbox =
-		await db`SELECT priority FROM classifier_outbox o JOIN conversation_classifications j ON j.token=o.job_token WHERE j.thread_id=${bulkThread}`;
+		await db`SELECT o.priority FROM classifier_outbox o JOIN conversation_classifications j ON j.token=o.job_token WHERE j.thread_id=${bulkThread}`;
 	assert.ok(bulkOutbox.every((r) => r.priority === 1));
 	const threads: string[] = [];
 	for (let i = 0; i < 34; i++) threads.push(await message());
