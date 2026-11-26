@@ -567,6 +567,8 @@ test("pruneProviderRuns deletes expired runs and attempts cleanly with bounded b
 		await db`SELECT id FROM classifier_provider_runs WHERE thread_id=${thread}`;
 	await db`UPDATE classifier_provider_runs SET started_at=now()-interval '15 days' WHERE id=${run.id}`;
 	await db`INSERT INTO classification_attempts(job_token,attempt,mailbox_id,thread_id,classifier_id,classifier_name,question,subject,revision,generation,started_at,status) VALUES(${crypto.randomUUID()},1,${mailbox},${thread},${classifierIds[0]},'Old','Old?','Old',1,1,now()-interval '15 days','succeeded')`;
+	const orphanToken = crypto.randomUUID();
+	await db`INSERT INTO classification_attempts(job_token,attempt,mailbox_id,thread_id,classifier_id,classifier_name,question,subject,revision,generation,started_at,status) VALUES(${orphanToken},1,${mailbox},${thread},${classifierIds[0]},'Orphan','Orphan?','Orphan',1,1,now()-interval '1 minute','queued')`;
 	await pruneProviderRuns(db, 14);
 	assert.equal(
 		(await db`SELECT id FROM classifier_provider_runs WHERE id=${run.id}`)
@@ -579,4 +581,8 @@ test("pruneProviderRuns deletes expired runs and attempts cleanly with bounded b
 		).length,
 		0,
 	);
+	const [orphan] =
+		await db`SELECT status,error FROM classification_attempts WHERE job_token=${orphanToken}`;
+	assert.equal(orphan.status, "skipped");
+	assert.equal(orphan.error, "job_superseded");
 });
