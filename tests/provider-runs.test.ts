@@ -559,3 +559,24 @@ test("status=review and status=succeeded filter provider runs and respect reques
 		queuedIds[1],
 	]);
 });
+
+test("pruneProviderRuns deletes expired runs and attempts cleanly with bounded batches", async () => {
+	const { thread, token } = await prepare();
+	await processJob(db, "key", token, yes);
+	const [run] =
+		await db`SELECT id FROM classifier_provider_runs WHERE thread_id=${thread}`;
+	await db`UPDATE classifier_provider_runs SET started_at=now()-interval '15 days' WHERE id=${run.id}`;
+	await db`INSERT INTO classification_attempts(job_token,attempt,mailbox_id,thread_id,classifier_id,classifier_name,question,subject,revision,generation,started_at,status) VALUES(${crypto.randomUUID()},1,${mailbox},${thread},${classifierIds[0]},'Old','Old?','Old',1,1,now()-interval '15 days','succeeded')`;
+	await pruneProviderRuns(db, 14);
+	assert.equal(
+		(await db`SELECT id FROM classifier_provider_runs WHERE id=${run.id}`)
+			.length,
+		0,
+	);
+	assert.equal(
+		(
+			await db`SELECT id FROM classification_attempts WHERE thread_id=${thread} AND status='succeeded'`
+		).length,
+		0,
+	);
+});

@@ -60,6 +60,7 @@ export async function curatedQuestion(
 		question: string;
 		option?: string;
 		legacy?: boolean;
+		examples?: CuratedExample[];
 	},
 ) {
 	const { target, mailbox, thread, state, group, question, option } = options;
@@ -68,7 +69,7 @@ export async function curatedQuestion(
 		group?.selection === "single" || group?.selection === "score"
 			? groupChoice(group)
 			: jevQuestion(question);
-	const rows = await listExamples(db, target, mailbox);
+	const rows = options.examples ?? (await listExamples(db, target, mailbox));
 	const seen = new Set([evidenceKey(state)]);
 	const selected: CuratedExample[] = [];
 	const counts = new Map<string, number>();

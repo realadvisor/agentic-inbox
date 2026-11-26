@@ -100,7 +100,7 @@ async function publishPriority(
 	const rows = await db.begin(async (tx) => {
 		const priorityFilter = live ? tx`o.priority=0` : tx`o.priority<>0`;
 		const orderClause = live
-			? tx`o.created_at,o.job_token`
+			? tx`o.created_at DESC,o.job_token DESC`
 			: tx`o.priority,o.created_at,o.job_token`;
 		const initial = await tx<ClaimedCandidate[]>`
    WITH batch AS MATERIALIZED (
