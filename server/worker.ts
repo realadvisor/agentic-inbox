@@ -273,7 +273,7 @@ worker.all("/api/*", async (c) => {
 				disconnectSignal: c.req.raw.signal,
 				waitUntil: (task) => {
 					agentTasks.push(task);
-					c.executionCtx.waitUntil(task);
+					c.executionCtx.waitUntil(background("inbox_agent_task_failed", task));
 				},
 			},
 			classifiersEnabled: queuesEnabled(c.env),
@@ -315,7 +315,10 @@ worker.all("/api/*", async (c) => {
 		throw error;
 	} finally {
 		c.executionCtx.waitUntil(
-			Promise.allSettled(agentTasks).then(() => db.end({ timeout: 5 })),
+			background(
+				"inbox_db_close_failed",
+				Promise.allSettled(agentTasks).then(() => db.end({ timeout: 5 })),
+			),
 		);
 	}
 });
