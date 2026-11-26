@@ -30,6 +30,7 @@ import {
 } from "../shared/thread-status";
 import { getThreadWorkflow, changeThreadStatus } from "./thread-status";
 import { agentApi, type AgentOptions } from "./agent/api";
+import { markStart, redactPath, requestFailure } from "./request-log";
 import { classifierApi } from "./classification/api";
 import { setConversationTags } from "./tags";
 import { tagGroupsApi } from "./tag-groups";
@@ -115,6 +116,10 @@ export function createApi(db: Database, options: ApiOptions) {
 		!isLive ||
 		(options.mailboxCreationEnabled === true && !!options.actor && isAdmin);
 	const app = new Hono<{ Variables: KeyVariables }>();
+	app.use("*", async (c, next) => {
+		markStart(c.req.raw);
+		await next();
+	});
 	app.use("*", bodyLimit({ maxSize: 256_000 }));
 	app.use("*", async (c, next) => {
 		c.header("Cache-Control", "no-store");
@@ -180,7 +185,15 @@ export function createApi(db: Database, options: ApiOptions) {
 				{ error: "Referenced item does not exist or is still in use" },
 				409,
 			);
-		console.error("Inbox request failed:", error.message);
+		console.error(
+			JSON.stringify(
+				requestFailure(
+					error,
+					c.req.raw,
+					redactPath(new URL(c.req.url).pathname),
+				),
+			),
+		);
 		return c.json({ error: "Request failed" }, 500);
 	});
 	app.route(
