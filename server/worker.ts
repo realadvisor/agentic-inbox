@@ -2,6 +2,8 @@ import {
 	workspaceDirectory,
 	type WorkspaceDirectoryEnv,
 } from "./workspace-directory";
+import { HTTPException } from "hono/http-exception";
+import { background, guarded, redactPath, requestFailure } from "./request-log";
 import { pruneInboundRecovery } from "./operations";
 import { getCookie } from "hono/cookie";
 import { resolveAccessRole } from "./members";
@@ -63,6 +65,17 @@ const worker = new Hono<{
 	Bindings: WorkerEnv;
 	Variables: { actor: string; accessIdentity: AccessIdentity };
 }>();
+// Errors outside the API app (the API has its own handler): one redacted line.
+worker.onError((error, c) => {
+	// Hono's own handling for intended HTTP errors (401, 403, …): no log line.
+	if (error instanceof HTTPException) return error.getResponse();
+	console.error(
+		JSON.stringify(
+			requestFailure(error, c.req.raw, redactPath(new URL(c.req.url).pathname)),
+		),
+	);
+	return c.text("Internal Server Error", 500);
+});
 // Machine endpoint authenticates Google OIDC independently of interactive Access.
 worker.post(taskPath, async (c) => {
 	if (new URL(c.req.url).origin !== c.env.PUBLIC_ORIGIN)
@@ -122,7 +135,9 @@ worker.post(taskPath, async (c) => {
 	} finally {
 		await db.end({ timeout: 5 });
 	}
-	c.executionCtx.waitUntil(dispatchWebhooks(c.env));
+	c.executionCtx.waitUntil(
+		background("inbox_webhook_dispatch_failed", dispatchWebhooks(c.env)),
+	);
 	if (!isWebhook)
 		c.executionCtx.waitUntil(
 			isDraft ? dispatchAgentJobs(c.env) : dispatchClassifiers(c.env, 1),
@@ -261,7 +276,7 @@ worker.all("/api/*", async (c) => {
 				disconnectSignal: c.req.raw.signal,
 				waitUntil: (task) => {
 					agentTasks.push(task);
-					c.executionCtx.waitUntil(task);
+					c.executionCtx.waitUntil(background("inbox_agent_task_failed", task));
 				},
 			},
 			classifiersEnabled: queuesEnabled(c.env),
@@ -283,9 +298,18 @@ worker.all("/api/*", async (c) => {
 		}).fetch(c.req.raw);
 		if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
 			if (c.req.path.startsWith("/api/v1/operations/"))
-				c.executionCtx.waitUntil(dispatchAgentJobs(c.env));
-			c.executionCtx.waitUntil(dispatchClassifiers(c.env, 10));
-			c.executionCtx.waitUntil(dispatchWebhooks(c.env));
+				c.executionCtx.waitUntil(
+					background("inbox_agent_dispatch_failed", dispatchAgentJobs(c.env)),
+				);
+			c.executionCtx.waitUntil(
+				background(
+					"inbox_classifier_dispatch_failed",
+					dispatchClassifiers(c.env, 10),
+				),
+			);
+			c.executionCtx.waitUntil(
+				background("inbox_webhook_dispatch_failed", dispatchWebhooks(c.env)),
+			);
 		}
 		return response;
 	} catch (error) {
@@ -294,7 +318,10 @@ worker.all("/api/*", async (c) => {
 		throw error;
 	} finally {
 		c.executionCtx.waitUntil(
-			Promise.allSettled(agentTasks).then(() => db.end({ timeout: 5 })),
+			background(
+				"inbox_db_close_failed",
+				Promise.allSettled(agentTasks).then(() => db.end({ timeout: 5 })),
+			),
 		);
 	}
 });
@@ -356,61 +383,82 @@ async function dispatchWebhooks(env: WorkerEnv) {
 
 export default {
 	async scheduled(_event: unknown, env: WorkerEnv) {
-		// Recovery only: normal ingestion/API writes publish immediately.
-		await dispatchClassifiers(env, 50);
-		const db = postgres(env.HYPERDRIVE.connectionString, {
-			max: 1,
-			fetch_types: false,
-		});
-		try {
-			await db`DELETE FROM webhook_events WHERE created_at<now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.event_id=webhook_events.id AND d.status='pending')`;
-			// Only completed journal metadata expires. Raw MIME remains under the existing
-			// private raw-mail retention policy; unresolved recovery artifacts never expire.
-			await pruneInboundRecovery(db);
-			await pruneProviderRuns(
-				db,
-				Number(env.CLASSIFIER_LOG_RETENTION_DAYS ?? 30),
-			);
-		} finally {
-			await db.end({ timeout: 5 });
-		}
-		await dispatchAgentJobs(env);
-		await dispatchWebhooks(env);
+		return guarded("inbox_scheduled_failed", () => scheduled(env));
 	},
 	async email(message: InboundMessage, env: WorkerEnv, ctx?: ExecutionContext) {
-		if (
-			env.MAIL_MODE !== "live" ||
-			env.INBOUND_ENABLED !== "true" ||
-			!env.ACCESS_ISSUER ||
-			!env.ACCESS_AUDIENCE ||
-			!env.ATTACHMENTS.put
-		) {
-			message.setReject("Inbox ingestion is not enabled");
-			return;
-		}
-		const db = postgres(env.HYPERDRIVE.connectionString, {
-			max: 2,
-			fetch_types: false,
-		});
-		try {
-			await ingest(message, db, {
-				get: (key) => env.ATTACHMENTS.get(key),
-				put: (key, value) => env.ATTACHMENTS.put!(key, value),
-			});
-			if (ctx) {
-				ctx.waitUntil(dispatchClassifiers(env, 10));
-				ctx.waitUntil(dispatchAgentJobs(env));
-				ctx.waitUntil(dispatchWebhooks(env));
-			} else {
-				await dispatchClassifiers(env, 10);
-				await dispatchAgentJobs(env);
-				await dispatchWebhooks(env);
-			}
-		} finally {
-			await db.end({ timeout: 5 });
-		}
+		return guarded("inbox_email_failed", () => email(message, env, ctx));
 	},
 	fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
 		return worker.fetch(request, env, ctx);
 	},
 };
+
+async function scheduled(env: WorkerEnv) {
+	// Recovery only: normal ingestion/API writes publish immediately.
+	await dispatchClassifiers(env, 50);
+	const db = postgres(env.HYPERDRIVE.connectionString, {
+		max: 1,
+		fetch_types: false,
+	});
+	try {
+		await db`DELETE FROM webhook_events WHERE created_at<now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.event_id=webhook_events.id AND d.status='pending')`;
+		// Only completed journal metadata expires. Raw MIME remains under the existing
+		// private raw-mail retention policy; unresolved recovery artifacts never expire.
+		await pruneInboundRecovery(db);
+		await pruneProviderRuns(
+			db,
+			Number(env.CLASSIFIER_LOG_RETENTION_DAYS ?? 30),
+		);
+	} finally {
+		await db.end({ timeout: 5 });
+	}
+	await dispatchAgentJobs(env);
+	await dispatchWebhooks(env);
+}
+
+async function email(
+	message: InboundMessage,
+	env: WorkerEnv,
+	ctx?: ExecutionContext,
+) {
+	if (
+		env.MAIL_MODE !== "live" ||
+		env.INBOUND_ENABLED !== "true" ||
+		!env.ACCESS_ISSUER ||
+		!env.ACCESS_AUDIENCE ||
+		!env.ATTACHMENTS.put
+	) {
+		message.setReject("Inbox ingestion is not enabled");
+		return;
+	}
+	const db = postgres(env.HYPERDRIVE.connectionString, {
+		max: 2,
+		fetch_types: false,
+	});
+	try {
+		await ingest(message, db, {
+			get: (key) => env.ATTACHMENTS.get(key),
+			put: (key, value) => env.ATTACHMENTS.put!(key, value),
+		});
+		if (ctx) {
+			ctx.waitUntil(
+				background(
+					"inbox_classifier_dispatch_failed",
+					dispatchClassifiers(env, 10),
+				),
+			);
+			ctx.waitUntil(
+				background("inbox_agent_dispatch_failed", dispatchAgentJobs(env)),
+			);
+			ctx.waitUntil(
+				background("inbox_webhook_dispatch_failed", dispatchWebhooks(env)),
+			);
+		} else {
+			await dispatchClassifiers(env, 10);
+			await dispatchAgentJobs(env);
+			await dispatchWebhooks(env);
+		}
+	} finally {
+		await db.end({ timeout: 5 });
+	}
+}
