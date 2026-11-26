@@ -47,6 +47,7 @@ export async function migrate(db: Database) {
 		[46, "046_group_question_capacity.sql"],
 		[47, "047_api_key_senders.sql"],
 		[48, "048_classifier_outbox_priority.sql"],
+		[50, "050_classifier_outbox_trigger.sql"],
 	] as const) {
 		const ddl = await readFile(
 			new URL(`../migrations/${filename}`, import.meta.url),
