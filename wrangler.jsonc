@@ -15,8 +15,6 @@
 		"run_worker_first": true,
 	},
 	"triggers": { "crons": ["*/15 * * * *"] },
-	// Stored logs: console lines only, no per-request invocation records
-	// (those hold URLs and headers). Retention is the plan's (7 days at most).
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1,

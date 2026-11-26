@@ -2,6 +2,7 @@ import {
 	workspaceDirectory,
 	type WorkspaceDirectoryEnv,
 } from "./workspace-directory";
+import { HTTPException } from "hono/http-exception";
 import { background, guarded, redactPath, requestFailure } from "./request-log";
 import { pruneInboundRecovery } from "./operations";
 import { getCookie } from "hono/cookie";
@@ -66,6 +67,8 @@ const worker = new Hono<{
 }>();
 // Errors outside the API app (the API has its own handler): one redacted line.
 worker.onError((error, c) => {
+	// Hono's own handling for intended HTTP errors (401, 403, …): no log line.
+	if (error instanceof HTTPException) return error.getResponse();
 	console.error(
 		JSON.stringify(
 			requestFailure(error, c.req.raw, redactPath(new URL(c.req.url).pathname)),
