@@ -6885,7 +6885,7 @@
 			"get": {
 				"tags": ["Classification"],
 				"summary": "Get classifier health",
-				"description": "Monitoring status of the shared Jev classifier. Any API key may read it. It returns only the credit pause flag and times: no mail content, addresses or subjects.",
+				"description": "Monitoring status of the shared Jev classifier. Any API key may read it. It returns only the credit pause flag, live queue lag, recent failure count, and times: no mail content, addresses or subjects.",
 				"operationId": "getClassifierHealth",
 				"responses": {
 					"200": {
@@ -9216,7 +9216,10 @@
 					"paused",
 					"paused_at",
 					"resume_error",
-					"last_classified_at"
+					"last_classified_at",
+					"pending_live_jobs",
+					"oldest_pending_live_at",
+					"recent_failed_runs"
 				],
 				"properties": {
 					"paused": {
@@ -9238,6 +9241,20 @@
 						"format": "date-time",
 						"nullable": true,
 						"description": "When the newest successful Jev request finished."
+					},
+					"pending_live_jobs": {
+						"type": "integer",
+						"description": "Number of live-mail classification jobs currently queued in the outbox."
+					},
+					"oldest_pending_live_at": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true,
+						"description": "Creation time of the oldest live-mail classification job currently in the outbox."
+					},
+					"recent_failed_runs": {
+						"type": "integer",
+						"description": "Count of failed or interrupted provider runs in the last 15 minutes."
 					}
 				}
 			},

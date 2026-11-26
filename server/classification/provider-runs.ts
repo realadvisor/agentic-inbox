@@ -150,11 +150,19 @@ export async function captureProviderRequest(
 export async function pruneProviderRuns(db: Database, days = 30) {
 	if (!Number.isInteger(days) || days < 1 || days > 365)
 		throw new Error("Invalid classifier log retention");
-	await db`DELETE FROM classifier_result_cache WHERE key IN (SELECT key FROM classifier_result_cache WHERE created_at<now()-interval '30 days' AND lease_until<now() LIMIT 2000)`;
+	await db`DELETE FROM classifier_result_cache WHERE key IN (SELECT key FROM classifier_result_cache WHERE created_at<now()-interval '30 days' AND lease_until<now() ORDER BY created_at ASC LIMIT 2000)`;
 	// Reconcile old orphan states too, so they eventually qualify for retention.
-	await db`UPDATE classification_attempts a SET status='skipped',finished_at=now(),error=coalesce(error,'job_superseded') WHERE a.status IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.token=a.job_token AND j.status='pending' AND greatest(1,j.attempts)=a.attempt)`;
-	await db`DELETE FROM classification_attempts WHERE id IN (SELECT id FROM classification_attempts WHERE started_at < now()-${days}*interval '1 day' AND status NOT IN ('queued','running') LIMIT 2000)`;
-	await db`DELETE FROM classifier_provider_runs WHERE id IN (SELECT id FROM classifier_provider_runs WHERE started_at < now()-${days}*interval '1 day' LIMIT 500)`;
+	await db`UPDATE classification_attempts SET status='skipped',finished_at=now(),error=coalesce(error,'job_superseded') WHERE id IN (SELECT a.id FROM classification_attempts a WHERE a.status IN ('queued','running') AND NOT EXISTS(SELECT 1 FROM conversation_classifications j WHERE j.token=a.job_token AND j.status='pending' AND greatest(1,j.attempts)=a.attempt) ORDER BY a.started_at ASC,a.id ASC LIMIT 2000)`;
+	for (let i = 0; i < 4; i++) {
+		const deleted =
+			await db`DELETE FROM classification_attempts WHERE id IN (SELECT id FROM classification_attempts WHERE started_at < now()-${days}*interval '1 day' AND status NOT IN ('queued','running') ORDER BY started_at ASC,id ASC LIMIT 2000) RETURNING id`;
+		if (deleted.length < 2000) break;
+	}
+	for (let i = 0; i < 4; i++) {
+		const deleted =
+			await db`DELETE FROM classifier_provider_runs WHERE id IN (SELECT id FROM classifier_provider_runs WHERE started_at < now()-${days}*interval '1 day' ORDER BY started_at ASC,id ASC LIMIT 500) RETURNING id`;
+		if (deleted.length < 500) break;
+	}
 	await db`UPDATE classifier_provider_run_items i SET disposition='failed',error='application_interrupted' FROM classifier_provider_runs r WHERE i.run_id=r.id AND i.disposition='pending' AND r.started_at < now()-interval '5 minutes'`;
 	await db`UPDATE classifier_provider_runs SET status='interrupted',error='worker_interrupted' WHERE status='running' AND started_at < now()-interval '5 minutes'`;
 }

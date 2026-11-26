@@ -110,6 +110,16 @@ export async function migrate(db: Database) {
 					"classifier_runs_classifier_latest",
 				],
 			],
+			[
+				51,
+				"051_classifier_retention_and_health_indexes.sql",
+				[
+					"classification_attempts_active",
+					"classifier_provider_run_items_pending",
+					"classifier_provider_runs_running",
+					"classifier_outbox_live_age",
+				],
+			],
 		] as const) {
 			if (
 				(await sql`SELECT 1 FROM inbox_migrations WHERE version=${version}`)

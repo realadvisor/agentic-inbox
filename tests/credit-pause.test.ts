@@ -390,24 +390,43 @@ test("health shows the pause and the last successful request, with no mail conte
 		paused_at: null,
 		resume_error: null,
 		last_classified_at: null,
+		pending_live_jobs: 0,
+		oldest_pending_live_at: null,
+		recent_failed_runs: 0,
 	});
 	const job = await email();
+	const queued = await health();
+	assert.equal(queued.pending_live_jobs, 1);
+	assert.ok(queued.oldest_pending_live_at);
 	await processJob(db, "test", job.token, yes);
 	const ok = await health();
 	assert.deepEqual(Object.keys(ok).sort(), [
 		"last_classified_at",
+		"oldest_pending_live_at",
 		"paused",
 		"paused_at",
+		"pending_live_jobs",
+		"recent_failed_runs",
 		"resume_error",
 	]);
 	assert.equal(ok.paused, false);
 	assert.ok(ok.last_classified_at);
+	assert.equal(ok.pending_live_jobs, 0);
+	assert.equal(ok.oldest_pending_live_at, null);
+	assert.equal(ok.recent_failed_runs, 0);
+	const failedJob = await email(other);
+	await processJob(db, "test", failedJob.token, async () =>
+		Response.json({}, { status: 500 }),
+	);
 	await pause();
 	const paused = await health();
 	assert.equal(paused.paused, true);
 	assert.ok(paused.paused_at);
 	assert.equal(paused.resume_error, "provider_http_402");
 	assert.equal(paused.last_classified_at, ok.last_classified_at);
+	assert.equal(paused.pending_live_jobs, 1);
+	assert.ok(paused.oldest_pending_live_at);
+	assert.equal(paused.recent_failed_runs, 1);
 	const text = JSON.stringify(paused);
 	for (const secret of ["Help", "Please reply", "person@example.test", mailbox])
 		assert.ok(!text.includes(secret), secret);
