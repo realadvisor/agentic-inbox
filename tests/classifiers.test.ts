@@ -1655,6 +1655,7 @@ test("outbox batch boundary keeps multi-classifier conversation siblings togethe
 	const allClassifiers =
 		await db`SELECT id FROM classifiers ORDER BY id LIMIT 3`;
 	assert.equal(allClassifiers.length, 3);
+	await db`UPDATE classifiers SET enabled=false`;
 	await db`UPDATE classifiers SET enabled=true,mailbox_ids='{}' WHERE id IN ${db(allClassifiers.map((c) => c.id))}`;
 	const bulkThread = await message();
 	await db`UPDATE conversation_classifications SET priority=1 WHERE thread_id=${bulkThread}`;
