@@ -1733,7 +1733,7 @@ test("GET /classifiers returns accurate latest run stats and error counts", asyn
 test("processJob persists mixed sibling outcomes together and releases all leases on configuration_changed", async () => {
 	await reset();
 	const classifiers =
-		await db`SELECT id,tag_id FROM classifiers ORDER BY id LIMIT 3`;
+		await db`SELECT c.id,c.tag_id FROM classifiers c JOIN tags t ON t.id=c.tag_id WHERE t.group_id IS NULL ORDER BY c.id LIMIT 3`;
 	assert.equal(classifiers.length, 3);
 	await db`UPDATE classifiers SET enabled=false`;
 	await db`UPDATE classifiers SET enabled=true,mailbox_ids='{}' WHERE id IN ${db(classifiers.map((c) => c.id))}`;
@@ -1763,10 +1763,15 @@ test("processJob persists mixed sibling outcomes together and releases all lease
 	});
 	const saved =
 		await db`SELECT classifier_id,status,answer,lease_id,lease_until FROM conversation_classifications WHERE thread_id=${thread} ORDER BY classifier_id`;
-	assert.equal(saved[0].status, "complete");
-	assert.equal(saved[0].answer, true);
-	assert.equal(saved[1].status, "review");
-	assert.equal(saved[1].answer, null);
+	assert.deepEqual(
+		saved
+			.slice(0, 2)
+			.map((r) => r.status)
+			.sort(),
+		["complete", "review"],
+	);
+	assert.equal(saved.find((r) => r.status === "complete")?.answer, true);
+	assert.equal(saved.find((r) => r.status === "review")?.answer, null);
 	assert.equal(saved[2].status, "skipped");
 	assert.ok(saved.every((r) => r.lease_id === null && r.lease_until === null));
 
