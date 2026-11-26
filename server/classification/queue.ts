@@ -182,7 +182,7 @@ export async function processJob(
      EXISTS(SELECT 1 FROM emails WHERE mailbox_id=${mailboxId} AND thread_id=${threadId} AND delivery_status IN ('received','sent') AND folder_id NOT IN ('trash','spam')) AS has_mail,
      t.tag_id,
      tag_manually_overridden(${mailboxId},${threadId},t.tag_id) AS manual
-    FROM unnest(${tagIds}::uuid[]) AS t(tag_id)`,
+    FROM jsonb_to_recordset(${db.json(tagIds.map((tag_id) => ({ tag_id })))}) AS t(tag_id uuid)`,
 			groupIds.length
 				? db<({ id: string } & TagGroupInput)[]>`
      SELECT g.*,
