@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+	background,
+	guarded,
 	markStart,
 	redactMessage,
 	redactPath,
@@ -65,4 +67,96 @@ test("path keeps route words only", () => {
 	);
 	assert.equal(redactPath("/api/v1/contacts/Jane%20Doe"), "/api/v1/contacts/…");
 	assert.equal(redactPath("/api/v1/x/%E0%A4%A"), "/api/v1/x/…");
+});
+
+const captured = () => {
+	const lines: string[] = [];
+	const original = console.error;
+	console.error = (...args: unknown[]) => {
+		lines.push(args.map(String).join(" "));
+	};
+	return { lines, restore: () => (console.error = original) };
+};
+
+test("only database errors keep a (redacted) message", () => {
+	const fetchError = new Error(
+		"GET https://api.example.test/v1?token=abc123secret failed with inbox_0123456789abcdef0123 Bearer eyJhbGciOiJIUzI1NiJ9.payload",
+	);
+	const line = requestFailure(
+		fetchError,
+		new Request("https://x.test/a"),
+		"/a",
+	);
+	assert.equal(line.message, null);
+	assert.equal(line.code, null);
+	const text = JSON.stringify(line);
+	for (const secret of ["token", "abc123", "inbox_0123", "eyJ", "example.test"])
+		assert.ok(!text.includes(secret), secret);
+	const db = Object.assign(
+		new Error(
+			"timeout at https://h.test/?token=abc inbox_0123456789abcdef0123",
+		),
+		{ code: "57014" },
+	);
+	const kept = requestFailure(db, new Request("https://x.test/a"), "/a");
+	assert.equal(kept.code, "57014");
+	for (const secret of ["token=abc", "inbox_0123"])
+		assert.ok(!String(kept.message).includes(secret), secret);
+});
+
+test("email() failures are logged redacted and rethrown without mail text", async () => {
+	const { default: worker } = await import("../server/worker");
+	const log = captured();
+	const message = {
+		get to(): string {
+			throw new Error("Subject: secret plan from person@example.test");
+		},
+		from: "person@example.test",
+		raw: new ReadableStream(),
+		rawSize: 1,
+		setReject() {},
+	};
+	const env = {
+		MAIL_MODE: "live",
+		INBOUND_ENABLED: "true",
+		ACCESS_ISSUER: "https://issuer.example.test",
+		ACCESS_AUDIENCE: "aud",
+		ATTACHMENTS: { get: async () => null, put: async () => {} },
+		HYPERDRIVE: { connectionString: "postgres://unused.invalid/test" },
+	};
+	try {
+		await assert.rejects(
+			worker.email(
+				message,
+				env as unknown as Parameters<typeof worker.email>[1],
+			),
+			(error: Error) => !/secret|person@/.test(error.message),
+		);
+	} finally {
+		log.restore();
+	}
+	assert.equal(log.lines.length, 1);
+	const line = JSON.parse(log.lines[0]!);
+	assert.equal(line.event, "inbox_email_failed");
+	assert.ok(!/secret|person@|Subject/.test(log.lines[0]!));
+});
+
+test("guarded and background never pass error text on", async () => {
+	const log = captured();
+	try {
+		await assert.rejects(
+			guarded("x_failed", async () => {
+				throw new Error("person@example.test said hi");
+			}),
+			{ message: "x_failed: see the redacted log line" },
+		);
+		await background(
+			"y_failed",
+			Promise.reject(new Error("https://h.test/?t=1")),
+		);
+	} finally {
+		log.restore();
+	}
+	assert.equal(log.lines.length, 2);
+	assert.ok(!/person@|h\.test/.test(log.lines.join("\n")));
 });

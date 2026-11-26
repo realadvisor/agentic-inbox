@@ -1,9 +1,9 @@
 /**
- * One structured line for a request that failed with an unexpected error.
- * Stored Worker logs keep it for diagnosis, so it must never hold mail
- * content, headers, query strings, addresses or other values: only the path
- * (addresses and ids removed), method, status, timing and the error's class
- * and code.
+ * Structured failure lines for stored Worker logs. They must never hold mail
+ * content, headers, query strings, addresses, tokens or other values: only
+ * the event, the path (addresses and ids removed), method, status, timing and
+ * the error's class and code. A driver message is kept only for database
+ * errors (a Postgres SQLSTATE code), with quoted values removed.
  */
 const started = new WeakMap<Request, number>();
 
@@ -16,11 +16,9 @@ export function redactMessage(message: string) {
 	return message
 		.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, "…")
 		.replace(/\([^)]*\)=\([^)]*\)/g, "…")
+		.replace(/https?:\/\/\S+/g, "…")
 		.replace(/\S+@\S+/g, "…")
-		.replace(
-			/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
-			"…",
-		)
+		.replace(/[A-Za-z0-9_\-.+/=]{20,}/g, "…")
 		.slice(0, 200);
 }
 
@@ -41,22 +39,70 @@ export function redactPath(pathname: string) {
 		.slice(0, 200);
 }
 
+/** The error's class and code; its message only for a database error. */
+export function errorFields(error: unknown) {
+	const code =
+		error && typeof error === "object" && "code" in error
+			? (error as { code: unknown }).code
+			: undefined;
+	const database = typeof code === "string" && /^[0-9A-Z]{5}$/.test(code);
+	return {
+		error: error instanceof Error ? error.name : typeof error,
+		code: database ? code : null,
+		message:
+			database && error instanceof Error ? redactMessage(error.message) : null,
+	};
+}
+
+export function failureLine<F extends Record<string, string | number | null>>(
+	event: string,
+	error: unknown,
+	fields: F = {} as F,
+) {
+	return { event, ...fields, ...errorFields(error) };
+}
+
 export function requestFailure(
-	error: Error,
+	error: unknown,
 	request: Request,
 	path: string,
 	now = Date.now(),
 ) {
 	const start = started.get(request);
-	const code = (error as { code?: unknown }).code;
-	return {
-		event: "inbox_request_failed",
+	return failureLine("inbox_request_failed", error, {
 		method: request.method,
 		path,
 		status: 500,
 		duration_ms: start === undefined ? null : now - start,
-		error: error.name,
-		code: typeof code === "string" ? code.slice(0, 16) : null,
-		message: redactMessage(error.message),
-	};
+	});
+}
+
+export function logFailure(
+	event: string,
+	error: unknown,
+	fields?: Record<string, string | number | null>,
+) {
+	console.error(JSON.stringify(failureLine(event, error, fields)));
+}
+
+/**
+ * Runs a Worker handler. A failure is logged as a redacted line and rethrown
+ * as a plain error without the original message, so the platform still sees
+ * the failure (and retries where it does) but stores no mail-derived text.
+ */
+export async function guarded<T>(event: string, run: () => Promise<T>) {
+	try {
+		return await run();
+	} catch (error) {
+		logFailure(event, error);
+		throw new Error(`${event}: see the redacted log line`);
+	}
+}
+
+/** For waitUntil: a rejected background task is logged redacted, not thrown. */
+export function background(event: string, task: Promise<unknown>) {
+	return task.then(
+		() => undefined,
+		(error: unknown) => logFailure(event, error),
+	);
 }
