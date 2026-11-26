@@ -165,6 +165,7 @@ export function keyCanRequest(
 		return true;
 	if (key.permissions.includes("conversations:manage"))
 		return (
+			(method === "POST" && route === "inbound") ||
 			(method === "PUT" && /^emails\/[^/]+$/.test(route)) ||
 			(method === "POST" && /^emails\/[^/]+\/move$/.test(route)) ||
 			(method === "PUT" && /^threads\/[^/]+\/status$/.test(route)) ||

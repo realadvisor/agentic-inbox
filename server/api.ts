@@ -855,6 +855,69 @@ export function createApi(db: Database, options: ApiOptions) {
 			);
 		});
 	}
+	const inboundSchema = z
+		.object({
+			sender: z.string().trim().email().max(320),
+			sender_name: z.string().trim().max(200).optional(),
+			recipient: z.string().trim().email().max(320).optional(),
+			reply_to: z.string().trim().email().max(320).optional(),
+			subject: z.string().trim().min(1).max(998),
+			text: z.string().max(200_000).optional(),
+			html: z.string().max(400_000).optional(),
+			thread_id: id.optional(),
+		})
+		.strict()
+		.refine((v) => Boolean(v.text?.trim() || v.html?.trim()), {
+			message: "Provide text or html",
+		});
+	app.post("/api/v1/mailboxes/:mailboxId/inbound", async (c) => {
+		const mailbox = await store.mailbox(c.req.param("mailboxId"));
+		const input = inboundSchema.parse(await c.req.json());
+		const rawKey = c.req.header("idempotency-key");
+		const key = rawKey ? id.parse(rawKey) : crypto.randomUUID();
+		const messageId = `<inbound-${key}@aura.realadvisor.com>`;
+		const body = input.html ?? escapeHtml(input.text ?? "");
+		const recipient = input.recipient ?? mailbox.email;
+		const replyTo = input.reply_to ?? input.sender;
+		const result = await db.begin(async (tx) => {
+			await tx`SELECT pg_advisory_xact_lock(hashtext(${mailbox.id}))`;
+			const [existing] = await tx<
+				{ id: string; thread_id: string }[]
+			>`SELECT id, thread_id FROM emails WHERE mailbox_id=${mailbox.id} AND message_id=${messageId}`;
+			if (existing) {
+				return {
+					id: existing.id,
+					thread_id: existing.thread_id,
+					existing: true,
+				};
+			}
+			let threadId: string = crypto.randomUUID();
+			let inReplyTo: string | null = null;
+			let references: string | null = null;
+			if (input.thread_id) {
+				const [parent] = await tx<
+					{ thread_id: string; message_id: string | null; email_references: string | null }[]
+				>`SELECT thread_id, message_id, email_references FROM emails WHERE mailbox_id=${mailbox.id} AND thread_id=${input.thread_id} ORDER BY date DESC, id DESC LIMIT 1`;
+				if (!parent) {
+					throw new HTTPException(404, { message: "Thread not found" });
+				}
+				threadId = parent.thread_id;
+				inReplyTo = parent.message_id;
+				references = [parent.email_references, parent.message_id]
+					.filter(Boolean)
+					.join(" ") || null;
+			}
+			const emailId = input.thread_id ? crypto.randomUUID() : threadId;
+			await tx`INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, recipient, date, body, in_reply_to, email_references, thread_id, message_id, delivery_status, read, reply_to)
+				VALUES (${emailId}, ${mailbox.id}, 'inbox', ${input.subject}, ${input.sender}, ${recipient}, now(), ${body}, ${inReplyTo}, ${references}, ${threadId}, ${messageId}, 'received', false, ${replyTo})`;
+			if (input.sender_name?.trim()) {
+				await tx`UPDATE mailbox_contacts SET name=${input.sender_name.trim().slice(0, 200)}
+					WHERE mailbox_id=${mailbox.id} AND email=${input.sender.toLowerCase()}`;
+			}
+			return { id: emailId, thread_id: threadId, existing: false };
+		});
+		return c.json(result, result.existing ? 200 : 201);
+	});
 	app.get(
 		"/api/v1/mailboxes/:mailboxId/emails/:id/attachments/:attachmentId",
 		async (c) => {
